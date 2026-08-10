@@ -39,7 +39,7 @@ Mobile/Mobile/
 ### Screens
 
 - **Home** — Full-screen MapKit map with pins, filter/profile buttons, location control, and a floating Liquid Glass card (search, category cards, Explore / Saved / Contribute).
-- **Search** — Tap “Find a place” to open a top search bar with Cancel; mock results list below (no categories/tabs). Tap a result to open detail.
+- **Search** — Tap “Find a place”: the same sheet expands to the top; category row and tabs fade out; mock results appear under the search field.
 - **Detail** — Single-place view (Save, Share, Facilities / Routes / Review, gallery, reviews summary).
 - **Saved** — TODO placeholder screen from the Saved tab.
 - **Contribute** — TODO placeholder screen from the Contribute tab.

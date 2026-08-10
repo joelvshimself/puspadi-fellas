@@ -23,22 +23,42 @@ struct HomeMapView: View {
                 mapLayer
                     .ignoresSafeArea()
                     .opacity(isSearching ? 0 : 1)
+                    .allowsHitTesting(!isSearching)
 
-                if isSearching {
-                    SearchPanel(
+                VStack(spacing: 0) {
+                    if !isSearching {
+                        topBar
+                            .padding(.horizontal, 16)
+                            .padding(.top, 8)
+                            .transition(.opacity)
+
+                        Spacer(minLength: 0)
+
+                        HStack {
+                            Spacer()
+                            locationButton
+                                .padding(.trailing, 16)
+                                .padding(.bottom, 10)
+                        }
+                        .transition(.opacity)
+                    }
+
+                    SearchSheet(
+                        isSearching: $isSearching,
                         searchText: $searchText,
+                        selectedTab: $selectedTab,
                         isSearchFocused: $isSearchFocused,
                         places: places,
                         onSelectPlace: openPlace,
-                        onCancel: dismissSearch
+                        onCancelSearch: dismissSearch,
+                        onSelectTab: handleTabSelection
                     )
-                    .transition(.opacity)
-                } else {
-                    homeChrome
-                        .transition(.opacity)
+                    .padding(.horizontal, isSearching ? 0 : 12)
+                    .padding(.bottom, isSearching ? 0 : 10)
+                    .frame(maxHeight: isSearching ? .infinity : nil, alignment: .top)
                 }
             }
-            .animation(.spring(response: 0.35, dampingFraction: 0.88), value: isSearching)
+            .animation(.spring(response: 0.32, dampingFraction: 0.9), value: isSearching)
             .toolbar(path.isEmpty ? .hidden : .automatic, for: .navigationBar)
             .navigationDestination(for: HomeRoute.self) { route in
                 switch route {
@@ -53,44 +73,11 @@ struct HomeMapView: View {
             .fullScreenCover(isPresented: $showAnalysing) {
                 AnalysingView(onDismiss: { showAnalysing = false })
             }
-            .onChange(of: isSearching) { _, searching in
-                if searching {
-                    DispatchQueue.main.async {
-                        isSearchFocused = true
-                    }
-                }
-            }
             .onChange(of: path.count) { _, count in
                 if count == 0 {
                     selectedTab = .explore
                 }
             }
-        }
-    }
-
-    private var homeChrome: some View {
-        VStack(spacing: 0) {
-            topBar
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-
-            Spacer(minLength: 0)
-
-            HStack {
-                Spacer()
-                locationButton
-                    .padding(.trailing, 16)
-                    .padding(.bottom, 10)
-            }
-
-            SearchSheet(
-                searchText: $searchText,
-                selectedTab: $selectedTab,
-                onBeginSearch: beginSearch,
-                onSelectTab: handleTabSelection
-            )
-            .padding(.horizontal, 12)
-            .padding(.bottom, 10)
         }
     }
 
@@ -160,16 +147,10 @@ struct HomeMapView: View {
         .buttonStyle(.plain)
     }
 
-    private func beginSearch() {
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.88)) {
-            isSearching = true
-        }
-    }
-
     private func dismissSearch() {
         isSearchFocused = false
         searchText = ""
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.88)) {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) {
             isSearching = false
         }
     }
@@ -177,7 +158,9 @@ struct HomeMapView: View {
     private func openPlace(_ place: Place) {
         isSearchFocused = false
         path.append(HomeRoute.place(place))
-        isSearching = false
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) {
+            isSearching = false
+        }
     }
 
     private func handleTabSelection(_ tab: HomeTab) {

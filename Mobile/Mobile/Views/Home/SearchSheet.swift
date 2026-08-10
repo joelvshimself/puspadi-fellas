@@ -12,11 +12,15 @@ enum HomeRoute: Hashable {
     case contribute
 }
 
-/// Floating Liquid Glass home card (collapsed). Search mode uses `SearchPanel`.
+/// Floating home card that expands into a top search UI on the same view.
 struct SearchSheet: View {
+    @Binding var isSearching: Bool
     @Binding var searchText: String
     @Binding var selectedTab: HomeTab
-    let onBeginSearch: () -> Void
+    var isSearchFocused: FocusState<Bool>.Binding
+    let places: [Place]
+    let onSelectPlace: (Place) -> Void
+    let onCancelSearch: () -> Void
     let onSelectTab: (HomeTab) -> Void
 
     private let categories: [(symbol: String, label: String, query: String?)] = [
@@ -27,27 +31,62 @@ struct SearchSheet: View {
         ("plus", "More", nil)
     ]
 
+    private var results: [Place] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return places }
+        let filtered = places.filter {
+            $0.name.localizedCaseInsensitiveContains(query)
+                || $0.category.localizedCaseInsensitiveContains(query)
+        }
+        return filtered.isEmpty ? places : filtered
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            Capsule()
-                .fill(Color.secondary.opacity(0.35))
-                .frame(width: 36, height: 5)
-                .padding(.top, 10)
-                .padding(.bottom, 14)
+            if !isSearching {
+                Capsule()
+                    .fill(Color.secondary.opacity(0.35))
+                    .frame(width: 36, height: 5)
+                    .padding(.top, 10)
+                    .padding(.bottom, 14)
+                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
+            } else {
+                Color.clear.frame(height: 8)
+            }
 
-            searchField
-                .padding(.horizontal, 16)
+            HStack(spacing: 10) {
+                searchField
 
-            categoryRow
-                .padding(.top, 14)
-                .padding(.bottom, 4)
+                if isSearching {
+                    Button("Cancel") {
+                        onCancelSearch()
+                    }
+                    .font(.body)
+                    .transition(.opacity.combined(with: .move(edge: .trailing)))
+                }
+            }
+            .padding(.horizontal, 16)
 
-            sheetTabBar
-                .padding(.top, 8)
-                .padding(.bottom, 10)
+            if isSearching {
+                resultsList
+                    .padding(.top, 8)
+                    .transition(.opacity)
+            } else {
+                categoryRow
+                    .padding(.top, 14)
+                    .padding(.bottom, 4)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+
+                sheetTabBar
+                    .padding(.top, 8)
+                    .padding(.bottom, 10)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
         }
         .frame(maxWidth: .infinity)
-        .modifier(LiquidGlassCardModifier(cornerRadius: 32))
+        .frame(maxHeight: isSearching ? .infinity : nil, alignment: .top)
+        .background { sheetBackground }
+        .animation(.spring(response: 0.32, dampingFraction: 0.9), value: isSearching)
     }
 
     private var searchField: some View {
@@ -56,24 +95,29 @@ struct SearchSheet: View {
                 .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(.secondary)
 
-            Text("Find a place")
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            TextField("Find a place", text: $searchText)
+                .focused(isSearchFocused)
+                .textInputAutocapitalization(.never)
+                .submitLabel(.search)
+                .onSubmit {
+                    beginSearch()
+                }
 
             Image(systemName: "mic.fill")
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .background(
             Capsule()
-                .fill(Color.primary.opacity(0.06))
+                .fill(Color.primary.opacity(isSearching ? 0.08 : 0.06))
         )
         .contentShape(Capsule())
-        .onTapGesture(perform: onBeginSearch)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityLabel("Find a place")
+        .onTapGesture {
+            beginSearch()
+        }
     }
 
     private var categoryRow: some View {
@@ -84,7 +128,7 @@ struct SearchSheet: View {
                         if let query = item.query {
                             searchText = query
                         }
-                        onBeginSearch()
+                        beginSearch()
                     } label: {
                         Image(systemName: item.symbol)
                             .font(.system(size: 22, weight: .medium))
@@ -133,81 +177,32 @@ struct SearchSheet: View {
         }
         .buttonStyle(.plain)
     }
-}
 
-/// Full-screen search: top bar + results only (no glass card).
-struct SearchPanel: View {
-    @Binding var searchText: String
-    var isSearchFocused: FocusState<Bool>.Binding
-    let places: [Place]
-    let onSelectPlace: (Place) -> Void
-    let onCancel: () -> Void
+    private var resultsList: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                Text("Recent")
+                    .font(.headline)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
 
-    private var results: [Place] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return places }
-        let filtered = places.filter {
-            $0.name.localizedCaseInsensitiveContains(query)
-                || $0.category.localizedCaseInsensitiveContains(query)
-        }
-        return filtered.isEmpty ? places : filtered
-    }
+                Divider()
+                    .padding(.horizontal, 16)
 
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                HStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary)
-
-                    TextField("Find a place", text: $searchText)
-                        .focused(isSearchFocused)
-                        .textInputAutocapitalization(.never)
-                        .submitLabel(.search)
-
-                    Image(systemName: "mic.fill")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .background(
-                    Capsule()
-                        .fill(Color(.secondarySystemBackground))
-                )
-
-                Button("Cancel", action: onCancel)
-                    .font(.body)
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 12)
-
-            Divider()
-
-            List {
-                Section {
-                    ForEach(results) { place in
-                        Button {
-                            onSelectPlace(place)
-                        } label: {
-                            resultRow(place)
-                        }
-                        .buttonStyle(.plain)
-                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                ForEach(results) { place in
+                    Button {
+                        onSelectPlace(place)
+                    } label: {
+                        resultRow(place)
                     }
-                } header: {
-                    Text("Recent")
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                        .textCase(nil)
+                    .buttonStyle(.plain)
+
+                    Divider()
+                        .padding(.leading, 72)
                 }
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
+            .padding(.bottom, 24)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Color(.systemBackground).ignoresSafeArea())
     }
 
     private func resultRow(_ place: Place) -> some View {
@@ -236,64 +231,69 @@ struct SearchPanel: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.tertiary)
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
         .contentShape(Rectangle())
     }
-}
 
-private struct LiquidGlassCardModifier: ViewModifier {
-    let cornerRadius: CGFloat
-
-    func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content
-                .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+    @ViewBuilder
+    private var sheetBackground: some View {
+        if isSearching {
+            Rectangle()
+                .fill(Color(.systemBackground))
+                .ignoresSafeArea()
         } else {
-            content
-                .background {
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                        .shadow(color: .black.opacity(0.18), radius: 20, y: 6)
-                }
+            if #available(iOS 26.0, *) {
+                Color.clear
+                    .glassEffect(.regular, in: .rect(cornerRadius: 32))
+            } else {
+                RoundedRectangle(cornerRadius: 32, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .shadow(color: .black.opacity(0.18), radius: 20, y: 6)
+            }
         }
+    }
+
+    private func beginSearch() {
+        guard !isSearching else {
+            isSearchFocused.wrappedValue = true
+            return
+        }
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) {
+            isSearching = true
+        }
+        isSearchFocused.wrappedValue = true
     }
 }
 
-#Preview("Home card") {
+#Preview {
     struct PreviewHost: View {
+        @State private var isSearching = false
         @State private var searchText = ""
         @State private var selectedTab: HomeTab = .explore
+        @FocusState private var focused: Bool
 
         var body: some View {
             ZStack(alignment: .bottom) {
                 Color.gray.opacity(0.35).ignoresSafeArea()
                 SearchSheet(
+                    isSearching: $isSearching,
                     searchText: $searchText,
                     selectedTab: $selectedTab,
-                    onBeginSearch: {},
+                    isSearchFocused: $focused,
+                    places: Place.samples,
+                    onSelectPlace: { _ in },
+                    onCancelSearch: {
+                        focused = false
+                        searchText = ""
+                        isSearching = false
+                    },
                     onSelectTab: { selectedTab = $0 }
                 )
-                .padding(.horizontal, 12)
-                .padding(.bottom, 10)
+                .padding(.horizontal, isSearching ? 0 : 12)
+                .padding(.bottom, isSearching ? 0 : 10)
+                .frame(maxHeight: isSearching ? .infinity : nil, alignment: .top)
             }
-        }
-    }
-
-    return PreviewHost()
-}
-
-#Preview("Search panel") {
-    struct PreviewHost: View {
-        @State private var searchText = ""
-        @FocusState private var focused: Bool
-
-        var body: some View {
-            SearchPanel(
-                searchText: $searchText,
-                isSearchFocused: $focused,
-                places: Place.samples,
-                onSelectPlace: { _ in },
-                onCancel: {}
-            )
         }
     }
 
