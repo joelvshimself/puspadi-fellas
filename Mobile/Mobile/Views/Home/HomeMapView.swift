@@ -73,6 +73,14 @@ struct HomeMapView: View {
             .fullScreenCover(isPresented: $showAnalysing) {
                 AnalysingView(onDismiss: { showAnalysing = false })
             }
+            .onChange(of: isSearchFocused) { _, focused in
+                // TextField focus does not fire parent tap gestures; expand from focus.
+                if focused, !isSearching {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) {
+                        isSearching = true
+                    }
+                }
+            }
             .onChange(of: path.count) { _, count in
                 if count == 0 {
                     selectedTab = .explore

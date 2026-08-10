@@ -99,9 +99,6 @@ struct SearchSheet: View {
                 .focused(isSearchFocused)
                 .textInputAutocapitalization(.never)
                 .submitLabel(.search)
-                .onSubmit {
-                    beginSearch()
-                }
 
             Image(systemName: "mic.fill")
                 .font(.system(size: 15, weight: .medium))
@@ -114,10 +111,6 @@ struct SearchSheet: View {
             Capsule()
                 .fill(Color.primary.opacity(isSearching ? 0.08 : 0.06))
         )
-        .contentShape(Capsule())
-        .onTapGesture {
-            beginSearch()
-        }
     }
 
     private var categoryRow: some View {
