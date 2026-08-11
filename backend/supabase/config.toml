@@ -1,0 +1,39 @@
+project_id = "puspadi-fellas"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = []
+jwt_expiry = 3600
+enable_signup = true
+
+# Sign in with Apple — final call on Apple vs email/OTP is open, see
+# docs/specs.md §8. Fill in client_id / secret via `supabase secrets set`
+# once decided, do not commit real values here.
+[auth.external.apple]
+enabled = false
+client_id = ""
+secret = ""
+
+[storage]
+enabled = true
+# venue_imdf/{place_id}/*.json archives live in a bucket here — see
+# docs/specs.md §4.6 and the functions/place-accessibility TODOs.
+
+[edge_runtime]
+enabled = true
