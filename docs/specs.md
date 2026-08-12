@@ -11,28 +11,35 @@ videos for accessibility signal turned out to be both hard (video understanding 
 unreliable) and low-yield (the videos usually don't contain the accessibility facts
 we need). The app is now a thin data layer over existing map platforms instead:
 
-- **Google Places API** (`accessibilityOptions`: wheelchair-accessible entrance,
-  parking, restroom, seating) is the primary base signal.
 - **OpenStreetMap** (`wheelchair=yes/no/limited` + supporting tags), queried via the
-  free Overpass API, is a complementary/fallback source, read-only for now (see §9).
+  free Overpass API, is the **primary, required** base signal — no API key, no
+  cost, always attempted.
+- **Google Places API** (`accessibilityOptions`: wheelchair-accessible entrance,
+  parking, restroom, seating) is **secondary and optional** (flipped 2026-08-12 —
+  explicit decision not to have a hard dependency on Google). The Edge Function
+  only calls it if `GOOGLE_MAPS_API_KEY` is configured; the app works, with a
+  smaller signal set, when it isn't.
 - **Apple Maps / MapKit has no public accessibility field at all** — confirmed
   directly against Apple's own Maps Server API docs (the `Place` object only
   exposes `country`, `countryCode`, `displayMapRegion`, `formattedAddressLines`,
   `name`, `coordinate`, `structuredAddress`, `alternateIds`, `id`). Apple Business
   Connect lets business owners self-report "Wheelchair Accessible" in the consumer
-  Maps app, but that attribute isn't exposed through any public API. Apple
-  Maps/MapKit remains useful for map rendering, search UI, and geocoding — just not
-  as an accessibility data source.
+  Maps app, but that attribute isn't exposed through any public API. MapKit is,
+  however, exactly what handles **search and geocoding** now — `MKLocalSearch`
+  runs entirely on-device, free, no key — so the Edge Function no longer does any
+  text search at all; it only ever receives an already-resolved `{lat, lng, name}`
+  and enriches that one location.
 - Crowdsourced contributions (reviews + one-tap confirmations) enrich that base
   data into an **Accessibility Grade**: a confidence-weighted, time-decayed blend
   across every signal collected for a place, official or crowdsourced (§6).
 
-Primary cost constraint, unchanged in shape: Google's `accessibilityOptions` field
-is billed at **Pro tier** ($17/1,000 calls, 5,000 free/month), not the cheap
-Essentials tier. The same mitigation as before applies — a **global, shared cache**
-so any place is fetched from Google/OSM at most once per refresh cycle, ever, no
-matter how many users look at it. Most of the caching architecture below carries
-over unchanged from the pre-pivot design; only what's *behind* the cache changed.
+Cost constraint, changed shape: Google's `accessibilityOptions` field is billed at
+**Pro tier** ($17/1,000 calls, 5,000 free/month) — but since Google is now optional
+secondary enrichment rather than required, this is a cost the team can *choose* to
+opt into per-deployment, not a fixed dependency. OSM/Overpass has no per-call cost
+at all. The same mitigation as before applies regardless — a **global, shared
+cache** so any place is fetched from OSM (and Google, if enabled) at most once per
+refresh cycle, ever, no matter how many users look at it.
 
 ## 2. User Stories (MoSCoW)
 
@@ -49,22 +56,24 @@ over unchanged from the pre-pivot design; only what's *behind* the cache changed
 
 ## 3. System Architecture
 
-**Client** — iOS app (Swift), using `supabase-swift` via SPM for Auth, Postgres
-(PostgREST), Storage, Realtime, and Edge Functions. Keeps a thin local response
-cache purely to cut repeat-view latency — not offline-first. Apple's on-device
-Foundation Models framework is no longer load-bearing for the core flow (there's no
-video to synthesize anymore) — it's optional polish, e.g. phrasing the structured
-grade as a natural-language summary for display.
+**Client** — iOS app (Swift), using MapKit (`MKLocalSearch`) for all search and
+geocoding — entirely on-device, free — and `supabase-swift` via SPM for Auth,
+Postgres (PostgREST), Storage, Realtime, and Edge Functions. Keeps a thin local
+response cache purely to cut repeat-view latency — not offline-first. Apple's
+on-device Foundation Models framework is no longer load-bearing for the core flow
+(there's no video to synthesize anymore) — it's optional polish, e.g. phrasing the
+structured grade as a natural-language summary for display.
 
 **Backend** — Supabase: Auth, Postgres (the shared cache, the accessibility signal
 ledger, and all user data), and one Edge Function (`place-accessibility`) that
-gatekeeps every Pro-tier call to Google Places. The client never holds a Google
-Maps API key.
+takes an already-resolved `{lat, lng, name}` (MapKit did the search) and enriches
+it: OSM/Overpass always, Google Places only if a key is configured. The client
+never holds a Google Maps API key, and doesn't need OSM to hold one either.
 
-**External** — Google Places API (New) (the cost driver, Pro tier, only ever called
-from the Edge Function), OpenStreetMap via the public Overpass API (free,
-best-effort, no SLA — read-only enrichment that never blocks a response if it
-fails or times out).
+**External** — OpenStreetMap via the public Overpass API (primary, free,
+best-effort, no SLA — see §9), Google Places API (New) (secondary, optional, the
+only cost driver in this pipeline, Pro tier, only ever called from the Edge
+Function and only if enabled).
 
 See `architecture-plan-v2.excalidraw` for the full system design diagram, updated
 for this pivot — Flow A now shows the Google/OSM cache-gate instead of Apify, and
@@ -76,16 +85,19 @@ original pre-pivot v1 sketch, kept for history only.
 
 ### 4.1 Check Accessibility (Search) — no auth required — Owner 1
 
-- Exact-location search → resolve to a Google Place ID → 1 result.
-- Descriptive search (natural language) → Google Text Search (New) → top-K
-  candidate place IDs → user picks 1.
-- Flow: client → Edge Function → cache check against `place_cache`/`search_query_cache`
-  → (miss) Google Places call (Text Search or Place Details, both requesting the
-  `accessibilityOptions` field, Pro tier) → best-effort OpenStreetMap/Overpass
-  enrichment → both written into `place_cache` + `accessibility_signals` → client
-  gets back the base data plus the live `accessibility_grade()` for the place.
-  Every future viewer of that place skips the Google call entirely until the cache
-  TTL (90 days — accessibility features change slowly) expires.
+- Exact-location or descriptive search → `MKLocalSearch` on-device (free, no
+  backend call at all for this step) → user picks 1 result (lat, lng, name).
+- Flow from there: client calls the Edge Function with `{lat, lng, name}` →
+  canonical `place_id` derived from the coordinate itself (`loc_<lat>_<lng>`, not
+  any provider's ID) → cache check against `place_cache` → (miss) OSM/Overpass
+  lookup (always) + Google Places lookup (only if `GOOGLE_MAPS_API_KEY` is set) →
+  both written into `place_cache` + `accessibility_signals` → client gets back the
+  base data plus the live `accessibility_grade()` for the place. Every future
+  viewer of that place skips both external calls entirely until the cache TTL
+  (90 days — accessibility features change slowly) expires.
+- `search_query_cache` (from the first pivot migration) is now unused — caching a
+  list of candidate place IDs only made sense when search itself was a paid
+  Google call. Left in the schema rather than dropped; harmless if empty.
 - Dropped with the pivot: the TikTok/IG share-extension import path from the
   original Story 1 diagram — there's no video content to import anymore.
 
@@ -234,9 +246,11 @@ gracefully — one bad-faith or mistaken contribution doesn't flip the grade out
 and old signals fade rather than staying authoritative forever.
 
 Default starting weights per source (set by the inserting code, not hardcoded in
-the schema, so they're tunable without a migration): Google 0.6, OSM 0.5, review
-0.4, single confirmation tap 0.2. These are v1 defaults — expect to tune them once
-real usage data exists (see §8).
+the schema, so they're tunable without a migration): OSM 0.6 (primary), Google 0.5
+(secondary, when enabled), review 0.4, single confirmation tap 0.2. Flipped
+2026-08-12 to put OSM ahead of Google, matching the source-priority decision above
+— these are still v1 defaults, expect to tune them once real usage data exists
+(see §8).
 
 A repeat signal from the same user for the same place/feature/source **updates**
 their existing row rather than stacking additional weight (enforced by a unique
@@ -291,9 +305,13 @@ coordinating, not sequencing.
 - How strictly our self-hosted per-venue IMDF archives should conform to the full
   IMDF spec vs. a practical accessibility-only subset — only matters if we ever
   want to submit one to Apple's Indoor Maps Program for a partner venue later.
-- `GOOGLE_MAPS_API_KEY` needs to be provisioned (Google Cloud Console, Places
-  API (New) enabled, billing attached) and set via `supabase secrets set` —
-  nobody has created this yet, the Edge Function will error without it.
+- `GOOGLE_MAPS_API_KEY` is optional (flipped 2026-08-12) — the Edge Function
+  runs fine without it, just with OSM as the only signal. Whether to provision
+  one at all (Google Cloud Console, Places API (New) enabled, billing attached)
+  is now a cost/coverage tradeoff decision, not a blocker.
+- MapKit (`MKLocalSearch`) isn't wired into the Xcode project yet — the app's
+  current search UI (`Views/Home/SearchSheet.swift`) still runs on
+  `Models/Place.swift` mock data.
 
 ## 9. Data Sourcing & Licensing Notes
 
