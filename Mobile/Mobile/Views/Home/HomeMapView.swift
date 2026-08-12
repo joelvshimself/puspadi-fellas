@@ -8,12 +8,23 @@ struct HomeMapView: View {
             span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
         )
     )
+    /// Tracked separately from `cameraPosition` (which is opaque) so
+    /// SearchSheet has a plain MKCoordinateRegion to bias MKLocalSearch
+    /// toward what's currently on screen.
+    @State private var visibleRegion = MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
+        span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
+    )
     @State private var isSearching = false
     @State private var searchText = ""
     @FocusState private var isSearchFocused: Bool
     @State private var selectedTab: HomeTab = .explore
     @State private var showAnalysing = false
     @State private var path = NavigationPath()
+    @StateObject private var locationManager = LocationManager()
+    /// So the very first real location fix recenters the map once, without
+    /// fighting the user if they've already panned elsewhere themselves.
+    @State private var hasCenteredOnUser = false
 
     private let places = Place.samples
 
@@ -49,6 +60,7 @@ struct HomeMapView: View {
                         selectedTab: $selectedTab,
                         isSearchFocused: $isSearchFocused,
                         places: places,
+                        searchRegion: visibleRegion,
                         onSelectPlace: openPlace,
                         onCancelSearch: dismissSearch,
                         onSelectTab: handleTabSelection
@@ -86,6 +98,14 @@ struct HomeMapView: View {
                     selectedTab = .explore
                 }
             }
+            .onChange(of: locationManager.currentCoordinate) { _, coordinate in
+                guard let coordinate, !hasCenteredOnUser else { return }
+                hasCenteredOnUser = true
+                recenter(on: coordinate.clLocation)
+            }
+            .task {
+                locationManager.requestLocation()
+            }
         }
     }
 
@@ -103,6 +123,9 @@ struct HomeMapView: View {
                         )
                 }
             }
+        }
+        .onMapCameraChange { context in
+            visibleRegion = context.region
         }
         .mapStyle(.standard(elevation: .realistic))
     }
@@ -123,13 +146,10 @@ struct HomeMapView: View {
 
     private var locationButton: some View {
         Button {
-            withAnimation {
-                cameraPosition = .region(
-                    MKCoordinateRegion(
-                        center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
-                        span: MKCoordinateSpan(latitudeDelta: 0.04, longitudeDelta: 0.04)
-                    )
-                )
+            if let coordinate = locationManager.currentCoordinate {
+                recenter(on: coordinate.clLocation, span: 0.04)
+            } else {
+                locationManager.requestLocation()
             }
         } label: {
             Image(systemName: "location")
@@ -153,6 +173,17 @@ struct HomeMapView: View {
                 .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
         }
         .buttonStyle(.plain)
+    }
+
+    private func recenter(on coordinate: CLLocationCoordinate2D, span: Double = 0.08) {
+        let region = MKCoordinateRegion(
+            center: coordinate,
+            span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)
+        )
+        withAnimation {
+            cameraPosition = .region(region)
+        }
+        visibleRegion = region
     }
 
     private func dismissSearch() {

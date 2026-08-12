@@ -6,12 +6,20 @@ struct PlaceDetailView: View {
     @State private var selectedTab: DetailTab = .facilities
     @State private var isSaved = false
 
+    /// Live-fetched from place-accessibility — only meaningful for a real
+    /// MKLocalSearch result (place.isLiveResult), never for the mock
+    /// `Place.samples` used elsewhere in this demo.
+    @State private var grade: [AccessibilityFeatureGrade] = []
+    @State private var isLoadingGrade = false
+    @State private var gradeLoadFailed = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 topActions
                 titleBlock
                 heroCard
+                accessibilityGradeSection
                 tabBar
                 tabContent
             }
@@ -20,6 +28,78 @@ struct PlaceDetailView: View {
         }
         .background(Color(.systemBackground))
         .toolbar(.hidden, for: .navigationBar)
+        .task(id: place.id) {
+            await loadGrade()
+        }
+    }
+
+    private func loadGrade() async {
+        guard place.isLiveResult else { return }
+        isLoadingGrade = true
+        gradeLoadFailed = false
+        defer { isLoadingGrade = false }
+        do {
+            let response = try await AccessibilityService.shared.enrich(
+                lat: place.coordinate.latitude,
+                lng: place.coordinate.longitude,
+                name: place.name
+            )
+            grade = response.grade ?? []
+        } catch {
+            gradeLoadFailed = true
+        }
+    }
+
+    @ViewBuilder
+    private var accessibilityGradeSection: some View {
+        if place.isLiveResult {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Accessibility Grade")
+                    .font(.headline)
+
+                if isLoadingGrade {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 8)
+                } else if gradeLoadFailed {
+                    Text("Couldn't load accessibility data right now.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else if grade.isEmpty {
+                    Text("No accessibility data yet for this place — be the first to check it.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(grade) { item in
+                        HStack(spacing: 10) {
+                            Image(systemName: item.symbolName)
+                                .foregroundStyle(color(for: item.bestValue))
+                            Text(item.featureLabel)
+                                .font(.subheadline.weight(.medium))
+                            Spacer()
+                            Text(item.valueLabel)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color(.separator), lineWidth: 1)
+            )
+        }
+    }
+
+    private func color(for bestValue: String) -> Color {
+        switch bestValue {
+        case "yes": .green
+        case "no": .red
+        case "limited": .orange
+        default: .secondary
+        }
     }
 
     private var topActions: some View {

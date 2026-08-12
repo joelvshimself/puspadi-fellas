@@ -1,3 +1,4 @@
+import MapKit
 import SwiftUI
 
 enum HomeTab: Hashable {
@@ -19,9 +20,22 @@ struct SearchSheet: View {
     @Binding var selectedTab: HomeTab
     var isSearchFocused: FocusState<Bool>.Binding
     let places: [Place]
+    /// Biases MKLocalSearch toward what's currently on screen. Kept separate
+    /// from the map's own (opaque) camera position — see HomeMapView.
+    let searchRegion: MKCoordinateRegion
     let onSelectPlace: (Place) -> Void
     let onCancelSearch: () -> Void
     let onSelectTab: (HomeTab) -> Void
+
+    /// Real on-device search results (MKLocalSearch) — replaces the old
+    /// local substring filter over mock `places`. See §4.1 in
+    /// docs/specs.md: MapKit resolves the query for free, on-device; only
+    /// the resolved coordinate is ever sent to the backend, and only once
+    /// the user taps a result (see PlaceDetailView).
+    @State private var liveResults: [Place] = []
+    @State private var searchTask: Task<Void, Never>?
+    @State private var isSearchingLive = false
+    @State private var searchErrorMessage: String?
 
     private let categories: [(symbol: String, label: String, query: String?)] = [
         ("fork.knife", "Food", "Restaurant"),
@@ -33,12 +47,7 @@ struct SearchSheet: View {
 
     private var results: [Place] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return places }
-        let filtered = places.filter {
-            $0.name.localizedCaseInsensitiveContains(query)
-                || $0.category.localizedCaseInsensitiveContains(query)
-        }
-        return filtered.isEmpty ? places : filtered
+        return query.isEmpty ? places : liveResults
     }
 
     var body: some View {
@@ -87,6 +96,60 @@ struct SearchSheet: View {
         .frame(maxHeight: isSearching ? .infinity : nil, alignment: .top)
         .background { sheetBackground }
         .animation(.spring(response: 0.32, dampingFraction: 0.9), value: isSearching)
+        .onChange(of: searchText) { _, newValue in
+            scheduleSearch(for: newValue)
+        }
+    }
+
+    private func scheduleSearch(for query: String) {
+        searchTask?.cancel()
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            liveResults = []
+            isSearchingLive = false
+            searchErrorMessage = nil
+            return
+        }
+        isSearchingLive = true
+        searchErrorMessage = nil
+        searchTask = Task {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled else { return }
+            await performSearch(trimmed)
+        }
+    }
+
+    private func performSearch(_ query: String) async {
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = query
+        request.region = searchRegion
+        let search = MKLocalSearch(request: request)
+        do {
+            let response = try await search.start()
+            guard !Task.isCancelled else { return }
+            liveResults = response.mapItems.map { item in
+                Place.fromSearchResult(
+                    name: item.name ?? query,
+                    category: item.pointOfInterestCategory.map(categoryLabel) ?? "Place",
+                    coordinate: item.placemark.coordinate
+                )
+            }
+            isSearchingLive = false
+        } catch {
+            guard !Task.isCancelled else { return }
+            // Surface this instead of silently showing an empty list — a
+            // blank "Recent" list with no feedback reads as broken. Common
+            // cause here is MKErrorDomain code 4 (placemark not found /
+            // region has no matches), which is a normal "no results", not a
+            // crash — but the user still needs to see *something* changed.
+            liveResults = []
+            isSearchingLive = false
+            searchErrorMessage = (error as NSError).localizedDescription
+        }
+    }
+
+    private func categoryLabel(for category: MKPointOfInterestCategory) -> String {
+        category.rawValue.replacingOccurrences(of: "MKPOICategory", with: "")
     }
 
     private var searchField: some View {
@@ -171,10 +234,14 @@ struct SearchSheet: View {
         .buttonStyle(.plain)
     }
 
+    private var isLiveQuery: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private var resultsList: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                Text("Recent")
+                Text(isLiveQuery ? "Results" : "Recent")
                     .font(.headline)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
@@ -182,20 +249,40 @@ struct SearchSheet: View {
                 Divider()
                     .padding(.horizontal, 16)
 
-                ForEach(results) { place in
-                    Button {
-                        onSelectPlace(place)
-                    } label: {
-                        resultRow(place)
-                    }
-                    .buttonStyle(.plain)
+                if isLiveQuery, isSearchingLive {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 24)
+                } else if isLiveQuery, let searchErrorMessage {
+                    statusMessage(searchErrorMessage)
+                } else if isLiveQuery, results.isEmpty {
+                    statusMessage("No places found for \"\(searchText)\" near here.")
+                } else {
+                    ForEach(results) { place in
+                        Button {
+                            onSelectPlace(place)
+                        } label: {
+                            resultRow(place)
+                        }
+                        .buttonStyle(.plain)
 
-                    Divider()
-                        .padding(.leading, 72)
+                        Divider()
+                            .padding(.leading, 72)
+                    }
                 }
             }
             .padding(.bottom, 24)
         }
+    }
+
+    private func statusMessage(_ text: String) -> some View {
+        Text(text)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 24)
+            .multilineTextAlignment(.center)
     }
 
     private func resultRow(_ place: Place) -> some View {
@@ -213,7 +300,7 @@ struct SearchSheet: View {
                 Text(place.name)
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.primary)
-                Text("\(place.category) • \(place.distance)")
+                Text(place.distance.isEmpty ? place.category : "\(place.category) • \(place.distance)")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -275,6 +362,10 @@ struct SearchSheet: View {
                     selectedTab: $selectedTab,
                     isSearchFocused: $focused,
                     places: Place.samples,
+                    searchRegion: MKCoordinateRegion(
+                        center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
+                        span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
+                    ),
                     onSelectPlace: { _ in },
                     onCancelSearch: {
                         focused = false
