@@ -3,14 +3,36 @@
 ## 1. Overview
 
 A wheelchair map app that lets users check, discover, save, share, and contribute
-accessibility information for places — sourced from TikTok/social content via Apify,
-synthesized with Apple's on-device Foundation Models, and backed by Supabase. Search
-is the core feature the rest of the app builds on.
+accessibility information for places — backed by Supabase. Search is the core
+feature the rest of the app builds on.
 
-Primary cost constraint: Apify calls (and to a lesser extent on-device ML re-runs)
-are the expensive/slow step. The architecture is built around a **global, shared
-cache** so any place is scraped and synthesized at most once, ever, no matter how
-many users look at it.
+**Pivoted (2026-08-12) from the original TikTok/Apify design.** Analyzing TikTok
+videos for accessibility signal turned out to be both hard (video understanding is
+unreliable) and low-yield (the videos usually don't contain the accessibility facts
+we need). The app is now a thin data layer over existing map platforms instead:
+
+- **Google Places API** (`accessibilityOptions`: wheelchair-accessible entrance,
+  parking, restroom, seating) is the primary base signal.
+- **OpenStreetMap** (`wheelchair=yes/no/limited` + supporting tags), queried via the
+  free Overpass API, is a complementary/fallback source, read-only for now (see §9).
+- **Apple Maps / MapKit has no public accessibility field at all** — confirmed
+  directly against Apple's own Maps Server API docs (the `Place` object only
+  exposes `country`, `countryCode`, `displayMapRegion`, `formattedAddressLines`,
+  `name`, `coordinate`, `structuredAddress`, `alternateIds`, `id`). Apple Business
+  Connect lets business owners self-report "Wheelchair Accessible" in the consumer
+  Maps app, but that attribute isn't exposed through any public API. Apple
+  Maps/MapKit remains useful for map rendering, search UI, and geocoding — just not
+  as an accessibility data source.
+- Crowdsourced contributions (reviews + one-tap confirmations) enrich that base
+  data into an **Accessibility Grade**: a confidence-weighted, time-decayed blend
+  across every signal collected for a place, official or crowdsourced (§6).
+
+Primary cost constraint, unchanged in shape: Google's `accessibilityOptions` field
+is billed at **Pro tier** ($17/1,000 calls, 5,000 free/month), not the cheap
+Essentials tier. The same mitigation as before applies — a **global, shared cache**
+so any place is fetched from Google/OSM at most once per refresh cycle, ever, no
+matter how many users look at it. Most of the caching architecture below carries
+over unchanged from the pre-pivot design; only what's *behind* the cache changed.
 
 ## 2. User Stories (MoSCoW)
 
@@ -28,40 +50,50 @@ many users look at it.
 ## 3. System Architecture
 
 **Client** — iOS app (Swift), using `supabase-swift` via SPM for Auth, Postgres
-(PostgREST), Storage, Realtime, and Edge Functions. Runs Apple's on-device
-Foundation Models framework locally for multimodal synthesis (video frames → structured
-accessibility data via `@Generable`). Keeps a thin local response cache purely to cut
-repeat-view latency — not offline-first.
+(PostgREST), Storage, Realtime, and Edge Functions. Keeps a thin local response
+cache purely to cut repeat-view latency — not offline-first. Apple's on-device
+Foundation Models framework is no longer load-bearing for the core flow (there's no
+video to synthesize anymore) — it's optional polish, e.g. phrasing the structured
+grade as a natural-language summary for display.
 
-**Backend** — Supabase: Auth, Postgres (the shared cache + all user data), and one
-Edge Function (`place-accessibility`) that gatekeeps every call to Apify. The client
-never holds an Apify API key.
+**Backend** — Supabase: Auth, Postgres (the shared cache, the accessibility signal
+ledger, and all user data), and one Edge Function (`place-accessibility`) that
+gatekeeps every Pro-tier call to Google Places. The client never holds a Google
+Maps API key.
 
-**External** — Apify (TikTok scraping, the cost driver, only ever called from the
-Edge Function), Apple Foundation Models on-device model (free) with Private Cloud
-Compute as an escalation path for harder reasoning (still mid-tier vs. frontier
-cloud models — not a substitute if a case genuinely needs top-tier reasoning).
+**External** — Google Places API (New) (the cost driver, Pro tier, only ever called
+from the Edge Function), OpenStreetMap via the public Overpass API (free,
+best-effort, no SLA — read-only enrichment that never blocks a response if it
+fails or times out).
 
-See `architecture-plan-v2.excalidraw` for the full system design diagram (`architecture-plan.excalidraw` is the earlier v1 sketch, kept for history).
+See `architecture-plan-v2.excalidraw` for the full system design diagram, updated
+for this pivot — Flow A now shows the Google/OSM cache-gate instead of Apify, and
+a new shared "Accessibility Signal Ledger & Grade" section shows how Flow A and
+Flow C both feed `accessibility_signals`. `architecture-plan.excalidraw` is the
+original pre-pivot v1 sketch, kept for history only.
 
 ## 4. Feature Specs
 
 ### 4.1 Check Accessibility (Search) — no auth required — Owner 1
 
-- Exact-location search → resolve to a place ID → AI synthesis → 1 result.
-- Descriptive search (natural language) → AI synthesis → top-K results → user picks 1.
-- Flow: client → Edge Function → cache check → (miss) Apify → raw sources returned to
-  client → on-device Foundation Models synthesis → client writes the synthesized
-  result back to `place_cache` so every future viewer of that place skips both Apify
-  *and* the on-device synthesis step.
-- Open: TikTok/IG share-extension import path (seen in the Story 1 diagram) is not
-  yet confirmed in/out of scope for v1.
+- Exact-location search → resolve to a Google Place ID → 1 result.
+- Descriptive search (natural language) → Google Text Search (New) → top-K
+  candidate place IDs → user picks 1.
+- Flow: client → Edge Function → cache check against `place_cache`/`search_query_cache`
+  → (miss) Google Places call (Text Search or Place Details, both requesting the
+  `accessibilityOptions` field, Pro tier) → best-effort OpenStreetMap/Overpass
+  enrichment → both written into `place_cache` + `accessibility_signals` → client
+  gets back the base data plus the live `accessibility_grade()` for the place.
+  Every future viewer of that place skips the Google call entirely until the cache
+  TTL (90 days — accessibility features change slowly) expires.
+- Dropped with the pivot: the TikTok/IG share-extension import path from the
+  original Story 1 diagram — there's no video content to import anymore.
 
 ### 4.2 Discover Nearby — no auth required — Owner 1
 
-- Pure read against `place_cache` — a PostGIS radius query on the cache's lat/lng,
-  ranked by distance + accessibility score. **No Apify call is ever triggered by
-  this path.**
+- Pure read against `place_cache` — a PostGIS radius query (`nearby_places()`) on
+  the cache's lat/lng, ranked by distance + each place's live `accessibility_grade()`.
+  **No Google Places call is ever triggered by this path.**
 - Known v1 limitation: a place is only discoverable once someone has already
   searched it via 4.1 — this is a cold-start/coverage gap, not a bug. A scheduled
   job to pre-warm the cache for dense areas is a v2 lever, not a v1 requirement.
@@ -84,12 +116,20 @@ See `architecture-plan-v2.excalidraw` for the full system design diagram (`archi
 ### 4.5 Review Accessibility — auth required — Owner 3
 
 - Tap Review on an unauthenticated session triggers the Auth Gate.
-- Form: entrance/exit facilities, indoor spaces, outdoor spaces.
-- Write to `reviews` (user_id, place_id, fields, created_at) → marks that place's
-  `place_cache` row stale.
-- Open: aggregation logic for turning N reviews into the single score shown in 4.1's
-  results is not designed yet. Recommend starting v1 with "show individual reviews +
-  a simple majority vote on ramp-present" rather than a weighted score.
+- Form: structured yes/no/limited answers for entrance, parking, restroom, and
+  seating accessibility (tightened from the original freeform
+  entrance/exit/indoor/outdoor fields so a review maps directly onto the same
+  `accessibility_feature`/`accessibility_value` vocabulary Google and OSM signals
+  use), plus a free-text notes field.
+- Write to `reviews` → a trigger (`review_to_signals`) fans each structured answer
+  out into `accessibility_signals` (source `review`, weight 0.4), where it's just
+  one more piece of evidence feeding that place's live `accessibility_grade()`. A
+  review no longer marks `place_cache` stale — the base Google/OSM data doesn't
+  need re-fetching just because a user left a review; only the grade
+  recomputation, which happens live at read time, sees it.
+- Resolved by the pivot: this replaces the earlier "majority vote" idea — see §6
+  for the confidence-weighted blend that now aggregates reviews, one-tap
+  confirmations, and API data together.
 
 ### 4.6 Record Route — auth required — Owner 3
 
@@ -111,7 +151,9 @@ See `architecture-plan-v2.excalidraw` for the full system design diagram (`archi
   constraint is about *positioning accuracy during capture* only — see below for
   why it does **not** block using IMDF as a format.
 - Submitted route → write to `routes` table (the raw trace: waypoints, timestamps,
-  accessibility flags) → marks that place's `place_cache` row stale.
+  accessibility flags) → marks that place's `venue_imdf_archives` row stale (not
+  `place_cache` — a recorded route says nothing new about Google/OSM's base data,
+  only about the rendered venue archive below).
 
 - **Rendering the result — self-hosted IMDF, decoupled from Apple's program**:
   The raw trace itself is never stored *as* IMDF — IMDF has no path/trajectory
@@ -153,39 +195,118 @@ Implementation:
 
 ## 6. Caching Strategy — Owner 1
 
-- `place_cache` is **global** — shared across every user, not per-user. One Apify
-  run + one on-device synthesis, ever, serves every user who looks at that place.
-- Two distinct cache keys, because they serve two different search paths:
-  - place ID (exact-location search)
-  - query-hash (descriptive/fuzzy search)
-- Two-tier freshness: a cache hit on the *synthesized* result skips both Apify and
-  on-device ML entirely; a hit on only the *raw scrape* still needs a fresh
-  on-device synthesis pass but skips Apify.
-- Invalidation: any new review or recorded route for a place flips that place's
-  `place_cache.is_stale` flag — the next request for that place forces a refresh
-  instead of silently serving outdated accessibility info.
+- `place_cache` is **global** — shared across every user, not per-user. One Google
+  Places call, ever (per 90-day refresh cycle), serves every user who looks at
+  that place.
+- Two distinct cache tables now, since the two search paths cache different
+  *shapes* of thing:
+  - `place_cache` — per-place base data (Google `accessibilityOptions` +
+    OpenStreetMap tags), keyed by Google Place ID.
+  - `search_query_cache` — per-query candidate list (an array of place IDs a
+    descriptive search resolved to), keyed by a hash of the normalized query
+    text, TTL'd shorter (30 days) since search result rankings churn faster than
+    a place's own accessibility facts do.
+- Freshness is now purely about the *base API data* being stale (`fetched_at` +
+  90-day TTL) — it is deliberately **decoupled** from user contributions. A new
+  review or confirmation doesn't mean Google's data is wrong or needs re-fetching;
+  it's a separate signal that feeds the grade directly (§6.1), not a cache
+  invalidation event. This is a change from the pre-pivot design, where reviews
+  and routes flipped `place_cache.is_stale` — that coupling no longer makes sense
+  now that "the cache" and "the grade" are different things computed differently.
+
+### 6.1 Accessibility Grade — confidence-weighted, time-decayed blend
+
+Every piece of evidence about a place's accessibility — Google's field, OSM's tag,
+a detailed review, a one-tap confirmation — is written as a row in
+`accessibility_signals` (`place_id`, `feature` [entrance/parking/restroom/seating],
+`value` [yes/no/limited/unknown], `source` [google/osm/review/confirmation],
+`confidence_weight`, `created_at`). The grade is **computed live**, not stored, via
+`accessibility_grade(place_id)`: for each feature, every signal's weight decays
+over time (half-life 180 days, tunable) before being summed per candidate value;
+the highest-weight value wins, with its summed weight reported as the confidence.
+
+This was the explicit choice over two alternatives we considered: "official data
+as a baseline that crowd answers simply override" (simpler, but throws away
+disagreement information) and "per-feature facts with no single score" (most
+transparent, but doesn't produce the single "Accessibility Grade" the feature is
+named after). The confidence-weighted blend was chosen because it degrades
+gracefully — one bad-faith or mistaken contribution doesn't flip the grade outright,
+and old signals fade rather than staying authoritative forever.
+
+Default starting weights per source (set by the inserting code, not hardcoded in
+the schema, so they're tunable without a migration): Google 0.6, OSM 0.5, review
+0.4, single confirmation tap 0.2. These are v1 defaults — expect to tune them once
+real usage data exists (see §8).
+
+A repeat signal from the same user for the same place/feature/source **updates**
+their existing row rather than stacking additional weight (enforced by a unique
+constraint on `place_id, feature, source, user_id`), so one person tapping "yes"
+five times doesn't out-weigh five different people each tapping once.
+
+### 6.2 Frictionless Crowdsourcing — proximity-triggered micro-confirmations
+
+The default contribution mechanism is a single-tap "is this accessible?" quest,
+StreetComplete-style, not the full review form (which remains available as an
+optional "detailed review" path for users who want to contribute more). Chosen
+over an in-app-only ("only prompt when the user opens a place's Detail view")
+alternative because proximity nudges drive meaningfully more contribution volume
+per the gamification research behind StreetComplete/mPASS — at the cost of needing
+background location permission, which has real battery and privacy implications
+the team has accepted as a tradeoff worth making.
+
+Mechanism: the client periodically calls `places_needing_confirmation(lat, lng,
+radius, confidence_threshold)`, which returns nearby places with at least one
+feature below the confidence threshold, and registers a `CLCircularRegion` geofence
+for each. On region entry, the app surfaces a notification/prompt for the specific
+missing feature ("Does Java House Westlands have a wheelchair-accessible
+entrance?"). A tap writes directly to `accessibility_signals` (source
+`confirmation`, weight 0.2) — no form, no detail-view visit required.
 
 ## 7. Team Ownership (3 people)
 
 | Owner | Vertical | Owns |
 |---|---|---|
-| **Owner 1** | Search & Intelligence Core | Check Accessibility (4.1), Discover Nearby (4.2), Edge Function `place-accessibility`, `place_cache` schema + cache logic, on-device Foundation Models synthesis pipeline |
+| **Owner 1** | Search & Discover | Check Accessibility (4.1), Discover Nearby (4.2), Edge Function `place-accessibility` (Google Places + OSM cache-gate), `place_cache`/`search_query_cache` schema + cache logic |
 | **Owner 2** | Account & Personal Features | Auth Gate + Supabase Auth integration + RLS policies, Save Places (4.3), Share Places (4.4) |
-| **Owner 3** | Community & Route Data | Review Accessibility (4.5) + aggregation logic, Record Route (4.6) + IMDF/CoreMotion positioning + moderation, cache-invalidation triggers (publisher side), self-hosted per-venue IMDF archive generation + MapKit rendering |
+| **Owner 3** | Community & Route Data | Review Accessibility (4.5), the Accessibility Grade model (§6.1) and proximity-nudge crowdsourcing (§6.2), Record Route (4.6) + IMDF/CoreMotion positioning + moderation, self-hosted per-venue IMDF archive generation + MapKit rendering |
 
-Dependency note: Owner 2 and Owner 3's write paths depend on Owner 1's
-`place_cache.is_stale` column existing, and on the Auth Gate Owner 2 builds. Neither
-is a hard blocker — Owner 1 can ship the column early, and Owner 2 can ship a
-minimal Auth Gate before Save/Review/Route UIs are ready to call it.
+Dependency note: Owner 3's grade/crowdsourcing work reads Owner 1's `place_cache`
+(for `nearby_places()`/`places_needing_confirmation()`) and writes into
+`accessibility_signals`, which both owners' code touches — Owner 1 writes
+google/osm-sourced rows from the Edge Function, Owner 3 writes review/confirmation
+rows from the client. Neither blocks the other; the shared table is what needs
+coordinating, not sequencing.
 
 ## 8. Open Questions Remaining
 
 - Sign in with Apple vs. email/OTP (or both) for Auth — final call needed.
 - Web fallback page hosting for share links.
-- Review aggregation algorithm specifics (majority vote vs. weighted score).
-- Cold-start seeding strategy for Discover Nearby in unsearched areas.
-- TikTok/Instagram share-extension video import — confirm in/out of scope for v1.
+- Tune the default confidence-weight-per-source and 180-day half-life in
+  `accessibility_grade()` once real usage data exists (§6.1) — v1 values are a
+  starting guess, not measured.
+- Tune the `confidence_threshold` and geofence radius in
+  `places_needing_confirmation()` (§6.2) — too aggressive and it's spammy, too
+  conservative and it never fires.
 - Route moderation process for user-submitted waypoints (who reviews/approves).
 - How strictly our self-hosted per-venue IMDF archives should conform to the full
   IMDF spec vs. a practical accessibility-only subset — only matters if we ever
   want to submit one to Apple's Indoor Maps Program for a partner venue later.
+- `GOOGLE_MAPS_API_KEY` needs to be provisioned (Google Cloud Console, Places
+  API (New) enabled, billing attached) and set via `supabase secrets set` —
+  nobody has created this yet, the Edge Function will error without it.
+
+## 9. Data Sourcing & Licensing Notes
+
+- **Apple Maps/MapKit is not a data source for this app** — verified directly
+  against Apple's Maps Server API docs, no accessibility field exists on the
+  `Place` object. Kept only for rendering/search/geocoding.
+- **OpenStreetMap data is read-only for now** (explicit decision, 2026-08-12) —
+  we consume the public `wheelchair` tag via Overpass but do not write confirmed
+  contributions back into OSM. Revisit this once the app has real usage; writing
+  back would grow a public good but means accepting OSM's ODbL share-alike terms
+  and community edit-review norms as an ongoing dependency.
+- **Overture Maps was evaluated and ruled out** — it explicitly excludes
+  OpenStreetMap data from its Places theme and has no accessibility attributes.
+- The public Overpass API has no hard rate limit but also no SLA ("fair use" load
+  shedding) — fine for v1 traffic; self-hosting Overpass is the documented path if
+  this becomes unreliable at scale.
