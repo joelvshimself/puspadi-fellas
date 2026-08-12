@@ -125,21 +125,80 @@ async function tryEnrichFromOSM(placeId: string, lat: number, lng: number): Prom
     }
   } catch (err) {
     // Overpass is public infrastructure with no SLA (see docs/specs.md §9) —
-    // a timeout or 5xx here must never fail the whole request.
+    // genuinely does return a transient "server too busy" 200-OK HTML body
+    // under load (confirmed by hand during integration), separate from the
+    // 406 rejection fixed above. Either way, a failure here must never fail
+    // the whole request — Google (if enabled) or a plain cache miss still
+    // return fine.
     console.error("OSM enrichment failed (non-fatal):", err);
   }
 }
 
 async function overpassWheelchairTag(lat: number, lng: number): Promise<Record<string, string> | null> {
-  const radiusMeters = 25;
-  const ql = `[out:json][timeout:10];(node(around:${radiusMeters},${lat},${lng})["wheelchair"];way(around:${radiusMeters},${lat},${lng})["wheelchair"];);out tags 1;`;
-  const res = await fetch("https://overpass-api.de/api/interpreter", {
-    method: "POST",
-    body: `data=${encodeURIComponent(ql)}`,
-  });
-  if (!res.ok) return null;
-  const data = await res.json();
-  return data.elements?.[0]?.tags ?? null;
+  // OSM tags accessibility per physical feature (an entrance, an elevator, a
+  // specific business) rather than at "the place"'s general coordinate, so a
+  // tight radius mostly misses everything — confirmed against real coordinates
+  // (Berlin Hauptbahnhof) during integration: 25m found nothing, even though
+  // several wheelchair-tagged features sit within ~100m. Widen the radius and
+  // pick the nearest tagged feature by actual distance, not Overpass's
+  // arbitrary result order.
+  const radiusMeters = 100;
+  const ql = `[out:json][timeout:15];(node(around:${radiusMeters},${lat},${lng})["wheelchair"];way(around:${radiusMeters},${lat},${lng})["wheelchair"];);out tags center 10;`;
+
+  // One retry with backoff — the public instance's "server too busy" response
+  // is common enough in practice (observed firsthand while integrating this)
+  // that a single retry meaningfully improves real-world hit rate.
+  let lastErr: unknown;
+  for (const delayMs of [0, 1500]) {
+    if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
+    try {
+      const res = await fetch("https://overpass-api.de/api/interpreter", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Accept": "application/json",
+          // Overpass's usage policy asks callers to identify themselves —
+          // without this, the public instance returns 406 Not Acceptable.
+          // Confirmed by direct testing: identical requests with vs without
+          // a descriptive User-Agent were the actual difference, not server
+          // load as first assumed.
+          "User-Agent": "puspadi-fellas-accessibility/1.0 (github.com/joelvshimself/puspadi-fellas)",
+        },
+        body: `data=${encodeURIComponent(ql)}`,
+      });
+      const text = await res.text();
+      if (!res.ok || text.includes("The server is probably too busy")) {
+        lastErr = new Error(`Overpass busy/error (status ${res.status})`);
+        continue;
+      }
+      const data = JSON.parse(text);
+      const elements: Array<{ tags?: Record<string, string>; lat?: number; lon?: number; center?: { lat: number; lon: number } }> =
+        data.elements ?? [];
+      if (elements.length === 0) return null;
+
+      const nearest = elements.reduce((best, el) => {
+        const elLat = el.lat ?? el.center?.lat;
+        const elLon = el.lon ?? el.center?.lon;
+        if (elLat === undefined || elLon === undefined) return best;
+        const d = haversineMeters(lat, lng, elLat, elLon);
+        return d < best.d ? { d, el } : best;
+      }, { d: Infinity, el: elements[0] });
+
+      return nearest.el.tags ?? null;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr;
+}
+
+function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
 }
 
 // --- Google Places (New) — SECONDARY, optional, Pro tier ------------------
