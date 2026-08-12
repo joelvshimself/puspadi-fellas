@@ -13,19 +13,25 @@ enum HomeRoute: Hashable {
     case contribute
 }
 
-/// Floating home card that expands into a top search UI on the same view.
+/// Content of the persistent bottom sheet presented by HomeMapView via a
+/// real `.sheet(...) { }.presentationDetents(...)` — the same pattern
+/// snackbud uses for its own sheets. That gives the native drag-up-to-expand
+/// behavior and lets the map stay visible/interactive underneath at the
+/// peek height, matching Google/Apple Maps rather than a hand-rolled
+/// full-screen takeover.
 struct SearchSheet: View {
-    @Binding var isSearching: Bool
+    @Binding var detent: PresentationDetent
     @Binding var searchText: String
     @Binding var selectedTab: HomeTab
     var isSearchFocused: FocusState<Bool>.Binding
     let places: [Place]
-    /// Biases MKLocalSearch toward what's currently on screen. Kept separate
-    /// from the map's own (opaque) camera position — see HomeMapView.
+    /// Biases MKLocalSearch toward what's currently on screen.
     let searchRegion: MKCoordinateRegion
     let onSelectPlace: (Place) -> Void
     let onCancelSearch: () -> Void
     let onSelectTab: (HomeTab) -> Void
+
+    private var isSearching: Bool { detent == .large }
 
     /// Real on-device search results (MKLocalSearch) — replaces the old
     /// local substring filter over mock `places`. See §4.1 in
@@ -52,17 +58,6 @@ struct SearchSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if !isSearching {
-                Capsule()
-                    .fill(Color.secondary.opacity(0.35))
-                    .frame(width: 36, height: 5)
-                    .padding(.top, 10)
-                    .padding(.bottom, 14)
-                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
-            } else {
-                Color.clear.frame(height: 8)
-            }
-
             HStack(spacing: 10) {
                 searchField
 
@@ -75,6 +70,7 @@ struct SearchSheet: View {
                 }
             }
             .padding(.horizontal, 16)
+            .padding(.top, 12)
 
             if isSearching {
                 resultsList
@@ -92,10 +88,7 @@ struct SearchSheet: View {
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
-        .frame(maxWidth: .infinity)
-        .frame(maxHeight: isSearching ? .infinity : nil, alignment: .top)
-        .background { sheetBackground }
-        .animation(.spring(response: 0.32, dampingFraction: 0.9), value: isSearching)
+        .frame(maxWidth: .infinity, alignment: .top)
         .onChange(of: searchText) { _, newValue in
             scheduleSearch(for: newValue)
         }
@@ -172,7 +165,7 @@ struct SearchSheet: View {
         .padding(.vertical, 12)
         .background(
             Capsule()
-                .fill(Color.primary.opacity(isSearching ? 0.08 : 0.06))
+                .fill(Color.primary.opacity(0.06))
         )
     }
 
@@ -316,68 +309,45 @@ struct SearchSheet: View {
         .contentShape(Rectangle())
     }
 
-    @ViewBuilder
-    private var sheetBackground: some View {
-        if isSearching {
-            Rectangle()
-                .fill(Color(.systemBackground))
-                .ignoresSafeArea()
-        } else {
-            if #available(iOS 26.0, *) {
-                Color.clear
-                    .glassEffect(.regular, in: .rect(cornerRadius: 32))
-            } else {
-                RoundedRectangle(cornerRadius: 32, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .shadow(color: .black.opacity(0.18), radius: 20, y: 6)
-            }
-        }
-    }
-
     private func beginSearch() {
-        guard !isSearching else {
-            isSearchFocused.wrappedValue = true
-            return
-        }
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) {
-            isSearching = true
-        }
+        detent = .large
         isSearchFocused.wrappedValue = true
     }
 }
 
 #Preview {
     struct PreviewHost: View {
-        @State private var isSearching = false
+        @State private var detent: PresentationDetent = .height(230)
         @State private var searchText = ""
         @State private var selectedTab: HomeTab = .explore
         @FocusState private var focused: Bool
 
         var body: some View {
-            ZStack(alignment: .bottom) {
-                Color.gray.opacity(0.35).ignoresSafeArea()
-                SearchSheet(
-                    isSearching: $isSearching,
-                    searchText: $searchText,
-                    selectedTab: $selectedTab,
-                    isSearchFocused: $focused,
-                    places: Place.samples,
-                    searchRegion: MKCoordinateRegion(
-                        center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
-                        span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
-                    ),
-                    onSelectPlace: { _ in },
-                    onCancelSearch: {
-                        focused = false
-                        searchText = ""
-                        isSearching = false
-                    },
-                    onSelectTab: { selectedTab = $0 }
-                )
-                .padding(.horizontal, isSearching ? 0 : 12)
-                .padding(.bottom, isSearching ? 0 : 10)
-                .frame(maxHeight: isSearching ? .infinity : nil, alignment: .top)
-            }
+            Color.gray.opacity(0.35).ignoresSafeArea()
+                .sheet(isPresented: .constant(true)) {
+                    SearchSheet(
+                        detent: $detent,
+                        searchText: $searchText,
+                        selectedTab: $selectedTab,
+                        isSearchFocused: $focused,
+                        places: Place.samples,
+                        searchRegion: MKCoordinateRegion(
+                            center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
+                            span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
+                        ),
+                        onSelectPlace: { _ in },
+                        onCancelSearch: {
+                            focused = false
+                            searchText = ""
+                            detent = .height(230)
+                        },
+                        onSelectTab: { selectedTab = $0 }
+                    )
+                    .presentationDetents([.height(230), .large], selection: $detent)
+                    .presentationBackgroundInteraction(.enabled)
+                    .presentationDragIndicator(.visible)
+                    .interactiveDismissDisabled()
+                }
         }
     }
 

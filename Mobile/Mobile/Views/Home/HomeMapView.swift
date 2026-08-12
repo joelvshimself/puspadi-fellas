@@ -1,6 +1,8 @@
 import MapKit
 import SwiftUI
 
+private let peekDetent: PresentationDetent = .height(230)
+
 struct HomeMapView: View {
     @State private var cameraPosition: MapCameraPosition = .region(
         MKCoordinateRegion(
@@ -15,7 +17,12 @@ struct HomeMapView: View {
         center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
         span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
     )
-    @State private var isSearching = false
+    /// A persistent, draggable bottom sheet (native .sheet + presentationDetents,
+    /// same pattern snackbud uses elsewhere) instead of a view that swaps its
+    /// own frame/background — this is what gives the real drag-up-to-expand,
+    /// map-stays-interactive-underneath feel of Google/Apple Maps.
+    @State private var isSheetPresented = true
+    @State private var sheetDetent: PresentationDetent = peekDetent
     @State private var searchText = ""
     @FocusState private var isSearchFocused: Bool
     @State private var selectedTab: HomeTab = .explore
@@ -28,34 +35,39 @@ struct HomeMapView: View {
 
     private let places = Place.samples
 
+    private var isSearching: Bool { sheetDetent == .large }
+
     var body: some View {
         NavigationStack(path: $path) {
-            ZStack(alignment: .bottom) {
-                mapLayer
-                    .ignoresSafeArea()
-                    .opacity(isSearching ? 0 : 1)
-                    .allowsHitTesting(!isSearching)
-
-                VStack(spacing: 0) {
-                    if !isSearching {
-                        topBar
-                            .padding(.horizontal, 16)
-                            .padding(.top, 8)
-                            .transition(.opacity)
-
-                        Spacer(minLength: 0)
-
-                        HStack {
-                            Spacer()
-                            locationButton
-                                .padding(.trailing, 16)
-                                .padding(.bottom, 10)
-                        }
-                        .transition(.opacity)
+            mapLayer
+                .ignoresSafeArea()
+                .overlay(alignment: .top) {
+                    topBar
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    locationButton
+                        .padding(.trailing, 16)
+                        .padding(.bottom, 16)
+                }
+                .toolbar(path.isEmpty ? .hidden : .automatic, for: .navigationBar)
+                .navigationDestination(for: HomeRoute.self) { route in
+                    switch route {
+                    case .place(let place):
+                        PlaceDetailView(place: place)
+                    case .saved:
+                        SavedView()
+                    case .contribute:
+                        ContributeView()
                     }
-
+                }
+                .fullScreenCover(isPresented: $showAnalysing) {
+                    AnalysingView(onDismiss: { showAnalysing = false })
+                }
+                .sheet(isPresented: $isSheetPresented) {
                     SearchSheet(
-                        isSearching: $isSearching,
+                        detent: $sheetDetent,
                         searchText: $searchText,
                         selectedTab: $selectedTab,
                         isSearchFocused: $isSearchFocused,
@@ -65,47 +77,31 @@ struct HomeMapView: View {
                         onCancelSearch: dismissSearch,
                         onSelectTab: handleTabSelection
                     )
-                    .padding(.horizontal, isSearching ? 0 : 12)
-                    .padding(.bottom, isSearching ? 0 : 10)
-                    .frame(maxHeight: isSearching ? .infinity : nil, alignment: .top)
+                    .presentationDetents([peekDetent, .large], selection: $sheetDetent)
+                    .presentationBackgroundInteraction(.enabled)
+                    .presentationDragIndicator(.visible)
+                    .presentationCornerRadius(24)
+                    .interactiveDismissDisabled()
                 }
-            }
-            .animation(.spring(response: 0.32, dampingFraction: 0.9), value: isSearching)
-            .toolbar(path.isEmpty ? .hidden : .automatic, for: .navigationBar)
-            .navigationDestination(for: HomeRoute.self) { route in
-                switch route {
-                case .place(let place):
-                    PlaceDetailView(place: place)
-                case .saved:
-                    SavedView()
-                case .contribute:
-                    ContributeView()
-                }
-            }
-            .fullScreenCover(isPresented: $showAnalysing) {
-                AnalysingView(onDismiss: { showAnalysing = false })
-            }
-            .onChange(of: isSearchFocused) { _, focused in
-                // TextField focus does not fire parent tap gestures; expand from focus.
-                if focused, !isSearching {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) {
-                        isSearching = true
+                .onChange(of: isSearchFocused) { _, focused in
+                    // TextField focus does not fire parent tap gestures; expand from focus.
+                    if focused, !isSearching {
+                        sheetDetent = .large
                     }
                 }
-            }
-            .onChange(of: path.count) { _, count in
-                if count == 0 {
-                    selectedTab = .explore
+                .onChange(of: path.count) { _, count in
+                    if count == 0 {
+                        selectedTab = .explore
+                    }
                 }
-            }
-            .onChange(of: locationManager.currentCoordinate) { _, coordinate in
-                guard let coordinate, !hasCenteredOnUser else { return }
-                hasCenteredOnUser = true
-                recenter(on: coordinate.clLocation)
-            }
-            .task {
-                locationManager.requestLocation()
-            }
+                .onChange(of: locationManager.currentCoordinate) { _, coordinate in
+                    guard let coordinate, !hasCenteredOnUser else { return }
+                    hasCenteredOnUser = true
+                    recenter(on: coordinate.clLocation)
+                }
+                .task {
+                    locationManager.requestLocation()
+                }
         }
     }
 
@@ -189,17 +185,13 @@ struct HomeMapView: View {
     private func dismissSearch() {
         isSearchFocused = false
         searchText = ""
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) {
-            isSearching = false
-        }
+        sheetDetent = peekDetent
     }
 
     private func openPlace(_ place: Place) {
         isSearchFocused = false
         path.append(HomeRoute.place(place))
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) {
-            isSearching = false
-        }
+        sheetDetent = peekDetent
     }
 
     private func handleTabSelection(_ tab: HomeTab) {
