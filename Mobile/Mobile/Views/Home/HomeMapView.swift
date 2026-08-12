@@ -91,7 +91,18 @@ struct HomeMapView: View {
                 }
                 .onChange(of: path.count) { _, count in
                     if count == 0 {
+                        // Back at the map root — bring the search sheet back
+                        // at its peek height.
                         selectedTab = .explore
+                        sheetDetent = peekDetent
+                        isSheetPresented = true
+                    } else {
+                        // Navigated into a pushed destination (place detail,
+                        // saved, contribute). The sheet is presented modally
+                        // above the whole NavigationStack, so it would
+                        // otherwise float on top of the pushed page — dismiss
+                        // it while we're deeper in the stack.
+                        isSheetPresented = false
                     }
                 }
                 .onChange(of: locationManager.currentCoordinate) { _, coordinate in
@@ -189,9 +200,10 @@ struct HomeMapView: View {
     }
 
     private func openPlace(_ place: Place) {
+        // Sheet dismissal/re-presentation is handled centrally by the
+        // path.count change handler above, for every pushed destination.
         isSearchFocused = false
         path.append(HomeRoute.place(place))
-        sheetDetent = peekDetent
     }
 
     private func handleTabSelection(_ tab: HomeTab) {

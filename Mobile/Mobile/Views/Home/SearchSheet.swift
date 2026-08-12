@@ -103,6 +103,13 @@ struct SearchSheet: View {
             searchErrorMessage = nil
             return
         }
+        // Expand so results are actually visible. Driven by the text change
+        // rather than field focus, because FocusState doesn't propagate
+        // reliably across the sheet boundary (that's why results previously
+        // only appeared after manually dragging the sheet up).
+        if detent != .large {
+            detent = .large
+        }
         isSearchingLive = true
         searchErrorMessage = nil
         searchTask = Task {
