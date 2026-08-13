@@ -1,12 +1,6 @@
 import MapKit
 import SwiftUI
 
-enum HomeTab: Hashable {
-    case explore
-    case saved
-    case contribute
-}
-
 enum HomeRoute: Hashable {
     case place(Place)
     case saved
@@ -22,7 +16,6 @@ enum HomeRoute: Hashable {
 struct SearchSheet: View {
     @Binding var detent: PresentationDetent
     @Binding var searchText: String
-    @Binding var selectedTab: HomeTab
     var isSearchFocused: FocusState<Bool>.Binding
     let places: [Place]
     /// Biases MKLocalSearch toward what's currently on screen.
@@ -32,7 +25,6 @@ struct SearchSheet: View {
     @Binding var selectedPlace: Place?
     let onSelectPlace: (Place) -> Void
     let onCancelSearch: () -> Void
-    let onSelectTab: (HomeTab) -> Void
 
     private var isSearching: Bool { detent == expandedDetent }
 
@@ -45,14 +37,6 @@ struct SearchSheet: View {
     @State private var searchTask: Task<Void, Never>?
     @State private var isSearchingLive = false
     @State private var searchErrorMessage: String?
-
-    private let categories: [(symbol: String, label: String, query: String?)] = [
-        ("fork.knife", "Food", "Restaurant"),
-        ("building.2.fill", "Stay", "Hotel"),
-        ("tree.fill", "Parks", "Park"),
-        ("cup.and.saucer.fill", "Cafe", "Restaurant"),
-        ("plus", "More", nil)
-    ]
 
     private var results: [Place] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -81,30 +65,32 @@ struct SearchSheet: View {
                 searchField
 
                 if isSearching {
-                    Button("Cancel") {
+                    // ✕ clear/close, matching the design (was a "Cancel" link).
+                    Button {
                         onCancelSearch()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 36, height: 36)
+                            .background(Color.primary.opacity(0.06), in: Circle())
                     }
-                    .font(.body)
+                    .buttonStyle(.plain)
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
                 }
             }
             .padding(.horizontal, 16)
             .padding(.top, 12)
 
+            // Clean home (frame 1): the peek is just the search pill. Category
+            // tiles and the Explore/Saved/Contribute tab bar are gone — Saved
+            // lives in the profile menu, Contribute on a place's detail.
             if isSearching {
                 resultsList
                     .padding(.top, 8)
                     .transition(.opacity)
             } else {
-                categoryRow
-                    .padding(.top, 14)
-                    .padding(.bottom, 4)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-
-                sheetTabBar
-                    .padding(.top, 8)
-                    .padding(.bottom, 10)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                Spacer(minLength: 0)
             }
         }
         .frame(maxWidth: .infinity, alignment: .top)
@@ -192,64 +178,6 @@ struct SearchSheet: View {
         )
     }
 
-    private var categoryRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(categories, id: \.label) { item in
-                    Button {
-                        if let query = item.query {
-                            searchText = query
-                        }
-                        beginSearch()
-                    } label: {
-                        Image(systemName: item.symbol)
-                            .font(.system(size: 22, weight: .medium))
-                            .foregroundStyle(.primary)
-                            .frame(width: 64, height: 64)
-                            .background(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .fill(Color.primary.opacity(0.06))
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(item.label)
-                }
-            }
-            .padding(.horizontal, 16)
-        }
-    }
-
-    private var sheetTabBar: some View {
-        VStack(spacing: 0) {
-            Divider()
-                .padding(.horizontal, 8)
-
-            HStack(spacing: 0) {
-                tabItem(.explore, title: "Explore", systemName: "map.fill")
-                tabItem(.saved, title: "Saved", systemName: "bookmark.fill")
-                tabItem(.contribute, title: "Contribute", systemName: "plus.circle.fill")
-            }
-            .padding(.top, 10)
-            .padding(.bottom, 4)
-        }
-    }
-
-    private func tabItem(_ tab: HomeTab, title: String, systemName: String) -> some View {
-        Button {
-            onSelectTab(tab)
-        } label: {
-            VStack(spacing: 4) {
-                Image(systemName: systemName)
-                    .font(.system(size: 20, weight: .semibold))
-                Text(title)
-                    .font(.caption2.weight(.medium))
-            }
-            .foregroundStyle(selectedTab == tab ? Color.accentColor : .primary)
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.plain)
-    }
-
     private var isLiveQuery: Bool {
         !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -332,17 +260,12 @@ struct SearchSheet: View {
         .contentShape(Rectangle())
     }
 
-    private func beginSearch() {
-        detent = expandedDetent
-        isSearchFocused.wrappedValue = true
-    }
 }
 
 #Preview {
     struct PreviewHost: View {
-        @State private var detent: PresentationDetent = .height(230)
+        @State private var detent: PresentationDetent = peekDetent
         @State private var searchText = ""
-        @State private var selectedTab: HomeTab = .explore
         @State private var selectedPlace: Place?
         @FocusState private var focused: Bool
 
@@ -352,7 +275,6 @@ struct SearchSheet: View {
                     SearchSheet(
                         detent: $detent,
                         searchText: $searchText,
-                        selectedTab: $selectedTab,
                         isSearchFocused: $focused,
                         places: Place.samples,
                         searchRegion: MKCoordinateRegion(
@@ -364,9 +286,8 @@ struct SearchSheet: View {
                         onCancelSearch: {
                             focused = false
                             searchText = ""
-                            detent = .height(230)
-                        },
-                        onSelectTab: { selectedTab = $0 }
+                            detent = peekDetent
+                        }
                     )
                     .presentationDetents([peekDetent, expandedDetent], selection: $detent)
                     .presentationBackgroundInteraction(.enabled)

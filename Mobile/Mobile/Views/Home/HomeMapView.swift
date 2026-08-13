@@ -1,7 +1,8 @@
 import MapKit
 import SwiftUI
 
-let peekDetent: PresentationDetent = .height(230)
+// Just tall enough for the search pill + drag handle — the clean home peek.
+let peekDetent: PresentationDetent = .height(120)
 /// A tall CUSTOM detent instead of .large: iOS gives the true .large detent an
 /// opaque background, but custom/medium detents keep the translucent Liquid
 /// Glass treatment — so the expanded sheet stays glassy like the peek.
@@ -29,7 +30,6 @@ struct HomeMapView: View {
     @State private var sheetDetent: PresentationDetent = peekDetent
     @State private var searchText = ""
     @FocusState private var isSearchFocused: Bool
-    @State private var selectedTab: HomeTab = .explore
     @State private var showAnalysing = false
     @State private var path = NavigationPath()
     @StateObject private var locationManager = LocationManager()
@@ -82,14 +82,12 @@ struct HomeMapView: View {
                     SearchSheet(
                         detent: $sheetDetent,
                         searchText: $searchText,
-                        selectedTab: $selectedTab,
                         isSearchFocused: $isSearchFocused,
                         places: places,
                         searchRegion: visibleRegion,
                         selectedPlace: $selectedPlace,
                         onSelectPlace: openPlace,
-                        onCancelSearch: dismissSearch,
-                        onSelectTab: handleTabSelection
+                        onCancelSearch: dismissSearch
                     )
                     // While a place detail is showing, lock the sheet to the
                     // expanded detent — collapsing detail content to the 230pt
@@ -116,7 +114,6 @@ struct HomeMapView: View {
                     if count == 0 {
                         // Back at the map root — bring the search sheet back
                         // at its peek height.
-                        selectedTab = .explore
                         sheetDetent = peekDetent
                         isSheetPresented = true
                     } else {
@@ -190,7 +187,11 @@ struct HomeMapView: View {
 
             Spacer()
 
-            circularButton(systemName: "person.fill") {}
+            // Profile button opens Saved (the home tab bar was removed in the
+            // redesign; Saved lives here, Contribute is on a place's detail).
+            circularButton(systemName: "person.fill") {
+                path.append(HomeRoute.saved)
+            }
                 .onLongPressGesture(minimumDuration: 0.5) {
                     showAnalysing = true
                 }
@@ -254,17 +255,6 @@ struct HomeMapView: View {
         sheetDetent = expandedDetent
     }
 
-    private func handleTabSelection(_ tab: HomeTab) {
-        selectedTab = tab
-        switch tab {
-        case .explore:
-            break
-        case .saved:
-            path.append(HomeRoute.saved)
-        case .contribute:
-            path.append(HomeRoute.contribute)
-        }
-    }
 }
 
 #Preview {
