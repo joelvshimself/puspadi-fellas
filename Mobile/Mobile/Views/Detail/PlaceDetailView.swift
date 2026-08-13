@@ -21,6 +21,10 @@ struct PlaceDetailView: View {
     @State private var imageAttribution: String?
     @State private var enrichResolved = false
 
+    /// Community review photos from `place-review-photos` (facility-labeled).
+    @State private var reviewPhotos: [ReviewPhoto] = []
+    @State private var isLoadingReviewPhotos = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -28,8 +32,8 @@ struct PlaceDetailView: View {
                 titleBlock
                 if place.isLiveResult {
                     // Order: locator map -> accessibility grade -> directions
-                    // up top (the decision-making info), then the street photo
-                    // and reviews as supporting detail at the bottom.
+                    // up top (the decision-making info), then the street photo,
+                    // community review photos, and reviews as supporting detail.
                     FacilityMapHeader(coordinate: place.coordinate, name: place.name)
                     accessibilityGradeSection
                     directionsButton
@@ -39,6 +43,11 @@ struct PlaceDetailView: View {
                         remoteImageURL: imageURL,
                         attribution: imageAttribution,
                         resolved: enrichResolved
+                    )
+
+                    ReviewPhotosSection(
+                        photos: reviewPhotos,
+                        isLoading: isLoadingReviewPhotos
                     )
 
                     liveReviewsSection
@@ -56,12 +65,23 @@ struct PlaceDetailView: View {
         // detail inherits the sheet's glassy material and matches the
         // search/peek states (same sheet, one look).
         .task(id: place.id) {
-            await loadGrade()
+            async let gradeLoad: Void = loadGrade()
+            async let photosLoad: Void = loadReviewPhotos()
+            _ = await (gradeLoad, photosLoad)
         }
         .fullScreenCover(isPresented: $showReviewWizard, onDismiss: {
-            // A successful submit recomputes accessibility_grade() server-side;
-            // refetch so the card above reflects the new review immediately.
-            Task { await loadGrade() }
+            // A successful submit recomputes accessibility_grade() server-side
+            // and may add new photos — drop the device enrich cache and refetch.
+            Task {
+                let key = PlaceCacheStore.key(
+                    lat: place.coordinate.latitude,
+                    lng: place.coordinate.longitude
+                )
+                await PlaceCacheStore.shared.remove(key)
+                async let gradeLoad: Void = loadGrade()
+                async let photosLoad: Void = loadReviewPhotos()
+                _ = await (gradeLoad, photosLoad)
+            }
         }) {
             ReviewWizardView(place: place) { showReviewWizard = false }
         }
@@ -86,6 +106,21 @@ struct PlaceDetailView: View {
             imageAttribution = response.place?.imageAttribution
         } catch {
             gradeLoadFailed = true
+        }
+    }
+
+    private func loadReviewPhotos() async {
+        guard place.isLiveResult else { return }
+        isLoadingReviewPhotos = true
+        defer { isLoadingReviewPhotos = false }
+        do {
+            let response = try await ReviewService.shared.fetchReviewPhotos(
+                lat: place.coordinate.latitude,
+                lng: place.coordinate.longitude
+            )
+            reviewPhotos = response.photos
+        } catch {
+            // Leave existing photos on failure; first load stays empty.
         }
     }
 
@@ -451,6 +486,4 @@ private enum DetailTab: String, CaseIterable, Identifiable {
     }
 }
 
-#Preview {
-    PlaceDetailView(place: Place.samples[0], onBack: {})
-}
+

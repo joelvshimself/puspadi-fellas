@@ -42,3 +42,6 @@ enabled = true
 # can hit the contribute endpoint with just the anon apikey (or no auth).
 [functions.submit-accessibility-review]
 verify_jwt = false
+
+[functions.place-review-photos]
+verify_jwt = false
