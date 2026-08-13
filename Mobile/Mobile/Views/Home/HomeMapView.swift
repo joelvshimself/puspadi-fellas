@@ -82,7 +82,7 @@ struct HomeMapView: View {
                 // Dim the map while the filter panel is open (frame 2).
                 .overlay {
                     if showFilter {
-                        Color.black.opacity(0.25)
+                        Color.black.opacity(0.4)
                             .ignoresSafeArea()
                             .contentShape(Rectangle())
                             .onTapGesture {
@@ -100,10 +100,12 @@ struct HomeMapView: View {
                 }
                 .overlay(alignment: .topLeading) {
                     if showFilter {
+                        // Options fan out to the right of the filter button,
+                        // first row aligned with it (matches the mockup).
                         filterPanel
-                            .padding(.horizontal, 16)
-                            .padding(.top, 64)
-                            .transition(.move(edge: .top).combined(with: .opacity))
+                            .padding(.leading, 72)
+                            .padding(.top, 8)
+                            .transition(.opacity.combined(with: .move(edge: .leading)))
                     }
                 }
                 .overlay(alignment: .bottomTrailing) {
@@ -277,54 +279,36 @@ struct HomeMapView: View {
     }
 
     private var filterPanel: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Accessibility")
-                    .font(.headline)
-                Spacer()
-                if !selectedGrades.isEmpty {
-                    Button("Clear") {
-                        withAnimation(.easeInOut(duration: 0.2)) { selectedGrades.removeAll() }
-                    }
-                    .font(.subheadline.weight(.semibold))
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-
-            Divider()
-
-            ForEach(Array(OverallAccessibility.allCases.enumerated()), id: \.element) { index, grade in
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(OverallAccessibility.allCases) { grade in
+                let isOn = selectedGrades.contains(grade)
                 Button {
                     toggleGrade(grade)
                 } label: {
-                    HStack(spacing: 12) {
+                    HStack(spacing: 14) {
                         Image(systemName: grade.symbolName)
-                            .font(.system(size: 18))
-                            .foregroundStyle(grade.color)
-                            .frame(width: 24)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(isOn ? Color.white : Color.primary)
+                            .frame(width: 44, height: 44)
+                            .background {
+                                if isOn {
+                                    Circle().fill(grade.color)
+                                } else {
+                                    Circle().fill(.ultraThinMaterial)
+                                }
+                            }
+                            .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
+
                         Text(grade.label)
-                            .font(.body)
-                            .foregroundStyle(.primary)
-                        Spacer(minLength: 0)
-                        Image(systemName: selectedGrades.contains(grade) ? "checkmark.circle.fill" : "circle")
-                            .font(.system(size: 20))
-                            .foregroundStyle(selectedGrades.contains(grade) ? Color.accentColor : Color.secondary.opacity(0.4))
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .shadow(color: .black.opacity(0.35), radius: 4, y: 1)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-
-                if index < OverallAccessibility.allCases.count - 1 {
-                    Divider().padding(.leading, 52)
-                }
             }
         }
-        .frame(maxWidth: 320)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .shadow(color: .black.opacity(0.18), radius: 16, y: 6)
     }
 
     private func toggleGrade(_ grade: OverallAccessibility) {

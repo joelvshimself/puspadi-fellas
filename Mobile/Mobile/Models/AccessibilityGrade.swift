@@ -90,13 +90,13 @@ enum OverallAccessibility: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
-    /// Leading glyph for the filter menu and map pins — mirrors the
-    /// 👍 / ◐ / 👎 states in the design mockup.
+    /// Leading glyph for the filter menu — the 👍 / ◐ / 👎 states from the
+    /// design mockup (SF Symbols stand-in until custom icons are supplied).
     var symbolName: String {
         switch self {
-        case .accessible: "checkmark.circle.fill"
+        case .accessible: "hand.thumbsup.fill"
         case .partiallyAccessible: "circle.lefthalf.filled"
-        case .notAccessible: "xmark.circle.fill"
+        case .notAccessible: "hand.thumbsdown.fill"
         }
     }
 }
