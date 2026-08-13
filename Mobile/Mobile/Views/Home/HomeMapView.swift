@@ -52,10 +52,24 @@ struct HomeMapView: View {
     /// The place whose accessibility detail is shown inside the bottom sheet
     /// (same-sheet method — no separate pushed page).
     @State private var selectedPlace: Place?
+    /// Accessibility grades the user is filtering the map to. Empty = show all
+    /// (no filter). See the filter panel opened from the top-left button.
+    @State private var selectedGrades: Set<OverallAccessibility> = []
+    @State private var showFilter = false
 
     private let places = Place.samples
 
     private var isSearching: Bool { sheetDetent == expandedDetent }
+
+    /// Pins shown on the map — narrowed to the selected grades when the filter
+    /// is active. Ungraded places drop out while any filter is on.
+    private var filteredPlaces: [Place] {
+        guard !selectedGrades.isEmpty else { return places }
+        return places.filter { place in
+            guard let grade = place.grade else { return false }
+            return selectedGrades.contains(grade)
+        }
+    }
 
     /// The peek detent, sized to the measured search bar plus the system drag
     /// handle — no hardcoded sheet height.
@@ -65,10 +79,32 @@ struct HomeMapView: View {
         NavigationStack(path: $path) {
             mapLayer
                 .ignoresSafeArea()
+                // Dim the map while the filter panel is open (frame 2).
+                .overlay {
+                    if showFilter {
+                        Color.black.opacity(0.25)
+                            .ignoresSafeArea()
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    showFilter = false
+                                }
+                            }
+                            .transition(.opacity)
+                    }
+                }
                 .overlay(alignment: .top) {
                     topBar
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
+                }
+                .overlay(alignment: .topLeading) {
+                    if showFilter {
+                        filterPanel
+                            .padding(.horizontal, 16)
+                            .padding(.top, 64)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
                 }
                 .overlay(alignment: .bottomTrailing) {
                     locationButton
@@ -169,11 +205,11 @@ struct HomeMapView: View {
 
     private var mapLayer: some View {
         Map(position: $cameraPosition, selection: $mapSelection) {
-            ForEach(places) { place in
+            ForEach(filteredPlaces) { place in
                 Annotation(place.name, coordinate: place.coordinate) {
                     Image(systemName: "mappin.circle.fill")
                         .font(.title)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(place.grade?.color ?? .red)
                         .background(
                             Circle()
                                 .fill(.white)
@@ -208,7 +244,23 @@ struct HomeMapView: View {
 
     private var topBar: some View {
         HStack {
-            circularButton(systemName: "line.3.horizontal.decrease") {}
+            circularButton(systemName: "line.3.horizontal.decrease") {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    showFilter.toggle()
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if !selectedGrades.isEmpty {
+                    Text("\(selectedGrades.count)")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.white)
+                        .frame(minWidth: 20, minHeight: 20)
+                        .background(Circle().fill(Color.accentColor))
+                        .overlay(Circle().stroke(.background, lineWidth: 2))
+                        .offset(x: 6, y: -6)
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
 
             Spacer()
 
@@ -221,6 +273,67 @@ struct HomeMapView: View {
                     showAnalysing = true
                 }
                 .accessibilityHint("Long press to open Analysing demo")
+        }
+    }
+
+    private var filterPanel: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Accessibility")
+                    .font(.headline)
+                Spacer()
+                if !selectedGrades.isEmpty {
+                    Button("Clear") {
+                        withAnimation(.easeInOut(duration: 0.2)) { selectedGrades.removeAll() }
+                    }
+                    .font(.subheadline.weight(.semibold))
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+
+            Divider()
+
+            ForEach(Array(OverallAccessibility.allCases.enumerated()), id: \.element) { index, grade in
+                Button {
+                    toggleGrade(grade)
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: grade.symbolName)
+                            .font(.system(size: 18))
+                            .foregroundStyle(grade.color)
+                            .frame(width: 24)
+                        Text(grade.label)
+                            .font(.body)
+                            .foregroundStyle(.primary)
+                        Spacer(minLength: 0)
+                        Image(systemName: selectedGrades.contains(grade) ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 20))
+                            .foregroundStyle(selectedGrades.contains(grade) ? Color.accentColor : Color.secondary.opacity(0.4))
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                if index < OverallAccessibility.allCases.count - 1 {
+                    Divider().padding(.leading, 52)
+                }
+            }
+        }
+        .frame(maxWidth: 320)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: .black.opacity(0.18), radius: 16, y: 6)
+    }
+
+    private func toggleGrade(_ grade: OverallAccessibility) {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            if selectedGrades.contains(grade) {
+                selectedGrades.remove(grade)
+            } else {
+                selectedGrades.insert(grade)
+            }
         }
     }
 

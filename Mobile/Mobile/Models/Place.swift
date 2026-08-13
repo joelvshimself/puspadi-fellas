@@ -16,6 +16,9 @@ struct Place: Identifiable, Hashable {
     let facilitySymbols: [String]
     let elevatorDetails: [ElevatorDetail]
     let reviewsSummary: String
+    /// Overall accessibility grade used to color and filter the map pin.
+    /// nil for live search results until the backend enrichment resolves.
+    var grade: OverallAccessibility? = nil
     /// Populated for places from a real MKLocalSearch result once the
     /// backend enrichment call resolves — nil (and unused) for the mock
     /// `samples` below. See PlaceDetailView's live grade loading.
@@ -81,7 +84,8 @@ extension Place {
                 .init(symbol: "hand.raised.fill", label: "Call button"),
                 .init(symbol: "speaker.wave.2.fill", label: "Audio cues")
             ],
-            reviewsSummary: "Visitors praise the step-free main entrance and reliable elevators. Restrooms are spacious; some note evening lighting could be brighter near the south gate."
+            reviewsSummary: "Visitors praise the step-free main entrance and reliable elevators. Restrooms are spacious; some note evening lighting could be brighter near the south gate.",
+            grade: .accessible
         ),
         Place(
             id: UUID(),
@@ -101,7 +105,8 @@ extension Place {
                 .init(symbol: "hand.raised.fill", label: "Low buttons"),
                 .init(symbol: "checkmark.circle.fill", label: "Staff help")
             ],
-            reviewsSummary: "Elevators are consistent and staff are helpful. Crowding near the main desk can narrow clear paths during peak hours."
+            reviewsSummary: "Elevators are consistent and staff are helpful. Crowding near the main desk can narrow clear paths during peak hours.",
+            grade: .partiallyAccessible
         ),
         Place(
             id: UUID(),
@@ -121,7 +126,8 @@ extension Place {
                 .init(symbol: "arrow.up.forward", label: "Patio ramp"),
                 .init(symbol: "lightbulb.fill", label: "Bright rooms")
             ],
-            reviewsSummary: "Patio is easy to navigate. Indoor tables can feel tight on weekends; ask staff for the corner booth."
+            reviewsSummary: "Patio is easy to navigate. Indoor tables can feel tight on weekends; ask staff for the corner booth.",
+            grade: .partiallyAccessible
         ),
         Place(
             id: UUID(),
@@ -141,7 +147,8 @@ extension Place {
                 .init(symbol: "hand.raised.fill", label: "Braille"),
                 .init(symbol: "clock.fill", label: "24/7 lobby")
             ],
-            reviewsSummary: "Accessible rooms are well equipped. Elevators are quick; valet drop-off includes a curb cut."
+            reviewsSummary: "Accessible rooms are well equipped. Elevators are quick; valet drop-off includes a curb cut.",
+            grade: .accessible
         ),
         Place(
             id: UUID(),
@@ -161,7 +168,8 @@ extension Place {
                 .init(symbol: "mappin.and.ellipse", label: "Rest stops"),
                 .init(symbol: "drop.fill", label: "Water fountains")
             ],
-            reviewsSummary: "North loop is smooth and popular. Plan around the steep south spur; restrooms are only near the main lot."
+            reviewsSummary: "North loop is smooth and popular. Plan around the steep south spur; restrooms are only near the main lot.",
+            grade: .notAccessible
         )
     ]
 }
