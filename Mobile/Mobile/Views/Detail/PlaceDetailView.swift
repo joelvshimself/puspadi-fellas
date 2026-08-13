@@ -1,3 +1,4 @@
+import MapKit
 import SwiftUI
 
 struct PlaceDetailView: View {
@@ -30,9 +31,13 @@ struct PlaceDetailView: View {
                         attribution: imageAttribution,
                         resolved: enrichResolved
                     )
+                    // Accessibility is the whole point of the app, so it leads.
+                    accessibilityGradeSection
+                    directionsButton
+                } else {
+                    // Mock sample places keep the original rating/summary card.
+                    heroCard
                 }
-                heroCard
-                accessibilityGradeSection
                 tabBar
                 tabContent
             }
@@ -172,6 +177,22 @@ struct PlaceDetailView: View {
         Text(place.name)
             .font(.largeTitle.bold())
             .padding(.top, -4)
+    }
+
+    private var directionsButton: some View {
+        Button {
+            let mapItem = MKMapItem(placemark: MKPlacemark(coordinate: place.coordinate))
+            mapItem.name = place.name
+            mapItem.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking])
+        } label: {
+            Label("Directions", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .foregroundStyle(.white)
+        }
+        .buttonStyle(.plain)
     }
 
     private var heroCard: some View {
