@@ -47,6 +47,10 @@ struct PlaceCacheRow: Decodable {
     let lat: Double?
     let lng: Double?
     let osmAccessibility: [String: String]?
+    /// Permanent Supabase Storage URL of a cached Mapillary photo (CC BY-SA),
+    /// nil when there's no coverage. See backend tryCacheMapillaryImage.
+    let imageUrl: String?
+    let imageAttribution: String?
 }
 
 /// Response shape of `place-accessibility` (see

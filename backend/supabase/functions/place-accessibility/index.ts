@@ -26,6 +26,8 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GOOGLE_MAPS_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY"); // optional — see module comment
+const MAPILLARY_TOKEN = Deno.env.get("MAPILLARY_TOKEN"); // optional — open street-level imagery (CC BY-SA)
+const PLACE_IMAGES_BUCKET = "place-images";
 
 // service_role bypasses RLS — this function is the only writer of
 // place_cache / google+osm accessibility_signals rows, by design.
@@ -90,6 +92,11 @@ Deno.serve(async (req: Request) => {
     // tags, and both feed the confidence-weighted grade. Costs nothing, so
     // there's no reason to skip it even when Google returned data.
     await tryEnrichFromOSM(placeId, lat, lng);
+
+    // Photo: Mapillary (open, CC BY-SA street-level imagery). Downloaded once
+    // and stored in Supabase Storage — its license permits caching the bytes,
+    // and its own thumbnail URLs expire, so we store our own permanent copy.
+    await tryCacheMapillaryImage(placeId, lat, lng);
   }
 
   const { data: grade } = await supabase.rpc("accessibility_grade", { target_place_id: placeId });
@@ -206,6 +213,68 @@ function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number)
   const dLon = toRad(lon2 - lon1);
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// --- Mapillary — open street-level imagery (CC BY-SA), optional ------------
+
+interface MapillaryImage {
+  id: string;
+  thumb_1024_url?: string;
+  geometry?: { coordinates?: [number, number] }; // [lon, lat]
+}
+
+/// Finds the nearest Mapillary image to the coordinate, downloads it once, and
+/// stores it in Supabase Storage — then records the permanent public URL on
+/// place_cache. No-op (leaves image_url null) if no token or no coverage; the
+/// client then falls back to Look Around / a map snapshot.
+async function tryCacheMapillaryImage(placeId: string, lat: number, lng: number): Promise<void> {
+  if (!MAPILLARY_TOKEN) return;
+  try {
+    // bbox must be < 0.01 deg square per Mapillary; ~0.0009 ≈ 100m.
+    const d = 0.0009;
+    const bbox = `${lng - d},${lat - d},${lng + d},${lat + d}`;
+    const url =
+      `https://graph.mapillary.com/images?fields=id,thumb_1024_url,geometry&bbox=${bbox}&limit=10`;
+    const res = await fetch(url, { headers: { Authorization: `OAuth ${MAPILLARY_TOKEN}` } });
+    if (!res.ok) return;
+    const data = await res.json();
+    const images: MapillaryImage[] = data.data ?? [];
+    if (images.length === 0) return;
+
+    // Nearest image to the place, not just the first Mapillary returned.
+    let best: MapillaryImage | null = null;
+    let bestDist = Infinity;
+    for (const img of images) {
+      const coords = img.geometry?.coordinates;
+      if (!coords || !img.thumb_1024_url) continue;
+      const dist = haversineMeters(lat, lng, coords[1], coords[0]);
+      if (dist < bestDist) { bestDist = dist; best = img; }
+    }
+    if (!best?.thumb_1024_url) return;
+
+    // Download the (TTL'd) thumbnail and store our own permanent copy.
+    const imgRes = await fetch(best.thumb_1024_url);
+    if (!imgRes.ok) return;
+    const bytes = new Uint8Array(await imgRes.arrayBuffer());
+
+    const path = `${placeId}.jpg`;
+    const { error: upErr } = await supabase.storage
+      .from(PLACE_IMAGES_BUCKET)
+      .upload(path, bytes, { contentType: "image/jpeg", upsert: true });
+    if (upErr) {
+      console.error("Mapillary image upload failed (non-fatal):", upErr);
+      return;
+    }
+
+    const { data: pub } = supabase.storage.from(PLACE_IMAGES_BUCKET).getPublicUrl(path);
+    await supabase.from("place_cache").update({
+      image_url: pub.publicUrl,
+      image_attribution: "Imagery © Mapillary contributors (CC BY-SA 4.0)",
+    }).eq("place_id", placeId);
+  } catch (err) {
+    // Photo is a nice-to-have; never fail the request over it.
+    console.error("Mapillary caching failed (non-fatal):", err);
+  }
 }
 
 // --- Google Places (New) — PRIMARY accessibility source, Pro tier ---------

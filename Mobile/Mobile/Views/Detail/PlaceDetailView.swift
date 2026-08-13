@@ -12,6 +12,11 @@ struct PlaceDetailView: View {
     @State private var grade: [AccessibilityFeatureGrade] = []
     @State private var isLoadingGrade = false
     @State private var gradeLoadFailed = false
+    /// Populated from the same enrich() response as the grade — a cached
+    /// Mapillary photo URL for this place (nil if none), passed to PlaceImageView.
+    @State private var imageURL: URL?
+    @State private var imageAttribution: String?
+    @State private var enrichResolved = false
 
     var body: some View {
         ScrollView {
@@ -19,7 +24,12 @@ struct PlaceDetailView: View {
                 topActions
                 titleBlock
                 if place.isLiveResult {
-                    PlaceImageView(coordinate: place.coordinate)
+                    PlaceImageView(
+                        coordinate: place.coordinate,
+                        remoteImageURL: imageURL,
+                        attribution: imageAttribution,
+                        resolved: enrichResolved
+                    )
                 }
                 heroCard
                 accessibilityGradeSection
@@ -40,7 +50,10 @@ struct PlaceDetailView: View {
         guard place.isLiveResult else { return }
         isLoadingGrade = true
         gradeLoadFailed = false
-        defer { isLoadingGrade = false }
+        defer {
+            isLoadingGrade = false
+            enrichResolved = true
+        }
         do {
             let response = try await AccessibilityService.shared.enrich(
                 lat: place.coordinate.latitude,
@@ -48,6 +61,8 @@ struct PlaceDetailView: View {
                 name: place.name
             )
             grade = response.grade ?? []
+            imageURL = response.place?.imageUrl.flatMap(URL.init(string:))
+            imageAttribution = response.place?.imageAttribution
         } catch {
             gradeLoadFailed = true
         }

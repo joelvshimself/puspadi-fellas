@@ -1,18 +1,27 @@
 import MapKit
 import SwiftUI
 
-/// A photo-ish image for a place, sourced entirely from Apple/MapKit (free,
-/// no per-call billing, no Google-style caching-ToS problem):
-///   1. Look Around street-level imagery via MKLookAroundSnapshotter — often
-///      shows the actual storefront/entrance, useful for accessibility.
-///   2. If the location has no Look Around coverage, fall back to a plain
-///      map snapshot (MKMapSnapshotter) so there's never a broken/empty box.
+/// A photo for a place, tried in order of usefulness/quality:
+///   1. Mapillary — open, CC BY-SA street-level photo cached server-side in
+///      Supabase Storage (real ground-level image, often shows the entrance).
+///   2. Look Around — Apple street-level imagery via MKLookAroundSnapshotter,
+///      where Mapillary has no coverage.
+///   3. Map snapshot (MKMapSnapshotter) — so there's never a broken box.
+/// All free, no per-call billing. Only the Mapillary image needs attribution
+/// (shown as an overlay), which its license requires.
 struct PlaceImageView: View {
     let coordinate: CLLocationCoordinate2D
+    /// Cached Mapillary Storage URL from the enrich response; nil if none.
+    var remoteImageURL: URL?
+    var attribution: String?
+    /// True once the enrich call has returned, so we know whether a Mapillary
+    /// URL exists before deciding to fall back. Avoids a fallback flash.
+    var resolved: Bool = true
     var height: CGFloat = 180
 
     @State private var image: UIImage?
-    @State private var isLoading = true
+    @State private var shownAttribution: String?
+    @State private var finishedLoading = false
 
     var body: some View {
         Group {
@@ -20,13 +29,23 @@ struct PlaceImageView: View {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
-            } else if isLoading {
+                    .overlay(alignment: .bottomLeading) {
+                        if let shownAttribution {
+                            Text(shownAttribution)
+                                .font(.caption2)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(.black.opacity(0.45), in: Capsule())
+                                .padding(8)
+                        }
+                    }
+            } else if !finishedLoading {
                 ZStack {
                     Rectangle().fill(Color(.secondarySystemBackground))
                     ProgressView()
                 }
             } else {
-                // Both sources failed (rare) — neutral placeholder, no error.
                 ZStack {
                     Rectangle().fill(Color(.secondarySystemBackground))
                     Image(systemName: "mappin.and.ellipse")
@@ -38,28 +57,50 @@ struct PlaceImageView: View {
         .frame(height: height)
         .frame(maxWidth: .infinity)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .task(id: "\(coordinate.latitude),\(coordinate.longitude)") {
+        // Re-run when the enrich result resolves (so the Mapillary URL, if any,
+        // is known before we decide on a fallback).
+        .task(id: taskKey) {
+            guard resolved else { return }
             await load()
         }
     }
 
-    private func load() async {
-        isLoading = true
-        defer { isLoading = false }
+    private var taskKey: String {
+        "\(resolved)|\(remoteImageURL?.absoluteString ?? "")|\(coordinate.latitude),\(coordinate.longitude)"
+    }
 
-        if let lookAround = await lookAroundSnapshot() {
-            image = lookAround
+    private func load() async {
+        finishedLoading = false
+
+        // 1. Mapillary (cached, real street-level photo).
+        if let remoteImageURL, let downloaded = await downloadImage(remoteImageURL) {
+            image = downloaded
+            shownAttribution = attribution
+            finishedLoading = true
             return
         }
-        // No Look Around coverage here — fall back to a map snapshot.
+        // 2. Apple Look Around.
+        if let lookAround = await lookAroundSnapshot() {
+            image = lookAround
+            shownAttribution = nil
+            finishedLoading = true
+            return
+        }
+        // 3. Plain map snapshot.
         image = await mapSnapshot()
+        shownAttribution = nil
+        finishedLoading = true
+    }
+
+    private func downloadImage(_ url: URL) async -> UIImage? {
+        guard let (data, _) = try? await URLSession.shared.data(from: url) else { return nil }
+        return UIImage(data: data)
     }
 
     private func lookAroundSnapshot() async -> UIImage? {
         let request = MKLookAroundSceneRequest(coordinate: coordinate)
         guard let scene = try? await request.scene else { return nil }
-        let options = MKLookAroundSnapshotter.Options()
-        let snapshotter = MKLookAroundSnapshotter(scene: scene, options: options)
+        let snapshotter = MKLookAroundSnapshotter(scene: scene, options: MKLookAroundSnapshotter.Options())
         return try? await snapshotter.snapshot.image
     }
 
