@@ -91,6 +91,11 @@ struct HomeMapView: View {
                     .presentationBackgroundInteraction(.enabled)
                     .presentationDragIndicator(.visible)
                     .presentationCornerRadius(24)
+                    // Pin one opaque background across all detents. Without
+                    // this, iOS renders the peek detent translucent (map shows
+                    // through) and the full detent opaque, making the two
+                    // states look like different screens.
+                    .presentationBackground(Color(.systemBackground))
                     .interactiveDismissDisabled()
                 }
                 .onChange(of: isSearchFocused) { _, focused in
