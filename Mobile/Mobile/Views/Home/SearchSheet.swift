@@ -223,7 +223,7 @@ struct SearchSheet: View {
             .joined(separator: " ")
         return [street, placemark.locality ?? ""]
             .filter { !$0.isEmpty }
-            .joined(separator: " · ")
+            .joined(separator: ", ")
     }
 
     /// Rough distance from the current map center (a stand-in for the user's
@@ -267,7 +267,7 @@ struct SearchSheet: View {
 
     private var resultsList: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
+            LazyVStack(alignment: .leading, spacing: 10) {
                 if isLiveQuery {
                     sectionHeader("Results")
                     if isSearchingLive {
@@ -292,21 +292,21 @@ struct SearchSheet: View {
                     }
                     sectionHeader("Nearby")
                     ForEach(places) { place in
-                        row(place, kind: .place)
+                        row(place, kind: .suggestion)
                     }
                 }
             }
+            .padding(.horizontal, 16)
             .padding(.bottom, 24)
         }
     }
 
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
-            .padding(.bottom, 6)
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(.primary)
+            .padding(.top, 12)
+            .padding(.bottom, 2)
     }
 
     @ViewBuilder
@@ -318,9 +318,6 @@ struct SearchSheet: View {
             resultRow(place, kind: kind)
         }
         .buttonStyle(.plain)
-
-        Divider()
-            .padding(.leading, 70)
     }
 
     private func statusMessage(_ text: String) -> some View {
@@ -336,14 +333,13 @@ struct SearchSheet: View {
     private func resultRow(_ place: Place, kind: RowKind) -> some View {
         HStack(spacing: 14) {
             Image(systemName: kind.icon)
-                .font(.system(size: 16, weight: .medium))
+                .font(.system(size: 18, weight: .regular))
                 .foregroundStyle(.secondary)
-                .frame(width: 40, height: 40)
-                .background(Circle().fill(Color.primary.opacity(0.06)))
+                .frame(width: 24)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(place.name)
-                    .font(.body.weight(.medium))
+                    .font(.body.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
@@ -358,7 +354,8 @@ struct SearchSheet: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.vertical, 14)
+        .background(Color(.systemBackground).opacity(0.7), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .contentShape(Rectangle())
     }
 
@@ -369,7 +366,7 @@ struct SearchSheet: View {
         if parts.isEmpty {
             return place.category.isEmpty ? nil : place.category
         }
-        return parts.joined(separator: " · ")
+        return parts.joined(separator: " • ")
     }
 
 }

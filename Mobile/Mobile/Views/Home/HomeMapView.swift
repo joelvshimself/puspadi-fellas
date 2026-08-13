@@ -52,6 +52,10 @@ struct HomeMapView: View {
     /// The place whose accessibility detail is shown inside the bottom sheet
     /// (same-sheet method — no separate pushed page).
     @State private var selectedPlace: Place?
+    /// The sheet detent in effect just before a place detail was opened, so
+    /// closing the detail returns to that step (peek if the place came from a
+    /// map tap, the expanded search list if it came from a result).
+    @State private var detentBeforePlace: PresentationDetent?
     /// Accessibility grades the user is filtering the map to. Empty = show all
     /// (no filter). See the filter panel opened from the top-left button.
     @State private var selectedGrades: Set<OverallAccessibility> = []
@@ -197,10 +201,16 @@ struct HomeMapView: View {
                     }
                 }
                 .onChange(of: selectedPlace) { _, place in
-                    // Opening a place (from a result or a map POI tap) always
-                    // expands the sheet so the detail isn't shown cramped at
-                    // peek height.
-                    if place != nil { sheetDetent = expandedDetent }
+                    if place != nil {
+                        // Expand so the detail isn't shown cramped at peek.
+                        sheetDetent = expandedDetent
+                    } else {
+                        // Closed the detail — return to whatever step we opened
+                        // it from (peek for a map tap, the search list for a
+                        // result), not the focused search.
+                        sheetDetent = detentBeforePlace ?? peekDetent
+                        detentBeforePlace = nil
+                    }
                 }
                 .onChange(of: peekBarHeight) { _, _ in
                     // The peek detent's value just changed, so the old value
@@ -350,7 +360,7 @@ struct HomeMapView: View {
                 locationManager.requestLocation()
             }
         } label: {
-            Image(systemName: "location")
+            Image(systemName: "location.fill")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(.primary)
                 .frame(width: 44, height: 44)
@@ -391,11 +401,12 @@ struct HomeMapView: View {
     }
 
     private func openPlace(_ place: Place) {
-        // Show the accessibility detail inside the sheet (not a pushed page),
-        // and expand the sheet so it's fully visible.
+        // Show the accessibility detail inside the sheet (not a pushed page).
+        // Remember the current step first so closing returns to it; the
+        // onChange(of: selectedPlace) handler drives the detent change.
         isSearchFocused = false
+        detentBeforePlace = sheetDetent
         selectedPlace = place
-        sheetDetent = expandedDetent
     }
 
 }
