@@ -37,6 +37,9 @@ struct HomeMapView: View {
     /// MapFeature (not MapSelection, which is iOS 18+) so this works on the
     /// project's iOS 17 deployment target.
     @State private var mapSelection: MapFeature?
+    /// The place whose accessibility detail is shown inside the bottom sheet
+    /// (same-sheet method — no separate pushed page).
+    @State private var selectedPlace: Place?
 
     private let places = Place.samples
 
@@ -59,8 +62,9 @@ struct HomeMapView: View {
                 .toolbar(path.isEmpty ? .hidden : .automatic, for: .navigationBar)
                 .navigationDestination(for: HomeRoute.self) { route in
                     switch route {
-                    case .place(let place):
-                        PlaceDetailView(place: place)
+                    case .place:
+                        // Place detail now renders inside the sheet, not here.
+                        EmptyView()
                     case .saved:
                         SavedView()
                     case .contribute:
@@ -78,6 +82,7 @@ struct HomeMapView: View {
                         isSearchFocused: $isSearchFocused,
                         places: places,
                         searchRegion: visibleRegion,
+                        selectedPlace: $selectedPlace,
                         onSelectPlace: openPlace,
                         onCancelSearch: dismissSearch,
                         onSelectTab: handleTabSelection
@@ -223,10 +228,11 @@ struct HomeMapView: View {
     }
 
     private func openPlace(_ place: Place) {
-        // Sheet dismissal/re-presentation is handled centrally by the
-        // path.count change handler above, for every pushed destination.
+        // Show the accessibility detail inside the sheet (not a pushed page),
+        // and expand the sheet so it's fully visible.
         isSearchFocused = false
-        path.append(HomeRoute.place(place))
+        selectedPlace = place
+        sheetDetent = .large
     }
 
     private func handleTabSelection(_ tab: HomeTab) {

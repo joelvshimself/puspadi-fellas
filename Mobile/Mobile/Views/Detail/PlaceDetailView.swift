@@ -3,9 +3,10 @@ import SwiftUI
 
 struct PlaceDetailView: View {
     let place: Place
-    @Environment(\.dismiss) private var dismiss
+    /// Returns to the search results within the same bottom sheet (this view is
+    /// now embedded in the sheet, not pushed as a separate page).
+    var onBack: () -> Void = {}
     @State private var selectedTab: DetailTab = .facilities
-    @State private var isSaved = false
 
     /// Live-fetched from place-accessibility — only meaningful for a real
     /// MKLocalSearch result (place.isLiveResult), never for the mock
@@ -40,8 +41,6 @@ struct PlaceDetailView: View {
                     accessibilityGradeSection
                     directionsButton
 
-                    Text("Photo")
-                        .font(.headline)
                     PlaceImageView(
                         coordinate: place.coordinate,
                         remoteImageURL: imageURL,
@@ -61,7 +60,6 @@ struct PlaceDetailView: View {
             .padding(.bottom, 32)
         }
         .background(Color(.systemBackground))
-        .toolbar(.hidden, for: .navigationBar)
         .task(id: place.id) {
             await loadGrade()
         }
@@ -170,11 +168,11 @@ struct PlaceDetailView: View {
         }
     }
 
+    // Just a back affordance to return to results — Save/Share removed for a
+    // clean look (they can live elsewhere once those flows are built).
     private var topActions: some View {
-        HStack(alignment: .top) {
-            Button {
-                dismiss()
-            } label: {
+        HStack {
+            Button(action: onBack) {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.primary)
@@ -182,40 +180,11 @@ struct PlaceDetailView: View {
                     .background(Color(.secondarySystemBackground), in: Circle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Back")
+            .accessibilityLabel("Back to results")
 
             Spacer()
-
-            VStack(alignment: .trailing, spacing: 10) {
-                Button {
-                    isSaved.toggle()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: isSaved ? "heart.fill" : "heart")
-                        Text("Save")
-                            .fontWeight(.semibold)
-                    }
-                    .font(.subheadline)
-                    .foregroundStyle(isSaved ? Color.white : .primary)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(
-                        Capsule()
-                            .fill(isSaved ? Color.accentColor : Color(.secondarySystemBackground))
-                    )
-                }
-                .buttonStyle(.plain)
-
-                ShareLink(item: "Check out \(place.name) on Puspadi Fellas") {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .frame(width: 40, height: 40)
-                        .background(Color(.secondarySystemBackground), in: Circle())
-                }
-            }
         }
-        .padding(.top, 8)
+        .padding(.top, 4)
     }
 
     private var titleBlock: some View {
@@ -444,7 +413,5 @@ private enum DetailTab: String, CaseIterable, Identifiable {
 }
 
 #Preview {
-    NavigationStack {
-        PlaceDetailView(place: Place.samples[0])
-    }
+    PlaceDetailView(place: Place.samples[0], onBack: {})
 }
