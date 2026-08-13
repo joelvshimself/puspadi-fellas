@@ -45,7 +45,6 @@ struct HomeMapView: View {
     /// (same-sheet method — no separate pushed page).
     @State private var selectedPlace: Place?
 
-    private let places = Place.samples
 
     private var isSearching: Bool { sheetDetent == expandedDetent }
 
@@ -84,7 +83,6 @@ struct HomeMapView: View {
                         searchText: $searchText,
                         selectedTab: $selectedTab,
                         isSearchFocused: $isSearchFocused,
-                        places: places,
                         searchRegion: visibleRegion,
                         selectedPlace: $selectedPlace,
                         onSelectPlace: openPlace,
@@ -147,18 +145,7 @@ struct HomeMapView: View {
 
     private var mapLayer: some View {
         Map(position: $cameraPosition, selection: $mapSelection) {
-            ForEach(places) { place in
-                Annotation(place.name, coordinate: place.coordinate) {
-                    Image(systemName: "mappin.circle.fill")
-                        .font(.title)
-                        .foregroundStyle(.red)
-                        .background(
-                            Circle()
-                                .fill(.white)
-                                .frame(width: 18, height: 18)
-                        )
-                }
-            }
+            
         }
         .onMapCameraChange { context in
             visibleRegion = context.region

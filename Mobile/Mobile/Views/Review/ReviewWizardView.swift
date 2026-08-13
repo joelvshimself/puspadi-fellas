@@ -228,6 +228,3 @@ struct ReviewWizardView: View {
     }
 }
 
-#Preview {
-    ReviewWizardView(place: Place.samples[0], onFinished: {})
-}

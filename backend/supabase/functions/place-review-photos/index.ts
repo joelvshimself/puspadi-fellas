@@ -1,0 +1,163 @@
+// supabase/functions/place-review-photos/index.ts
+//
+// Returns community review photo URLs for a place, labeled by facility
+// (lobby / basement / elevator / toilet). Reads public Storage URLs already
+// stored on reviews + review_entrances — does not list the bucket.
+//
+// Request:  { lat: number, lng: number }
+// Response: { status: "ok", placeId, photos: [{ url, facility, label }] }
+//
+// TODO: re-enable JWT before production — same device-testing stance as
+// submit-accessibility-review.
+
+import { createClient } from "jsr:@supabase/supabase-js@2";
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+
+interface RequestBody {
+  lat: number;
+  lng: number;
+}
+
+type Facility = "lobby" | "basement" | "elevator" | "toilet" | "exit_side" | "other";
+
+interface PhotoItem {
+  url: string;
+  facility: Facility;
+  label: string;
+}
+
+Deno.serve(async (req: Request) => {
+  if (req.method !== "POST") {
+    return new Response("Method not allowed", { status: 405 });
+  }
+
+  const body: RequestBody = await req.json();
+  const { lat, lng } = body;
+  if (typeof lat !== "number" || typeof lng !== "number") {
+    return json({ error: "lat and lng are required numbers" }, 400);
+  }
+
+  const placeId = canonicalPlaceId(lat, lng);
+
+  const { data: reviews, error: reviewsError } = await supabase
+    .from("reviews")
+    .select("id, elevator_photo_urls, toilet_photo_urls, created_at")
+    .eq("place_id", placeId)
+    .order("created_at", { ascending: false });
+
+  if (reviewsError) {
+    console.error("reviews query failed:", reviewsError);
+    return json({ error: "failed to load reviews", detail: reviewsError.message }, 500);
+  }
+
+  if (!reviews || reviews.length === 0) {
+    return json({ status: "ok", placeId, photos: [] });
+  }
+
+  const reviewIds = reviews.map((r) => r.id as string);
+
+  const { data: entrances, error: entrancesError } = await supabase
+    .from("review_entrances")
+    .select("review_id, location, photo_urls")
+    .in("review_id", reviewIds);
+
+  if (entrancesError) {
+    console.error("review_entrances query failed:", entrancesError);
+    return json({
+      error: "failed to load entrance photos",
+      detail: entrancesError.message,
+    }, 500);
+  }
+
+  // Preserve newest-review-first: group entrances by review, then walk reviews
+  // in the ordered list and append elevator/toilet after that review's entrances.
+  const entrancesByReview = new Map<string, Array<{ location: string; photo_urls: string[] }>>();
+  for (const row of entrances ?? []) {
+    const id = row.review_id as string;
+    const list = entrancesByReview.get(id) ?? [];
+    list.push({
+      location: row.location as string,
+      photo_urls: (row.photo_urls as string[] | null) ?? [],
+    });
+    entrancesByReview.set(id, list);
+  }
+
+  const photos: PhotoItem[] = [];
+
+  for (const review of reviews) {
+    const id = review.id as string;
+    for (const entrance of entrancesByReview.get(id) ?? []) {
+      const facility = normalizeFacility(entrance.location);
+      appendUrls(photos, entrance.photo_urls, facility);
+    }
+    appendUrls(
+      photos,
+      (review.elevator_photo_urls as string[] | null) ?? [],
+      "elevator",
+    );
+    appendUrls(
+      photos,
+      (review.toilet_photo_urls as string[] | null) ?? [],
+      "toilet",
+    );
+  }
+
+  return json({ status: "ok", placeId, photos });
+});
+
+function appendUrls(photos: PhotoItem[], urls: string[], facility: Facility) {
+  for (const url of urls) {
+    if (typeof url !== "string" || url.length === 0) continue;
+    photos.push({
+      url,
+      facility,
+      label: facilityLabel(facility),
+    });
+  }
+}
+
+function normalizeFacility(location: string): Facility {
+  switch (location) {
+    case "lobby":
+    case "basement":
+    case "elevator":
+    case "toilet":
+    case "exit_side":
+    case "other":
+      return location;
+    default:
+      return "other";
+  }
+}
+
+function facilityLabel(facility: Facility): string {
+  switch (facility) {
+    case "lobby":
+      return "Lobby";
+    case "basement":
+      return "Basement";
+    case "elevator":
+      return "Elevator";
+    case "toilet":
+      return "Toilet";
+    case "exit_side":
+      return "Exit side";
+    case "other":
+      return "Other";
+  }
+}
+
+function canonicalPlaceId(lat: number, lng: number): string {
+  return `loc_${lat.toFixed(5)}_${lng.toFixed(5)}`;
+}
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}

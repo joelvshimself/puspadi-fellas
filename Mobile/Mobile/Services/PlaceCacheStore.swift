@@ -54,6 +54,13 @@ actor PlaceCacheStore {
         }
     }
 
+    /// Drop a place so the next enrich() hits the Edge Function (e.g. after a
+    /// review submit that may have changed accessibility_grade).
+    func remove(_ key: String) {
+        memory.removeValue(forKey: key)
+        try? FileManager.default.removeItem(at: fileURL(key))
+    }
+
     private func isFresh(_ entry: Entry) -> Bool {
         Date().timeIntervalSince(entry.storedAt) < ttl
     }

@@ -24,7 +24,6 @@ struct SearchSheet: View {
     @Binding var searchText: String
     @Binding var selectedTab: HomeTab
     var isSearchFocused: FocusState<Bool>.Binding
-    let places: [Place]
     /// Biases MKLocalSearch toward what's currently on screen.
     let searchRegion: MKCoordinateRegion
     /// When set, the sheet shows this place's accessibility detail in place of
@@ -56,7 +55,7 @@ struct SearchSheet: View {
 
     private var results: [Place] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return query.isEmpty ? places : liveResults
+        return liveResults
     }
 
     var body: some View {
@@ -354,7 +353,6 @@ struct SearchSheet: View {
                         searchText: $searchText,
                         selectedTab: $selectedTab,
                         isSearchFocused: $focused,
-                        places: Place.samples,
                         searchRegion: MKCoordinateRegion(
                             center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
                             span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
