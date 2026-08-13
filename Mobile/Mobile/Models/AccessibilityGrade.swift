@@ -1,4 +1,4 @@
-import Foundation
+import SwiftUI
 
 /// Mirrors one row returned by the `accessibility_grade()` Postgres function
 /// (see backend/supabase/migrations) — the confidence-weighted, time-decayed
@@ -59,4 +59,32 @@ struct PlaceAccessibilityResponse: Codable {
     let status: String
     let place: PlaceCacheRow?
     let grade: [AccessibilityFeatureGrade]?
+}
+
+/// Overall accessibility badge shown on the grade card (green/yellow/red).
+/// TODO(backend): mirrors the Boolean Grading Matrix (E/V/T →
+/// Fully/Partially/Not Accessible) conceptually, but is currently derived
+/// client-side from the per-feature rows as a placeholder — see
+/// PlaceDetailView.overallGrade. Replace with a real backend-computed field
+/// once available.
+enum OverallAccessibility {
+    case accessible
+    case partiallyAccessible
+    case notAccessible
+
+    var label: String {
+        switch self {
+        case .accessible: "Accessible"
+        case .partiallyAccessible: "Partially Accessible"
+        case .notAccessible: "Not Accessible"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .accessible: .green
+        case .partiallyAccessible: .yellow
+        case .notAccessible: .red
+        }
+    }
 }

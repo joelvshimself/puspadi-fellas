@@ -26,7 +26,7 @@ their backend logic), mapped onto the folders that already exist in this repo:
 |---|---|---|---|
 | **Owner 1** | Search & Discover | `Views/Home/` (map, search sheet), `Models/Place.swift`, the search-results portion of `Views/Detail/PlaceDetailView.swift` | `supabase/functions/place-accessibility`, `place_cache` + `nearby_places()` in the migration |
 | **Owner 2** | Save & Share | `Views/Saved/`, the Save/Share buttons in `Views/Detail/PlaceDetailView.swift` | `profiles`, `folders`, `saved_places` in the migration; Auth Gate wiring |
-| **Owner 3** | Review & Record Route | `Views/Contribute/`, the Facilities/Routes/Review tabs in `Views/Detail/PlaceDetailView.swift`, the proximity-nudge quest UI (new) | `reviews`, `routes`, `venue_imdf_archives`, `accessibility_signals` + `accessibility_grade()` / `places_needing_confirmation()` |
+| **Owner 3** | Review & Record Route | `Views/Contribute/`, the Facilities/Routes/Review tabs in `Views/Detail/PlaceDetailView.swift`, the proximity-nudge quest UI (new) | `reviews`, `routes`, `venue_imdf_archives`, `accessibility_signals` + `accessibility_grade()` / `places_needing_confirmation()`, `supabase/functions/submit-accessibility-review` |
 
 `Views/Detail/PlaceDetailView.swift` currently holds pieces of all three
 owners' UI (Save, Share, Facilities/Routes/Review tabs) — expect to split it
@@ -82,9 +82,9 @@ Mobile/Mobile/
 A Supabase project lives in `backend/`. Schema, RLS policies, the
 `nearby_places()` / `places_needing_confirmation()` RPCs, and the
 confidence-weighted `accessibility_grade()` function are spread across a few
-migrations (applied in order); the `place-accessibility` Edge Function is the
-only thing allowed to call the Google Places API (Pro tier — see
-`docs/specs.md` §3/§6 for why).
+migrations (applied in order); Edge Functions: `place-accessibility` (Owner 1 —
+only writer allowed to call Google Places) and `submit-accessibility-review`
+(Owner 3 — iPhone contribution payload). See `docs/specs.md` §3/§4.5/§6.
 
 ```text
 backend/
@@ -99,9 +99,12 @@ backend/
     │   │                                  # accessibility_grade(),
     │   │                                  # places_needing_confirmation(),
     │   │                                  # search_query_cache
-    │   └── <ts>_restore_imdf_stale_trigger.sql
+    │   ├── <ts>_restore_imdf_stale_trigger.sql
+    │   └── <ts>_submit_accessibility_review.sql  # elevator feature, reviews.details,
+    │                                              # nullable user_id (testing)
     └── functions/
-        └── place-accessibility/          # Owner 1 — the Google Places / OSM cache-gate (see TODOs)
+        ├── place-accessibility/           # Owner 1 — Google Places / OSM cache-gate
+        └── submit-accessibility-review/   # Owner 3 — contribute payload from iPhone
 ```
 
 ### Getting started (per owner, on your own machine)
