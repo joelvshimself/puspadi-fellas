@@ -1,7 +1,11 @@
 import MapKit
 import SwiftUI
 
-private let peekDetent: PresentationDetent = .height(230)
+let peekDetent: PresentationDetent = .height(230)
+/// A tall CUSTOM detent instead of .large: iOS gives the true .large detent an
+/// opaque background, but custom/medium detents keep the translucent Liquid
+/// Glass treatment — so the expanded sheet stays glassy like the peek.
+let expandedDetent: PresentationDetent = .fraction(0.92)
 
 struct HomeMapView: View {
     @State private var cameraPosition: MapCameraPosition = .region(
@@ -43,7 +47,7 @@ struct HomeMapView: View {
 
     private let places = Place.samples
 
-    private var isSearching: Bool { sheetDetent == .large }
+    private var isSearching: Bool { sheetDetent == expandedDetent }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -87,23 +91,19 @@ struct HomeMapView: View {
                         onCancelSearch: dismissSearch,
                         onSelectTab: handleTabSelection
                     )
-                    .presentationDetents([peekDetent, .large], selection: $sheetDetent)
+                    .presentationDetents([peekDetent, expandedDetent], selection: $sheetDetent)
                     .presentationBackgroundInteraction(.enabled)
                     .presentationDragIndicator(.visible)
                     .presentationCornerRadius(24)
-                    // One consistent glassy material for EVERY sheet state
-                    // (peek, expanded search, and the place detail) — without
-                    // this, .large detents default to opaque white while peek
-                    // looks glassy, making them read as two different UIs.
-                    // ultraThin keeps the map visibly showing through (the
-                    // glassy look), unlike regularMaterial which reads as flat gray.
-                    .presentationBackground(.ultraThinMaterial)
+                    // No explicit presentationBackground — the iOS 26 default
+                    // sheet is Liquid Glass (translucent, map shows through).
+                    // An explicit material override flattened it to gray.
                     .interactiveDismissDisabled()
                 }
                 .onChange(of: isSearchFocused) { _, focused in
                     // TextField focus does not fire parent tap gestures; expand from focus.
                     if focused, !isSearching {
-                        sheetDetent = .large
+                        sheetDetent = expandedDetent
                     }
                 }
                 .onChange(of: path.count) { _, count in
@@ -126,7 +126,7 @@ struct HomeMapView: View {
                     // Opening a place (from a result or a map POI tap) always
                     // expands the sheet so the detail isn't shown cramped at
                     // peek height.
-                    if place != nil { sheetDetent = .large }
+                    if place != nil { sheetDetent = expandedDetent }
                 }
                 .onChange(of: locationManager.currentCoordinate) { _, coordinate in
                     guard let coordinate, !hasCenteredOnUser else { return }
@@ -245,7 +245,7 @@ struct HomeMapView: View {
         // and expand the sheet so it's fully visible.
         isSearchFocused = false
         selectedPlace = place
-        sheetDetent = .large
+        sheetDetent = expandedDetent
     }
 
     private func handleTabSelection(_ tab: HomeTab) {

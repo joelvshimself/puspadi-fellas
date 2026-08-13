@@ -34,7 +34,7 @@ struct SearchSheet: View {
     let onCancelSearch: () -> Void
     let onSelectTab: (HomeTab) -> Void
 
-    private var isSearching: Bool { detent == .large }
+    private var isSearching: Bool { detent == expandedDetent }
 
     /// Real on-device search results (MKLocalSearch) — replaces the old
     /// local substring filter over mock `places`. See §4.1 in
@@ -123,8 +123,8 @@ struct SearchSheet: View {
         // rather than field focus, because FocusState doesn't propagate
         // reliably across the sheet boundary (that's why results previously
         // only appeared after manually dragging the sheet up).
-        if detent != .large {
-            detent = .large
+        if detent != expandedDetent {
+            detent = expandedDetent
         }
         isSearchingLive = true
         searchErrorMessage = nil
@@ -333,7 +333,7 @@ struct SearchSheet: View {
     }
 
     private func beginSearch() {
-        detent = .large
+        detent = expandedDetent
         isSearchFocused.wrappedValue = true
     }
 }
@@ -368,7 +368,7 @@ struct SearchSheet: View {
                         },
                         onSelectTab: { selectedTab = $0 }
                     )
-                    .presentationDetents([.height(230), .large], selection: $detent)
+                    .presentationDetents([peekDetent, expandedDetent], selection: $detent)
                     .presentationBackgroundInteraction(.enabled)
                     .presentationDragIndicator(.visible)
                     .interactiveDismissDisabled()
