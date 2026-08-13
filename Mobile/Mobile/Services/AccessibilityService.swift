@@ -31,10 +31,18 @@ final class AccessibilityService {
     }
 
     func enrich(lat: Double, lng: Double, name: String?) async throws -> PlaceAccessibilityResponse {
-        try await client.functions.invoke(
+        // On-device cache first — avoids re-hitting the Edge Function when the
+        // user re-opens a place they viewed recently (see PlaceCacheStore).
+        let key = PlaceCacheStore.key(lat: lat, lng: lng)
+        if let cached = await PlaceCacheStore.shared.get(key) {
+            return cached
+        }
+        let response: PlaceAccessibilityResponse = try await client.functions.invoke(
             "place-accessibility",
             options: FunctionInvokeOptions(body: EnrichRequestBody(lat: lat, lng: lng, name: name)),
             decoder: decoder
         )
+        await PlaceCacheStore.shared.set(key, response)
+        return response
     }
 }

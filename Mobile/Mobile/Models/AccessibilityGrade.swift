@@ -3,7 +3,7 @@ import Foundation
 /// Mirrors one row returned by the `accessibility_grade()` Postgres function
 /// (see backend/supabase/migrations) — the confidence-weighted, time-decayed
 /// blend across every signal (Google/OSM/review/confirmation) for a feature.
-struct AccessibilityFeatureGrade: Identifiable, Decodable {
+struct AccessibilityFeatureGrade: Identifiable, Codable {
     let feature: String
     let bestValue: String
     let confidence: Double
@@ -41,7 +41,7 @@ struct AccessibilityFeatureGrade: Identifiable, Decodable {
 
 /// The `place_cache` row as returned by the Edge Function — only the fields
 /// the client actually needs are decoded.
-struct PlaceCacheRow: Decodable {
+struct PlaceCacheRow: Codable {
     let placeId: String
     let name: String?
     let lat: Double?
@@ -55,7 +55,7 @@ struct PlaceCacheRow: Decodable {
 
 /// Response shape of `place-accessibility` (see
 /// backend/supabase/functions/place-accessibility/index.ts).
-struct PlaceAccessibilityResponse: Decodable {
+struct PlaceAccessibilityResponse: Codable {
     let status: String
     let place: PlaceCacheRow?
     let grade: [AccessibilityFeatureGrade]?

@@ -25,21 +25,29 @@ struct PlaceDetailView: View {
                 topActions
                 titleBlock
                 if place.isLiveResult {
+                    // Order: locator map -> accessibility grade -> directions
+                    // up top (the decision-making info), then the street photo
+                    // and reviews as supporting detail at the bottom.
+                    FacilityMapHeader(coordinate: place.coordinate, name: place.name)
+                    accessibilityGradeSection
+                    directionsButton
+
+                    Text("Photo")
+                        .font(.headline)
                     PlaceImageView(
                         coordinate: place.coordinate,
                         remoteImageURL: imageURL,
                         attribution: imageAttribution,
                         resolved: enrichResolved
                     )
-                    // Accessibility is the whole point of the app, so it leads.
-                    accessibilityGradeSection
-                    directionsButton
+
+                    liveReviewsSection
                 } else {
                     // Mock sample places keep the original rating/summary card.
                     heroCard
+                    tabBar
+                    tabContent
                 }
-                tabBar
-                tabContent
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 32)
@@ -177,6 +185,23 @@ struct PlaceDetailView: View {
         Text(place.name)
             .font(.largeTitle.bold())
             .padding(.top, -4)
+    }
+
+    private var liveReviewsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Reviews")
+                .font(.headline)
+            Text("No reviews yet — be the first to review this place's accessibility.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color(.separator), lineWidth: 1)
+        )
     }
 
     private var directionsButton: some View {
