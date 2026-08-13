@@ -4,16 +4,19 @@
 // accessibility-enrichment pipeline. See docs/specs.md §4.1/§6 and Flow A in
 // docs/architecture-plan-v2.excalidraw.
 //
-// OSM-primary, Google-secondary (flipped 2026-08-12 — no hard dependency on
-// Google): search/geocoding is MapKit's job entirely on-device now (free, no
-// key), so this function only ever receives an already-resolved location. It
-// ALWAYS tries OpenStreetMap/Overpass first (free, keyless, no SLA). Google
-// Places is attempted only if GOOGLE_MAPS_API_KEY is configured — the app
-// works, with a smaller signal set, when it isn't.
+// Google-primary, OSM-supplement (2026-08-13): search/geocoding is MapKit's
+// job entirely on-device (free, no key), so this function only ever receives
+// an already-resolved location. On a cache miss it tries Google Places FIRST
+// (the trusted accessibility source, when GOOGLE_MAPS_API_KEY is set), then
+// also queries OpenStreetMap/Overpass (free) to cover places Google has no
+// data for. Both feed the confidence-weighted grade, Google weighted higher.
+// The 90-day place_cache means each place is fetched from Google at most once
+// per cycle regardless of how many users view it — that's the cost control.
+// If no key is configured the function still works, on OSM data alone.
 //
 // Request body: { lat: number, lng: number, name?: string }
-// `name` is only used to bias the *optional* Google lookup; OSM lookup needs
-// nothing but the coordinate.
+// `name` is required for the Google lookup (Text Search needs a query); the
+// OSM lookup needs nothing but the coordinate.
 //
 // Response: merged base data + the live confidence-weighted grade from
 // accessibility_grade() (see the migrations for how that's computed).
@@ -68,21 +71,25 @@ Deno.serve(async (req: Request) => {
   if (needsRefresh) {
     await ensurePlaceRow(placeId, lat, lng, name);
 
-    // Primary: always attempt, free, no key required.
-    await tryEnrichFromOSM(placeId, lat, lng);
-
-    // Secondary: only if a key exists — this is what makes Google optional
-    // rather than a hard dependency. Silently skipped, not an error, when
-    // there's no key, so the rest of the response still succeeds.
+    // Primary: Google Places (when a key is configured). This is the trusted
+    // accessibility source; the result is cached for PLACE_CACHE_TTL_DAYS, so
+    // a place is only ever fetched from Google once per cycle no matter how
+    // many users look at it — that's what keeps the paid call count down.
     if (GOOGLE_MAPS_API_KEY && name) {
       try {
         await tryEnrichFromGoogle(placeId, lat, lng, name);
       } catch (err) {
-        // Google is secondary now — a failure here must never fail the
-        // request when OSM data is already in hand.
+        // Never fail the whole request on a Google error — OSM below (and
+        // any existing cached data) can still answer.
         console.error("Google enrichment failed (non-fatal):", err);
       }
     }
+
+    // Supplement/fallback: OpenStreetMap (free). Still queried so places
+    // Google has no accessibilityOptions for can be covered by community
+    // tags, and both feed the confidence-weighted grade. Costs nothing, so
+    // there's no reason to skip it even when Google returned data.
+    await tryEnrichFromOSM(placeId, lat, lng);
   }
 
   const { data: grade } = await supabase.rpc("accessibility_grade", { target_place_id: placeId });
@@ -119,7 +126,7 @@ async function tryEnrichFromOSM(placeId: string, lat: number, lng: number): Prom
     if (osmTags.wheelchair) {
       const value = osmTags.wheelchair === "yes" ? "yes" : osmTags.wheelchair === "limited" ? "limited" : "no";
       await supabase.from("accessibility_signals").upsert(
-        { place_id: placeId, feature: "entrance", value, source: "osm", user_id: null, confidence_weight: 0.6 },
+        { place_id: placeId, feature: "entrance", value, source: "osm", user_id: null, confidence_weight: 0.5 },
         { onConflict: "place_id,feature,source,user_id" },
       );
     }
@@ -201,7 +208,7 @@ function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number)
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-// --- Google Places (New) — SECONDARY, optional, Pro tier ------------------
+// --- Google Places (New) — PRIMARY accessibility source, Pro tier ---------
 
 async function tryEnrichFromGoogle(placeId: string, lat: number, lng: number, name: string): Promise<void> {
   const place = await googleTextSearchNear(name, lat, lng);
@@ -228,7 +235,7 @@ async function tryEnrichFromGoogle(placeId: string, lat: number, lng: number, na
             value: place.accessibilityOptions[key] ? "yes" : "no",
             source: "google",
             user_id: null,
-            confidence_weight: 0.5, // lower than OSM's 0.6 now that OSM is primary
+            confidence_weight: 0.6, // Google is the primary source; outweighs OSM's 0.5
           },
           { onConflict: "place_id,feature,source,user_id" },
         );
