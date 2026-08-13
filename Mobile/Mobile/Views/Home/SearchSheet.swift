@@ -7,6 +7,15 @@ enum HomeRoute: Hashable {
     case contribute
 }
 
+/// Carries the measured search-bar row height up to HomeMapView so the peek
+/// detent can be sized to the bar instead of a hardcoded value.
+private struct PeekHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 /// Content of the persistent bottom sheet presented by HomeMapView via a
 /// real `.sheet(...) { }.presentationDetents(...)` — the same pattern
 /// snackbud uses for its own sheets. That gives the native drag-up-to-expand
@@ -25,6 +34,9 @@ struct SearchSheet: View {
     @Binding var selectedPlace: Place?
     let onSelectPlace: (Place) -> Void
     let onCancelSearch: () -> Void
+    /// Reports the measured height of the search-bar row so the parent can size
+    /// the peek detent to it exactly (equal padding, no hardcoded height).
+    var onPeekHeightChange: (CGFloat) -> Void = { _ in }
 
     private var isSearching: Bool { detent == expandedDetent }
 
@@ -79,21 +91,25 @@ struct SearchSheet: View {
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
+            // Equal padding all around the pill; the measured height of this
+            // row is reported up so the peek detent fits it exactly.
+            .padding(16)
+            .background(
+                GeometryReader { geo in
+                    Color.clear.preference(key: PeekHeightKey.self, value: geo.size.height)
+                }
+            )
 
             // Clean home (frame 1): the peek is just the search pill. Category
             // tiles and the Explore/Saved/Contribute tab bar are gone — Saved
             // lives in the profile menu, Contribute on a place's detail.
             if isSearching {
                 resultsList
-                    .padding(.top, 8)
                     .transition(.opacity)
-            } else {
-                Spacer(minLength: 0)
             }
         }
         .frame(maxWidth: .infinity, alignment: .top)
+        .onPreferenceChange(PeekHeightKey.self) { onPeekHeightChange($0) }
     }
 
     private func scheduleSearch(for query: String) {
@@ -264,7 +280,8 @@ struct SearchSheet: View {
 
 #Preview {
     struct PreviewHost: View {
-        @State private var detent: PresentationDetent = peekDetent
+        // Preview-only literal; the app derives this from the measured bar.
+        @State private var detent: PresentationDetent = .height(92)
         @State private var searchText = ""
         @State private var selectedPlace: Place?
         @FocusState private var focused: Bool
@@ -286,10 +303,10 @@ struct SearchSheet: View {
                         onCancelSearch: {
                             focused = false
                             searchText = ""
-                            detent = peekDetent
+                            detent = .height(92)
                         }
                     )
-                    .presentationDetents([peekDetent, expandedDetent], selection: $detent)
+                    .presentationDetents([.height(92), expandedDetent], selection: $detent)
                     .presentationBackgroundInteraction(.enabled)
                     .presentationDragIndicator(.visible)
                     .interactiveDismissDisabled()

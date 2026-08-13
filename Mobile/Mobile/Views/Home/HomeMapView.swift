@@ -1,8 +1,10 @@
 import MapKit
 import SwiftUI
 
-// Just tall enough for the search pill + drag handle — the clean home peek.
-let peekDetent: PresentationDetent = .height(88)
+// The system drag-indicator area above the sheet content — added to the
+// measured search-bar height so the peek fits the bar exactly (rather than a
+// hardcoded sheet height).
+private let grabberInset: CGFloat = 24
 /// A tall CUSTOM detent instead of .large: iOS gives the true .large detent an
 /// opaque background, but custom/medium detents keep the translucent Liquid
 /// Glass treatment — so the expanded sheet stays glassy like the peek.
@@ -27,7 +29,12 @@ struct HomeMapView: View {
     /// own frame/background — this is what gives the real drag-up-to-expand,
     /// map-stays-interactive-underneath feel of Google/Apple Maps.
     @State private var isSheetPresented = true
-    @State private var sheetDetent: PresentationDetent = peekDetent
+    /// Measured height of the search-bar row (reported by SearchSheet). The
+    /// peek detent is derived from this so it fits the bar exactly instead of
+    /// a hardcoded value. Seeded with a sane fallback for the first layout
+    /// pass, then corrected once the bar reports its real size.
+    @State private var peekBarHeight: CGFloat = 68
+    @State private var sheetDetent: PresentationDetent = .height(68 + 24)
     @State private var searchText = ""
     @FocusState private var isSearchFocused: Bool
     @State private var showAnalysing = false
@@ -48,6 +55,10 @@ struct HomeMapView: View {
     private let places = Place.samples
 
     private var isSearching: Bool { sheetDetent == expandedDetent }
+
+    /// The peek detent, sized to the measured search bar plus the system drag
+    /// handle — no hardcoded sheet height.
+    private var peekDetent: PresentationDetent { .height(peekBarHeight + grabberInset) }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -87,7 +98,11 @@ struct HomeMapView: View {
                         searchRegion: visibleRegion,
                         selectedPlace: $selectedPlace,
                         onSelectPlace: openPlace,
-                        onCancelSearch: dismissSearch
+                        onCancelSearch: dismissSearch,
+                        onPeekHeightChange: { height in
+                            guard height > 0, abs(height - peekBarHeight) > 0.5 else { return }
+                            peekBarHeight = height
+                        }
                     )
                     // While a place detail is showing, lock the sheet to the
                     // expanded detent — collapsing detail content to the 230pt
@@ -130,6 +145,15 @@ struct HomeMapView: View {
                     // expands the sheet so the detail isn't shown cramped at
                     // peek height.
                     if place != nil { sheetDetent = expandedDetent }
+                }
+                .onChange(of: peekBarHeight) { _, _ in
+                    // The peek detent's value just changed, so the old value
+                    // is no longer in the detents set. If we're sitting at the
+                    // peek, re-point the selection at the new one so the sheet
+                    // doesn't snap to a fallback detent.
+                    if sheetDetent != expandedDetent {
+                        sheetDetent = peekDetent
+                    }
                 }
                 .onChange(of: locationManager.currentCoordinate) { _, coordinate in
                     guard let coordinate, !hasCenteredOnUser else { return }
