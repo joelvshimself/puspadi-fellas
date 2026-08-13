@@ -1,6 +1,6 @@
 # Puspadi Fellas
 
-An app that helps people with mobility disabilities make informed decisions by providing accessibility insights extracted from TikTok videos.
+An app that helps people with mobility disabilities make informed decisions by showing accessibility info for places — sourced from Google Places / OpenStreetMap and enriched by crowdsourced reviews and one-tap confirmations. (Pivoted 2026-08-12 from an earlier TikTok-video-analysis design — see `docs/specs.md` §1 for why.)
 
 ## Monorepo layout
 
@@ -26,7 +26,7 @@ their backend logic), mapped onto the folders that already exist in this repo:
 |---|---|---|---|
 | **Owner 1** | Search & Discover | `Views/Home/` (map, search sheet), `Models/Place.swift`, the search-results portion of `Views/Detail/PlaceDetailView.swift` | `supabase/functions/place-accessibility`, `place_cache` + `nearby_places()` in the migration |
 | **Owner 2** | Save & Share | `Views/Saved/`, the Save/Share buttons in `Views/Detail/PlaceDetailView.swift` | `profiles`, `folders`, `saved_places` in the migration; Auth Gate wiring |
-| **Owner 3** | Review & Record Route | `Views/Contribute/`, the Facilities/Routes/Review tabs in `Views/Detail/PlaceDetailView.swift` | `reviews`, `routes`, `venue_imdf_archives` in the migration |
+| **Owner 3** | Review & Record Route | `Views/Contribute/`, the Facilities/Routes/Review tabs in `Views/Detail/PlaceDetailView.swift`, the proximity-nudge quest UI (new) | `reviews`, `routes`, `venue_imdf_archives`, `accessibility_signals` + `accessibility_grade()` / `places_needing_confirmation()` |
 
 `Views/Detail/PlaceDetailView.swift` currently holds pieces of all three
 owners' UI (Save, Share, Facilities/Routes/Review tabs) — expect to split it
@@ -80,9 +80,11 @@ Mobile/Mobile/
 ## Backend
 
 A Supabase project lives in `backend/`. Schema, RLS policies, the
-`nearby_places()` RPC, and cache-invalidation triggers are all in one initial
-migration; the `place-accessibility` Edge Function is the only thing allowed
-to call Apify (see `docs/specs.md` §6 for why).
+`nearby_places()` / `places_needing_confirmation()` RPCs, and the
+confidence-weighted `accessibility_grade()` function are spread across a few
+migrations (applied in order); the `place-accessibility` Edge Function is the
+only thing allowed to call the Google Places API (Pro tier — see
+`docs/specs.md` §3/§6 for why).
 
 ```text
 backend/
@@ -90,11 +92,16 @@ backend/
 └── supabase/
     ├── config.toml
     ├── migrations/
-    │   └── <timestamp>_init_schema.sql   # place_cache, profiles, folders,
-    │                                      # saved_places, reviews, routes,
-    │                                      # venue_imdf_archives, RLS, triggers
+    │   ├── <ts>_init_schema.sql          # place_cache, profiles, folders,
+    │   │                                  # saved_places, reviews, routes,
+    │   │                                  # venue_imdf_archives, RLS
+    │   ├── <ts>_maps_data_pivot.sql       # accessibility_signals,
+    │   │                                  # accessibility_grade(),
+    │   │                                  # places_needing_confirmation(),
+    │   │                                  # search_query_cache
+    │   └── <ts>_restore_imdf_stale_trigger.sql
     └── functions/
-        └── place-accessibility/          # Owner 1 — the Apify cache-gate (stub, see TODOs)
+        └── place-accessibility/          # Owner 1 — the Google Places / OSM cache-gate (see TODOs)
 ```
 
 ### Getting started (per owner, on your own machine)

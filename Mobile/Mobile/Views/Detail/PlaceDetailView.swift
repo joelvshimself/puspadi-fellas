@@ -1,3 +1,4 @@
+import MapKit
 import SwiftUI
 
 struct PlaceDetailView: View {
@@ -6,12 +7,37 @@ struct PlaceDetailView: View {
     @State private var selectedTab: DetailTab = .facilities
     @State private var isSaved = false
 
+    /// Live-fetched from place-accessibility — only meaningful for a real
+    /// MKLocalSearch result (place.isLiveResult), never for the mock
+    /// `Place.samples` used elsewhere in this demo.
+    @State private var grade: [AccessibilityFeatureGrade] = []
+    @State private var isLoadingGrade = false
+    @State private var gradeLoadFailed = false
+    /// Populated from the same enrich() response as the grade — a cached
+    /// Mapillary photo URL for this place (nil if none), passed to PlaceImageView.
+    @State private var imageURL: URL?
+    @State private var imageAttribution: String?
+    @State private var enrichResolved = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 topActions
                 titleBlock
-                heroCard
+                if place.isLiveResult {
+                    PlaceImageView(
+                        coordinate: place.coordinate,
+                        remoteImageURL: imageURL,
+                        attribution: imageAttribution,
+                        resolved: enrichResolved
+                    )
+                    // Accessibility is the whole point of the app, so it leads.
+                    accessibilityGradeSection
+                    directionsButton
+                } else {
+                    // Mock sample places keep the original rating/summary card.
+                    heroCard
+                }
                 tabBar
                 tabContent
             }
@@ -20,6 +46,83 @@ struct PlaceDetailView: View {
         }
         .background(Color(.systemBackground))
         .toolbar(.hidden, for: .navigationBar)
+        .task(id: place.id) {
+            await loadGrade()
+        }
+    }
+
+    private func loadGrade() async {
+        guard place.isLiveResult else { return }
+        isLoadingGrade = true
+        gradeLoadFailed = false
+        defer {
+            isLoadingGrade = false
+            enrichResolved = true
+        }
+        do {
+            let response = try await AccessibilityService.shared.enrich(
+                lat: place.coordinate.latitude,
+                lng: place.coordinate.longitude,
+                name: place.name
+            )
+            grade = response.grade ?? []
+            imageURL = response.place?.imageUrl.flatMap(URL.init(string:))
+            imageAttribution = response.place?.imageAttribution
+        } catch {
+            gradeLoadFailed = true
+        }
+    }
+
+    @ViewBuilder
+    private var accessibilityGradeSection: some View {
+        if place.isLiveResult {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Accessibility Grade")
+                    .font(.headline)
+
+                if isLoadingGrade {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 8)
+                } else if gradeLoadFailed {
+                    Text("Couldn't load accessibility data right now.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else if grade.isEmpty {
+                    Text("No accessibility data yet for this place — be the first to check it.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(grade) { item in
+                        HStack(spacing: 10) {
+                            Image(systemName: item.symbolName)
+                                .foregroundStyle(color(for: item.bestValue))
+                            Text(item.featureLabel)
+                                .font(.subheadline.weight(.medium))
+                            Spacer()
+                            Text(item.valueLabel)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color(.separator), lineWidth: 1)
+            )
+        }
+    }
+
+    private func color(for bestValue: String) -> Color {
+        switch bestValue {
+        case "yes": .green
+        case "no": .red
+        case "limited": .orange
+        default: .secondary
+        }
     }
 
     private var topActions: some View {
@@ -74,6 +177,22 @@ struct PlaceDetailView: View {
         Text(place.name)
             .font(.largeTitle.bold())
             .padding(.top, -4)
+    }
+
+    private var directionsButton: some View {
+        Button {
+            let mapItem = MKMapItem(placemark: MKPlacemark(coordinate: place.coordinate))
+            mapItem.name = place.name
+            mapItem.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking])
+        } label: {
+            Label("Directions", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .foregroundStyle(.white)
+        }
+        .buttonStyle(.plain)
     }
 
     private var heroCard: some View {
