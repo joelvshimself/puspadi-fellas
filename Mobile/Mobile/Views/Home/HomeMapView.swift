@@ -32,6 +32,11 @@ struct HomeMapView: View {
     /// So the very first real location fix recenters the map once, without
     /// fighting the user if they've already panned elsewhere themselves.
     @State private var hasCenteredOnUser = false
+    /// Lets the user tap a place/POI on the map (Google-Maps-style) to open
+    /// its accessibility detail — without this the map is view-only.
+    /// MapFeature (not MapSelection, which is iOS 18+) so this works on the
+    /// project's iOS 17 deployment target.
+    @State private var mapSelection: MapFeature?
 
     private let places = Place.samples
 
@@ -117,7 +122,7 @@ struct HomeMapView: View {
     }
 
     private var mapLayer: some View {
-        Map(position: $cameraPosition) {
+        Map(position: $cameraPosition, selection: $mapSelection) {
             ForEach(places) { place in
                 Annotation(place.name, coordinate: place.coordinate) {
                     Image(systemName: "mappin.circle.fill")
@@ -135,6 +140,24 @@ struct HomeMapView: View {
             visibleRegion = context.region
         }
         .mapStyle(.standard(elevation: .realistic))
+        .onChange(of: mapSelection) { _, selection in
+            handleMapSelection(selection)
+        }
+    }
+
+    /// A tapped map POI carries a name + coordinate — exactly what the
+    /// accessibility pipeline needs — so route it through the same
+    /// openPlace() path a search-result tap uses.
+    private func handleMapSelection(_ feature: MapFeature?) {
+        guard let feature else { return }
+        mapSelection = nil
+        openPlace(
+            Place.fromSearchResult(
+                name: feature.title ?? "Selected place",
+                category: "Place",
+                coordinate: feature.coordinate
+            )
+        )
     }
 
     private var topBar: some View {
