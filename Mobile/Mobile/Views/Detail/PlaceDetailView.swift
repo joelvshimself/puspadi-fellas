@@ -18,6 +18,9 @@ struct PlaceDetailView: View {
             VStack(alignment: .leading, spacing: 20) {
                 topActions
                 titleBlock
+                if place.isLiveResult {
+                    PlaceImageView(coordinate: place.coordinate)
+                }
                 heroCard
                 accessibilityGradeSection
                 tabBar
