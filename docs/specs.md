@@ -125,14 +125,22 @@ original pre-pivot v1 sketch, kept for history only.
   app installed (hosting TBD — see open questions).
 - No write happens server-side, so no session is needed to share.
 
-### 4.5 Review Accessibility — auth required — Owner 3
+### 4.5 Review Accessibility — Owner 3
 
-- Tap Review on an unauthenticated session triggers the Auth Gate.
-- Form: structured yes/no/limited answers for entrance, parking, restroom, and
-  seating accessibility (tightened from the original freeform
-  entrance/exit/indoor/outdoor fields so a review maps directly onto the same
-  `accessibility_feature`/`accessibility_value` vocabulary Google and OSM signals
-  use), plus a free-text notes field.
+- **Endpoint (detailed contribute form):**
+  `POST /functions/v1/submit-accessibility-review`
+  (`backend/supabase/functions/submit-accessibility-review`). Body:
+  `{ appleMapsId, lat, lng, entrances?, elevator?, toilet? }` — MapKit id is a
+  cross-ref; canonical `place_id` is still `loc_<lat>_<lng>`. The function
+  derives `entrance_accessible` / `restroom_accessible` / `elevator_accessible`,
+  stores the full payload in `reviews.details`, and returns the live
+  `accessibility_grade()`.
+- **Auth temporarily disabled for device testing** — inserts use `user_id = null`
+  via service_role. Re-enable JWT (and NOT NULL `user_id`) before production;
+  the long-term rule remains: Tap Review on an unauthenticated session triggers
+  the Auth Gate.
+- Legacy short form also supports structured yes/no/limited answers for
+  entrance, parking, restroom, and seating plus free-text `notes`.
 - Write to `reviews` → a trigger (`review_to_signals`) fans each structured answer
   out into `accessibility_signals` (source `review`, weight 0.4), where it's just
   one more piece of evidence feeding that place's live `accessibility_grade()`. A
@@ -230,7 +238,7 @@ Implementation:
 
 Every piece of evidence about a place's accessibility — Google's field, OSM's tag,
 a detailed review, a one-tap confirmation — is written as a row in
-`accessibility_signals` (`place_id`, `feature` [entrance/parking/restroom/seating],
+`accessibility_signals` (`place_id`, `feature` [entrance/parking/restroom/seating/elevator],
 `value` [yes/no/limited/unknown], `source` [google/osm/review/confirmation],
 `confidence_weight`, `created_at`). The grade is **computed live**, not stored, via
 `accessibility_grade(place_id)`: for each feature, every signal's weight decays
