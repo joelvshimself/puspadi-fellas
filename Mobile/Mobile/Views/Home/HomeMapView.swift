@@ -56,6 +56,9 @@ struct HomeMapView: View {
     /// (no filter). See the filter panel opened from the top-left button.
     @State private var selectedGrades: Set<OverallAccessibility> = []
     @State private var showFilter = false
+    /// Bottom safe-area height, captured before the map ignores safe areas, so
+    /// the location button can be floated just above the peek sheet.
+    @State private var bottomSafeInset: CGFloat = 34
 
     private let places = Place.samples
 
@@ -78,6 +81,15 @@ struct HomeMapView: View {
     var body: some View {
         NavigationStack(path: $path) {
             mapLayer
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear
+                            .onAppear { bottomSafeInset = proxy.safeAreaInsets.bottom }
+                            .onChange(of: proxy.safeAreaInsets.bottom) { _, value in
+                                bottomSafeInset = value
+                            }
+                    }
+                )
                 .ignoresSafeArea()
                 // Dim the map while the filter panel is open (frame 2).
                 .overlay {
@@ -109,9 +121,14 @@ struct HomeMapView: View {
                     }
                 }
                 .overlay(alignment: .bottomTrailing) {
-                    locationButton
-                        .padding(.trailing, 16)
-                        .padding(.bottom, 16)
+                    // Floated just above the peek sheet (which otherwise covers
+                    // the screen bottom). Hidden while searching or filtering.
+                    if !isSearching && !showFilter {
+                        locationButton
+                            .padding(.trailing, 16)
+                            .padding(.bottom, peekBarHeight + bottomSafeInset + 12)
+                            .transition(.opacity)
+                    }
                 }
                 .toolbar(path.isEmpty ? .hidden : .automatic, for: .navigationBar)
                 .navigationDestination(for: HomeRoute.self) { route in
@@ -207,6 +224,10 @@ struct HomeMapView: View {
 
     private var mapLayer: some View {
         Map(position: $cameraPosition, selection: $mapSelection) {
+            // The blue "current location" dot (with heading) — this is the
+            // person's own position pin.
+            UserAnnotation()
+
             ForEach(filteredPlaces) { place in
                 Annotation(place.name, coordinate: place.coordinate) {
                     Image(systemName: "mappin.circle.fill")
