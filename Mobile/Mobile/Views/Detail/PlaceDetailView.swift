@@ -6,6 +6,7 @@ struct PlaceDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selectedTab: DetailTab = .facilities
     @State private var isSaved = false
+    @State private var showReviewWizard = false
 
     /// Live-fetched from place-accessibility — only meaningful for a real
     /// MKLocalSearch result (place.isLiveResult), never for the mock
@@ -49,6 +50,13 @@ struct PlaceDetailView: View {
         .task(id: place.id) {
             await loadGrade()
         }
+        .fullScreenCover(isPresented: $showReviewWizard, onDismiss: {
+            // A successful submit recomputes accessibility_grade() server-side;
+            // refetch so the card above reflects the new review immediately.
+            Task { await loadGrade() }
+        }) {
+            ReviewWizardView(place: place) { showReviewWizard = false }
+        }
     }
 
     private func loadGrade() async {
@@ -73,12 +81,39 @@ struct PlaceDetailView: View {
         }
     }
 
+    /// TODO(backend): derived client-side from the per-feature rows as a
+    /// placeholder — no overall-grade field exists on the backend response
+    /// yet. Real logic should follow the Boolean Grading Matrix (E/V/T) once
+    /// the backend computes it; this is a simple stand-in (any "no" →
+    /// Not Accessible, all "yes" → Accessible, otherwise Partially Accessible).
+    private var overallGrade: OverallAccessibility? {
+        guard !grade.isEmpty else { return nil }
+        if grade.contains(where: { $0.bestValue == "no" }) {
+            return .notAccessible
+        }
+        if grade.allSatisfy({ $0.bestValue == "yes" }) {
+            return .accessible
+        }
+        return .partiallyAccessible
+    }
+
     @ViewBuilder
     private var accessibilityGradeSection: some View {
         if place.isLiveResult {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Accessibility Grade")
-                    .font(.headline)
+                HStack {
+                    Text("Accessibility Grade")
+                        .font(.headline)
+                    Spacer()
+                    if let overallGrade {
+                        Text(overallGrade.label)
+                            .font(.caption.weight(.bold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(overallGrade.color.opacity(0.15), in: Capsule())
+                            .foregroundStyle(overallGrade.color)
+                    }
+                }
 
                 if isLoadingGrade {
                     ProgressView()
@@ -195,6 +230,18 @@ struct PlaceDetailView: View {
         .buttonStyle(.plain)
     }
 
+    /// TODO(backend): mock samples have no real grade data, so this maps
+    /// the canned `ratingLabel` copy onto the same green/yellow/red badge
+    /// as the live grade card, purely so the badge is visible in previews —
+    /// not a real grading rule.
+    private var mockOverallGrade: OverallAccessibility {
+        switch place.ratingLabel {
+        case "Excellent", "Great": .accessible
+        case "Good": .partiallyAccessible
+        default: .notAccessible
+        }
+    }
+
     private var heroCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
@@ -203,6 +250,13 @@ struct PlaceDetailView: View {
                     .foregroundStyle(.secondary)
                 Text(place.ratingLabel)
                     .font(.headline)
+                Spacer()
+                Text(mockOverallGrade.label)
+                    .font(.caption.weight(.bold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(mockOverallGrade.color.opacity(0.15), in: Capsule())
+                    .foregroundStyle(mockOverallGrade.color)
             }
 
             Text(place.summary)
@@ -333,6 +387,11 @@ struct PlaceDetailView: View {
         }
     }
 
+    // NOTE: reviewsBox is shared by both the Facilities tab (as the trailing
+    // card in facilitiesContent) and the Review tab (as its entire content)
+    // — the "Write a Review" CTA below therefore surfaces in both places.
+    // That's intentional (extra discoverability, harmless duplication) not
+    // a bug — kept as one shared view rather than forking a near-duplicate.
     private var reviewsBox: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Reviews Summary")
@@ -341,6 +400,21 @@ struct PlaceDetailView: View {
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                showReviewWizard = true
+            } label: {
+                Label("Write a Review", systemImage: "square.and.pencil")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .foregroundStyle(.white)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 4)
+            // A successful submit is followed by a grade refetch (see
+            // fullScreenCover's onDismiss above), so the card updates.
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
