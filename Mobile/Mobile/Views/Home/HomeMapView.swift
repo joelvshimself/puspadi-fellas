@@ -91,7 +91,13 @@ struct HomeMapView: View {
                         onCancelSearch: dismissSearch,
                         onSelectTab: handleTabSelection
                     )
-                    .presentationDetents([peekDetent, expandedDetent], selection: $sheetDetent)
+                    // While a place detail is showing, lock the sheet to the
+                    // expanded detent — collapsing detail content to the 230pt
+                    // peek cut it into an ugly sliver. Search/browse keeps both.
+                    .presentationDetents(
+                        selectedPlace == nil ? [peekDetent, expandedDetent] : [expandedDetent],
+                        selection: $sheetDetent
+                    )
                     .presentationBackgroundInteraction(.enabled)
                     .presentationDragIndicator(.visible)
                     .presentationCornerRadius(24)
