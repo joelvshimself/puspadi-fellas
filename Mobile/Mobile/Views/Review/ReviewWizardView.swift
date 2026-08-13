@@ -213,13 +213,17 @@ struct ReviewWizardView: View {
         hasher.combine(draft.lobby.hasDropoffRamp)
         hasher.combine(draft.lobby.hasRails)
         hasher.combine(draft.lobby.review.text)
+        hasher.combine(draft.lobby.review.photos.count)
         hasher.combine(draft.basement.hasDropoffRamp)
         hasher.combine(draft.basement.review.text)
+        hasher.combine(draft.basement.review.photos.count)
         hasher.combine(draft.elevator.exists)
         hasher.combine(draft.elevator.wheelchairAccessible)
         hasher.combine(draft.elevator.review.text)
+        hasher.combine(draft.elevator.review.photos.count)
         hasher.combine(draft.toilet.hasDisabledToilet)
         hasher.combine(draft.toilet.review.text)
+        hasher.combine(draft.toilet.review.photos.count)
         return hasher.finalize()
     }
 }
