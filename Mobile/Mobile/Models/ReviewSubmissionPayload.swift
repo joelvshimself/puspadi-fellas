@@ -3,7 +3,7 @@ import Foundation
 /// Exact wire shape of `POST /functions/v1/submit-accessibility-review`, per
 /// the backend teammate's contract. `ReviewDraft.buildSubmissionPayload()`
 /// maps the wizard's local state onto this 1:1 — see ReviewService for the
-/// (stubbed) call site.
+/// live call site (photos are uploaded to Storage first; URLs land here).
 ///
 /// Example payload the backend gave us:
 /// ```json
@@ -59,51 +59,60 @@ struct ReviewSubmissionPayload: Encodable {
     }
 }
 
+/// Public Storage URLs produced by `ReviewService` before building the payload.
+struct ReviewPhotoURLMap {
+    var lobby: [String] = []
+    var basement: [String] = []
+    var elevator: [String] = []
+    var toilet: [String] = []
+}
+
 extension ReviewNoteDraft {
-    /// Empty text → nil, no photos picked → nil review entirely (matches
-    /// contract: "review with text=null and photoUrls=[] = same as review:null").
-    /// TODO(backend): photoImage never becomes a URL in this pass — real flow
-    /// uploads to Storage first and puts the resulting URLs here.
-    fileprivate var asReview: ReviewSubmissionPayload.Review? {
+    /// Empty text + empty URLs → nil review (matches contract:
+    /// "review with text=null and photoUrls=[] = same as review:null").
+    fileprivate func asReview(photoUrls: [String]) -> ReviewSubmissionPayload.Review? {
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedText.isEmpty && photoImage == nil { return nil }
-        return .init(text: trimmedText.isEmpty ? nil : trimmedText, photoUrls: [])
+        if trimmedText.isEmpty && photoUrls.isEmpty { return nil }
+        return .init(text: trimmedText.isEmpty ? nil : trimmedText, photoUrls: photoUrls)
     }
 }
 
 extension EntranceDraft {
-    fileprivate var asReport: ReviewSubmissionPayload.EntranceReport {
+    fileprivate func asReport(photoUrls: [String]) -> ReviewSubmissionPayload.EntranceReport {
         .init(
             location: location.rawValue,
             hasDropoffRamp: hasDropoffRamp,
             hasRails: hasRails,
             doorType: doorType?.rawValue,
             isWideEnough: isWideEnough,
-            review: review.asReview
+            review: review.asReview(photoUrls: photoUrls)
         )
     }
 }
 
 extension ReviewDraft {
-    /// Builds the real request body from current wizard state — sent by
-    /// ReviewService.submit to the live `submit-accessibility-review` Edge Function.
-    func buildSubmissionPayload() -> ReviewSubmissionPayload {
+    /// Builds the request body from wizard state plus Storage public URLs
+    /// for each facility's note photos.
+    func buildSubmissionPayload(photoUrls: ReviewPhotoURLMap) -> ReviewSubmissionPayload {
         let elevatorReport = ReviewSubmissionPayload.ElevatorReport(
             exists: elevator.exists,
             wheelchairAccessible: elevator.exists == true ? elevator.wheelchairAccessible : nil,
             // Contract: strip blockers unless wheelchairAccessible == false.
             blockers: elevator.wheelchairAccessible == false ? elevator.blockers.map(\.rawValue) : [],
-            review: elevator.review.asReview
+            review: elevator.review.asReview(photoUrls: photoUrls.elevator)
         )
         let toiletReport = ReviewSubmissionPayload.ToiletReport(
             hasDisabledToilet: toilet.hasDisabledToilet,
-            review: toilet.review.asReview
+            review: toilet.review.asReview(photoUrls: photoUrls.toilet)
         )
         return ReviewSubmissionPayload(
             appleMapsId: appleMapsId,
             lat: coordinate.latitude,
             lng: coordinate.longitude,
-            entrances: [lobby.asReport, basement.asReport],
+            entrances: [
+                lobby.asReport(photoUrls: photoUrls.lobby),
+                basement.asReport(photoUrls: photoUrls.basement),
+            ],
             elevator: elevatorReport,
             toilet: toiletReport
         )

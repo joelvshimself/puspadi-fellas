@@ -118,12 +118,42 @@ struct ToiletDraft {
 
 // MARK: - Shared review note
 
+/// One local photo attached to a facility note. JPEG bytes are uploaded to
+/// Supabase Storage (`review-photos`) at submit time; the resulting public
+/// URLs become `photoUrls` in the wire payload.
+struct ReviewPhotoDraft: Identifiable {
+    let id: UUID
+    let image: UIImage
+    let jpegData: Data
+
+    init(id: UUID = UUID(), image: UIImage, jpegData: Data) {
+        self.id = id
+        self.image = image
+        self.jpegData = jpegData
+    }
+}
+
 struct ReviewNoteDraft {
+    static let maxPhotos = 5
+    static let jpegQuality: CGFloat = 0.7
+
     /// Empty string is treated as "no text" (→ nil) at submit time, per contract.
     var text: String = ""
-    /// In-memory only for this pass. TODO(backend): real flow uploads to
-    /// Supabase Storage and the contract expects `photoUrls: [String]`.
-    var photoImage: UIImage?
+    /// Local photos (≤ `maxPhotos`). Uploaded to Storage before submit.
+    var photos: [ReviewPhotoDraft] = []
+
+    var canAddMorePhotos: Bool { photos.count < Self.maxPhotos }
+
+    mutating func addPhoto(from image: UIImage) {
+        guard canAddMorePhotos,
+              let jpegData = image.jpegData(compressionQuality: Self.jpegQuality)
+        else { return }
+        photos.append(ReviewPhotoDraft(image: image, jpegData: jpegData))
+    }
+
+    mutating func removePhoto(id: UUID) {
+        photos.removeAll { $0.id == id }
+    }
 }
 
 // MARK: - Wizard steps
