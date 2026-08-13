@@ -18,6 +18,11 @@ struct PlaceDetailView: View {
     @State private var imageURL: URL?
     @State private var imageAttribution: String?
     @State private var enrichResolved = false
+    /// The Apple Place Card ("widget") is presented as a sheet bound to this
+    /// resolved MKMapItem — Apple's rich card (business photos, hours, and its
+    /// own detailed map that renders building footprints / indoor floor plans
+    /// where they exist). iOS 18+ only; on iOS 17 the button is hidden.
+    @State private var detailMapItem: MKMapItem?
 
     var body: some View {
         ScrollView {
@@ -29,6 +34,9 @@ struct PlaceDetailView: View {
                     // up top (the decision-making info), then the street photo
                     // and reviews as supporting detail at the bottom.
                     FacilityMapHeader(coordinate: place.coordinate, name: place.name)
+                    if #available(iOS 18.0, *) {
+                        placeCardButton
+                    }
                     accessibilityGradeSection
                     directionsButton
 
@@ -57,6 +65,35 @@ struct PlaceDetailView: View {
         .task(id: place.id) {
             await loadGrade()
         }
+        .modifier(PlaceCardSheet(item: $detailMapItem))
+    }
+
+    @available(iOS 18.0, *)
+    private var placeCardButton: some View {
+        Button {
+            Task { detailMapItem = await resolveMapItem() }
+        } label: {
+            Label("More place details", systemImage: "info.circle")
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .foregroundStyle(.primary)
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Resolves the tapped place to a real MKMapItem (carrying Apple's place
+    /// data, incl. photos) so the Place Card has something to show.
+    private func resolveMapItem() async -> MKMapItem? {
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = place.name
+        request.region = MKCoordinateRegion(
+            center: place.coordinate,
+            span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+        )
+        let response = try? await MKLocalSearch(request: request).start()
+        return response?.mapItems.first
     }
 
     private func loadGrade() async {
@@ -373,6 +410,20 @@ struct PlaceDetailView: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Color(.separator), lineWidth: 1)
         )
+    }
+}
+
+/// Applies Apple's Place Card sheet on iOS 18+, and is a no-op on iOS 17
+/// (the project's deployment target), so the feature degrades gracefully.
+private struct PlaceCardSheet: ViewModifier {
+    @Binding var item: MKMapItem?
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.mapItemDetailSheet(item: $item)
+        } else {
+            content
+        }
     }
 }
 
