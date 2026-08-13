@@ -3,9 +3,10 @@ import SwiftUI
 
 struct PlaceDetailView: View {
     let place: Place
-    @Environment(\.dismiss) private var dismiss
+    /// Returns to the search results within the same bottom sheet (this view is
+    /// now embedded in the sheet, not pushed as a separate page).
+    var onBack: () -> Void = {}
     @State private var selectedTab: DetailTab = .facilities
-    @State private var isSaved = false
     @State private var showReviewWizard = false
 
     /// Live-fetched from place-accessibility — only meaningful for a real
@@ -26,27 +27,34 @@ struct PlaceDetailView: View {
                 topActions
                 titleBlock
                 if place.isLiveResult {
+                    // Order: locator map -> accessibility grade -> directions
+                    // up top (the decision-making info), then the street photo
+                    // and reviews as supporting detail at the bottom.
+                    FacilityMapHeader(coordinate: place.coordinate, name: place.name)
+                    accessibilityGradeSection
+                    directionsButton
+
                     PlaceImageView(
                         coordinate: place.coordinate,
                         remoteImageURL: imageURL,
                         attribution: imageAttribution,
                         resolved: enrichResolved
                     )
-                    // Accessibility is the whole point of the app, so it leads.
-                    accessibilityGradeSection
-                    directionsButton
+
+                    liveReviewsSection
                 } else {
                     // Mock sample places keep the original rating/summary card.
                     heroCard
+                    tabBar
+                    tabContent
                 }
-                tabBar
-                tabContent
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 32)
         }
-        .background(Color(.systemBackground))
-        .toolbar(.hidden, for: .navigationBar)
+        // No opaque background — a ScrollView is transparent by default, so the
+        // detail inherits the sheet's glassy material and matches the
+        // search/peek states (same sheet, one look).
         .task(id: place.id) {
             await loadGrade()
         }
@@ -160,11 +168,11 @@ struct PlaceDetailView: View {
         }
     }
 
+    // Just a back affordance to return to results — Save/Share removed for a
+    // clean look (they can live elsewhere once those flows are built).
     private var topActions: some View {
-        HStack(alignment: .top) {
-            Button {
-                dismiss()
-            } label: {
+        HStack {
+            Button(action: onBack) {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.primary)
@@ -172,46 +180,48 @@ struct PlaceDetailView: View {
                     .background(Color(.secondarySystemBackground), in: Circle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Back")
+            .accessibilityLabel("Back to results")
 
             Spacer()
-
-            VStack(alignment: .trailing, spacing: 10) {
-                Button {
-                    isSaved.toggle()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: isSaved ? "heart.fill" : "heart")
-                        Text("Save")
-                            .fontWeight(.semibold)
-                    }
-                    .font(.subheadline)
-                    .foregroundStyle(isSaved ? Color.white : .primary)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(
-                        Capsule()
-                            .fill(isSaved ? Color.accentColor : Color(.secondarySystemBackground))
-                    )
-                }
-                .buttonStyle(.plain)
-
-                ShareLink(item: "Check out \(place.name) on Puspadi Fellas") {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .frame(width: 40, height: 40)
-                        .background(Color(.secondarySystemBackground), in: Circle())
-                }
-            }
         }
-        .padding(.top, 8)
+        .padding(.top, 4)
     }
 
     private var titleBlock: some View {
         Text(place.name)
             .font(.largeTitle.bold())
             .padding(.top, -4)
+    }
+
+    private var liveReviewsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Reviews")
+                .font(.headline)
+            Text("No reviews yet — be the first to review this place's accessibility.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            // Entry point into the crowdsourced review wizard (merged from the
+            // review-flow branch). Lives here so live places can reach it too.
+            Button {
+                showReviewWizard = true
+            } label: {
+                Label("Write a Review", systemImage: "square.and.pencil")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .foregroundStyle(.white)
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color(.separator), lineWidth: 1)
+        )
     }
 
     private var directionsButton: some View {
@@ -442,7 +452,5 @@ private enum DetailTab: String, CaseIterable, Identifiable {
 }
 
 #Preview {
-    NavigationStack {
-        PlaceDetailView(place: Place.samples[0])
-    }
+    PlaceDetailView(place: Place.samples[0], onBack: {})
 }

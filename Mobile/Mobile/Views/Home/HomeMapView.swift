@@ -1,7 +1,11 @@
 import MapKit
 import SwiftUI
 
-private let peekDetent: PresentationDetent = .height(230)
+let peekDetent: PresentationDetent = .height(230)
+/// A tall CUSTOM detent instead of .large: iOS gives the true .large detent an
+/// opaque background, but custom/medium detents keep the translucent Liquid
+/// Glass treatment — so the expanded sheet stays glassy like the peek.
+let expandedDetent: PresentationDetent = .fraction(0.92)
 
 struct HomeMapView: View {
     @State private var cameraPosition: MapCameraPosition = .region(
@@ -37,10 +41,13 @@ struct HomeMapView: View {
     /// MapFeature (not MapSelection, which is iOS 18+) so this works on the
     /// project's iOS 17 deployment target.
     @State private var mapSelection: MapFeature?
+    /// The place whose accessibility detail is shown inside the bottom sheet
+    /// (same-sheet method — no separate pushed page).
+    @State private var selectedPlace: Place?
 
     private let places = Place.samples
 
-    private var isSearching: Bool { sheetDetent == .large }
+    private var isSearching: Bool { sheetDetent == expandedDetent }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -59,8 +66,9 @@ struct HomeMapView: View {
                 .toolbar(path.isEmpty ? .hidden : .automatic, for: .navigationBar)
                 .navigationDestination(for: HomeRoute.self) { route in
                     switch route {
-                    case .place(let place):
-                        PlaceDetailView(place: place)
+                    case .place:
+                        // Place detail now renders inside the sheet, not here.
+                        EmptyView()
                     case .saved:
                         SavedView()
                     case .contribute:
@@ -78,20 +86,30 @@ struct HomeMapView: View {
                         isSearchFocused: $isSearchFocused,
                         places: places,
                         searchRegion: visibleRegion,
+                        selectedPlace: $selectedPlace,
                         onSelectPlace: openPlace,
                         onCancelSearch: dismissSearch,
                         onSelectTab: handleTabSelection
                     )
-                    .presentationDetents([peekDetent, .large], selection: $sheetDetent)
+                    // While a place detail is showing, lock the sheet to the
+                    // expanded detent — collapsing detail content to the 230pt
+                    // peek cut it into an ugly sliver. Search/browse keeps both.
+                    .presentationDetents(
+                        selectedPlace == nil ? [peekDetent, expandedDetent] : [expandedDetent],
+                        selection: $sheetDetent
+                    )
                     .presentationBackgroundInteraction(.enabled)
                     .presentationDragIndicator(.visible)
                     .presentationCornerRadius(24)
+                    // No explicit presentationBackground — the iOS 26 default
+                    // sheet is Liquid Glass (translucent, map shows through).
+                    // An explicit material override flattened it to gray.
                     .interactiveDismissDisabled()
                 }
                 .onChange(of: isSearchFocused) { _, focused in
                     // TextField focus does not fire parent tap gestures; expand from focus.
                     if focused, !isSearching {
-                        sheetDetent = .large
+                        sheetDetent = expandedDetent
                     }
                 }
                 .onChange(of: path.count) { _, count in
@@ -109,6 +127,12 @@ struct HomeMapView: View {
                         // it while we're deeper in the stack.
                         isSheetPresented = false
                     }
+                }
+                .onChange(of: selectedPlace) { _, place in
+                    // Opening a place (from a result or a map POI tap) always
+                    // expands the sheet so the detail isn't shown cramped at
+                    // peek height.
+                    if place != nil { sheetDetent = expandedDetent }
                 }
                 .onChange(of: locationManager.currentCoordinate) { _, coordinate in
                     guard let coordinate, !hasCenteredOnUser else { return }
@@ -223,10 +247,11 @@ struct HomeMapView: View {
     }
 
     private func openPlace(_ place: Place) {
-        // Sheet dismissal/re-presentation is handled centrally by the
-        // path.count change handler above, for every pushed destination.
+        // Show the accessibility detail inside the sheet (not a pushed page),
+        // and expand the sheet so it's fully visible.
         isSearchFocused = false
-        path.append(HomeRoute.place(place))
+        selectedPlace = place
+        sheetDetent = expandedDetent
     }
 
     private func handleTabSelection(_ tab: HomeTab) {

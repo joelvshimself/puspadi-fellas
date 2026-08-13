@@ -27,11 +27,14 @@ struct SearchSheet: View {
     let places: [Place]
     /// Biases MKLocalSearch toward what's currently on screen.
     let searchRegion: MKCoordinateRegion
+    /// When set, the sheet shows this place's accessibility detail in place of
+    /// the search UI (same-sheet method, no separate pushed page).
+    @Binding var selectedPlace: Place?
     let onSelectPlace: (Place) -> Void
     let onCancelSearch: () -> Void
     let onSelectTab: (HomeTab) -> Void
 
-    private var isSearching: Bool { detent == .large }
+    private var isSearching: Bool { detent == expandedDetent }
 
     /// Real on-device search results (MKLocalSearch) — replaces the old
     /// local substring filter over mock `places`. See §4.1 in
@@ -57,6 +60,22 @@ struct SearchSheet: View {
     }
 
     var body: some View {
+        Group {
+            if let selectedPlace {
+                // Accessibility detail lives in the same sheet — tapping a
+                // result swaps the sheet's content instead of pushing a page.
+                PlaceDetailView(place: selectedPlace, onBack: { self.selectedPlace = nil })
+            } else {
+                searchContent
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .top)
+        .onChange(of: searchText) { _, newValue in
+            scheduleSearch(for: newValue)
+        }
+    }
+
+    private var searchContent: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
                 searchField
@@ -89,9 +108,6 @@ struct SearchSheet: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .top)
-        .onChange(of: searchText) { _, newValue in
-            scheduleSearch(for: newValue)
-        }
     }
 
     private func scheduleSearch(for query: String) {
@@ -107,8 +123,8 @@ struct SearchSheet: View {
         // rather than field focus, because FocusState doesn't propagate
         // reliably across the sheet boundary (that's why results previously
         // only appeared after manually dragging the sheet up).
-        if detent != .large {
-            detent = .large
+        if detent != expandedDetent {
+            detent = expandedDetent
         }
         isSearchingLive = true
         searchErrorMessage = nil
@@ -317,7 +333,7 @@ struct SearchSheet: View {
     }
 
     private func beginSearch() {
-        detent = .large
+        detent = expandedDetent
         isSearchFocused.wrappedValue = true
     }
 }
@@ -327,6 +343,7 @@ struct SearchSheet: View {
         @State private var detent: PresentationDetent = .height(230)
         @State private var searchText = ""
         @State private var selectedTab: HomeTab = .explore
+        @State private var selectedPlace: Place?
         @FocusState private var focused: Bool
 
         var body: some View {
@@ -342,6 +359,7 @@ struct SearchSheet: View {
                             center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
                             span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
                         ),
+                        selectedPlace: $selectedPlace,
                         onSelectPlace: { _ in },
                         onCancelSearch: {
                             focused = false
@@ -350,7 +368,7 @@ struct SearchSheet: View {
                         },
                         onSelectTab: { selectedTab = $0 }
                     )
-                    .presentationDetents([.height(230), .large], selection: $detent)
+                    .presentationDetents([peekDetent, expandedDetent], selection: $detent)
                     .presentationBackgroundInteraction(.enabled)
                     .presentationDragIndicator(.visible)
                     .interactiveDismissDisabled()
