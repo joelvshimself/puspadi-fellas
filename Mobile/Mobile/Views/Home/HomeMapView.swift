@@ -91,11 +91,11 @@ struct HomeMapView: View {
                     .presentationBackgroundInteraction(.enabled)
                     .presentationDragIndicator(.visible)
                     .presentationCornerRadius(24)
-                    // Pin one opaque background across all detents. Without
-                    // this, iOS renders the peek detent translucent (map shows
-                    // through) and the full detent opaque, making the two
-                    // states look like different screens.
-                    .presentationBackground(Color(.systemBackground))
+                    // One consistent glassy material for EVERY sheet state
+                    // (peek, expanded search, and the place detail) — without
+                    // this, .large detents default to opaque white while peek
+                    // looks glassy, making them read as two different UIs.
+                    .presentationBackground(.regularMaterial)
                     .interactiveDismissDisabled()
                 }
                 .onChange(of: isSearchFocused) { _, focused in
@@ -119,6 +119,12 @@ struct HomeMapView: View {
                         // it while we're deeper in the stack.
                         isSheetPresented = false
                     }
+                }
+                .onChange(of: selectedPlace) { _, place in
+                    // Opening a place (from a result or a map POI tap) always
+                    // expands the sheet so the detail isn't shown cramped at
+                    // peek height.
+                    if place != nil { sheetDetent = .large }
                 }
                 .onChange(of: locationManager.currentCoordinate) { _, coordinate in
                     guard let coordinate, !hasCenteredOnUser else { return }

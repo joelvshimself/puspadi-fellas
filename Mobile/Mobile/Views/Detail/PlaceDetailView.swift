@@ -59,7 +59,9 @@ struct PlaceDetailView: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 32)
         }
-        .background(Color(.systemBackground))
+        // No opaque background — a ScrollView is transparent by default, so the
+        // detail inherits the sheet's glassy material and matches the
+        // search/peek states (same sheet, one look).
         .task(id: place.id) {
             await loadGrade()
         }
