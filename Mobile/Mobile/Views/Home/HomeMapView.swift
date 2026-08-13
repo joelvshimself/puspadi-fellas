@@ -2,7 +2,7 @@ import MapKit
 import SwiftUI
 
 // Just tall enough for the search pill + drag handle — the clean home peek.
-let peekDetent: PresentationDetent = .height(120)
+let peekDetent: PresentationDetent = .height(88)
 /// A tall CUSTOM detent instead of .large: iOS gives the true .large detent an
 /// opaque background, but custom/medium detents keep the translucent Liquid
 /// Glass treatment — so the expanded sheet stays glassy like the peek.
