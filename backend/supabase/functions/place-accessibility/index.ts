@@ -97,6 +97,16 @@ Deno.serve(async (req: Request) => {
     // and stored in Supabase Storage — its license permits caching the bytes,
     // and its own thumbnail URLs expire, so we store our own permanent copy.
     await tryCacheMapillaryImage(placeId, lat, lng);
+
+    // Negative-cache marker. `needsRefresh` treats a row with null
+    // google_accessibility AND null osm_accessibility as "never fetched", so a
+    // place Google can't match and OSM has no tag for would otherwise re-run
+    // the (paid) Google call + Overpass + a Mapillary download on EVERY view.
+    // Stamp an empty object so freshness is governed purely by the TTL from here.
+    await supabase.from("place_cache")
+      .update({ google_accessibility: {} })
+      .eq("place_id", placeId)
+      .is("google_accessibility", null);
   }
 
   const { data: grade } = await supabase.rpc("accessibility_grade", { target_place_id: placeId });
@@ -133,7 +143,10 @@ async function tryEnrichFromOSM(placeId: string, lat: number, lng: number): Prom
     if (osmTags.wheelchair) {
       const value = osmTags.wheelchair === "yes" ? "yes" : osmTags.wheelchair === "limited" ? "limited" : "no";
       await supabase.from("accessibility_signals").upsert(
-        { place_id: placeId, feature: "entrance", value, source: "osm", user_id: null, confidence_weight: 0.5 },
+        {
+          place_id: placeId, feature: "entrance", value, source: "osm", user_id: null,
+          confidence_weight: 0.5, updated_at: new Date().toISOString(),
+        },
         { onConflict: "place_id,feature,source,user_id" },
       );
     }
@@ -305,6 +318,7 @@ async function tryEnrichFromGoogle(placeId: string, lat: number, lng: number, na
             source: "google",
             user_id: null,
             confidence_weight: 0.6, // Google is the primary source; outweighs OSM's 0.5
+            updated_at: new Date().toISOString(), // bump so decay-on-greatest keeps refreshed rows fresh
           },
           { onConflict: "place_id,feature,source,user_id" },
         );
