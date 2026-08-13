@@ -1,10 +1,11 @@
 import MapKit
 import SwiftUI
 
-// The system drag-indicator area above the sheet content — added to the
-// measured search-bar height so the peek fits the bar exactly (rather than a
-// hardcoded sheet height).
-private let grabberInset: CGFloat = 24
+// The system drag indicator is drawn over the top of the sheet content and
+// fits inside the search bar's own top padding, so no extra height is needed
+// for it — the peek detent is just the measured bar. (The sheet always adds
+// the bottom home-indicator safe-area strip on top of this.)
+private let grabberInset: CGFloat = 0
 /// A tall CUSTOM detent instead of .large: iOS gives the true .large detent an
 /// opaque background, but custom/medium detents keep the translucent Liquid
 /// Glass treatment — so the expanded sheet stays glassy like the peek.
