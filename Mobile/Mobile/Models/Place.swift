@@ -7,6 +7,8 @@ struct Place: Identifiable, Hashable {
     let name: String
     let category: String
     let distance: String
+    /// Short street/area line shown under the name in search results.
+    var address: String = ""
     let ratingLabel: String
     let summary: String
     let description: String
@@ -44,12 +46,13 @@ extension Place {
     /// reviews summary) don't exist for a real place, so they're left
     /// empty rather than faked — PlaceDetailView only renders them when
     /// non-empty, and shows the real, live Accessibility Grade instead.
-    static func fromSearchResult(name: String, category: String, coordinate: CLLocationCoordinate2D) -> Place {
+    static func fromSearchResult(name: String, category: String, coordinate: CLLocationCoordinate2D, address: String = "", distance: String = "") -> Place {
         Place(
             id: UUID(),
             name: name,
             category: category,
-            distance: "",
+            distance: distance,
+            address: address,
             ratingLabel: "",
             summary: "",
             description: "",
@@ -70,7 +73,8 @@ extension Place {
             id: UUID(),
             name: "Park 23",
             category: "Park",
-            distance: "0.4 miles",
+            distance: "0.4 mi",
+            address: "Market St · Downtown",
             ratingLabel: "Great",
             summary: "Wide paths, step-free entrances, and clear wayfinding for wheelchair users.",
             description: "A central green space with accessible restrooms, elevators at both main gates, and smooth paved loops around the lawn.",
@@ -91,7 +95,8 @@ extension Place {
             id: UUID(),
             name: "Central Library",
             category: "Building",
-            distance: "0.8 miles",
+            distance: "0.8 mi",
+            address: "Grove St · Civic Center",
             ratingLabel: "Good",
             summary: "Accessible lobby, elevators to every floor, and reserved seating near exits.",
             description: "Public library with ramped entry, tactile indicators at stairs, and accessible study rooms on levels 2–4.",
@@ -112,7 +117,8 @@ extension Place {
             id: UUID(),
             name: "Harbor Cafe",
             category: "Restaurant",
-            distance: "1.1 miles",
+            distance: "1.1 mi",
+            address: "The Embarcadero · Pier 39",
             ratingLabel: "Good",
             summary: "Step-free patio seating and an accessible restroom near the entrance.",
             description: "Waterfront cafe with wide aisles, movable chairs, and a clearly marked accessible restroom.",
@@ -133,7 +139,8 @@ extension Place {
             id: UUID(),
             name: "Ridgeview Hotel",
             category: "Hotel",
-            distance: "1.6 miles",
+            distance: "1.6 mi",
+            address: "Folsom St · SoMa",
             ratingLabel: "Excellent",
             summary: "Accessible rooms, lobby elevator bank, and step-free drop-off.",
             description: "Hotel with multiple accessible guest rooms, roll-in showers on request, and elevators serving all floors.",
@@ -154,7 +161,8 @@ extension Place {
             id: UUID(),
             name: "Lakeside Trail",
             category: "Park",
-            distance: "2.3 miles",
+            distance: "2.3 mi",
+            address: "Sunset Blvd · Outer Sunset",
             ratingLabel: "Fair",
             summary: "Mostly paved loop with one steep section and limited restrooms.",
             description: "Scenic trail with a paved north loop. South spur has a grade that may challenge some manual wheelchair users.",

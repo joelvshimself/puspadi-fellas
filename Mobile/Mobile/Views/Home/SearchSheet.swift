@@ -49,10 +49,53 @@ struct SearchSheet: View {
     @State private var searchTask: Task<Void, Never>?
     @State private var isSearchingLive = false
     @State private var searchErrorMessage: String?
+    /// Recently opened places, persisted so the empty-search state can show a
+    /// "Recent" section (clock rows) the way the design does.
+    @AppStorage("recentSearches") private var recentsData = Data()
 
-    private var results: [Place] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return query.isEmpty ? places : liveResults
+    /// Distinguishes the leading glyph on a result row (frames 4/5).
+    private enum RowKind {
+        case recent, suggestion, place
+        var icon: String {
+            switch self {
+            case .recent: "clock"
+            case .suggestion: "magnifyingglass"
+            case .place: "mappin"
+            }
+        }
+    }
+
+    private struct RecentPlace: Codable, Identifiable {
+        let name: String
+        let address: String
+        let lat: Double
+        let lng: Double
+        var id: String { "\(name)|\(lat)|\(lng)" }
+        var place: Place {
+            Place.fromSearchResult(
+                name: name,
+                category: "",
+                coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng),
+                address: address
+            )
+        }
+    }
+
+    private var recents: [RecentPlace] {
+        (try? JSONDecoder().decode([RecentPlace].self, from: recentsData)) ?? []
+    }
+
+    private func recordRecent(_ place: Place) {
+        let entry = RecentPlace(
+            name: place.name,
+            address: place.address,
+            lat: place.coordinate.latitude,
+            lng: place.coordinate.longitude
+        )
+        var list = recents.filter { $0.id != entry.id }
+        list.insert(entry, at: 0)
+        list = Array(list.prefix(6))
+        recentsData = (try? JSONEncoder().encode(list)) ?? recentsData
     }
 
     var body: some View {
@@ -149,7 +192,9 @@ struct SearchSheet: View {
                 Place.fromSearchResult(
                     name: item.name ?? query,
                     category: item.pointOfInterestCategory.map(categoryLabel) ?? "Place",
-                    coordinate: item.placemark.coordinate
+                    coordinate: item.placemark.coordinate,
+                    address: shortAddress(item.placemark),
+                    distance: distanceString(to: item.placemark.coordinate)
                 )
             }
             isSearchingLive = false
@@ -170,13 +215,35 @@ struct SearchSheet: View {
         category.rawValue.replacingOccurrences(of: "MKPOICategory", with: "")
     }
 
+    /// A concise "123 Main St · Neighborhood" line from a placemark for the
+    /// result subtitle.
+    private func shortAddress(_ placemark: MKPlacemark) -> String {
+        let street = [placemark.subThoroughfare, placemark.thoroughfare]
+            .compactMap { $0 }
+            .joined(separator: " ")
+        return [street, placemark.locality ?? ""]
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+    }
+
+    /// Rough distance from the current map center (a stand-in for the user's
+    /// location) to a result, formatted for the subtitle.
+    private func distanceString(to coordinate: CLLocationCoordinate2D) -> String {
+        let center = CLLocation(latitude: searchRegion.center.latitude,
+                                longitude: searchRegion.center.longitude)
+        let target = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let miles = center.distance(from: target) / 1609.34
+        if miles < 0.1 { return "Nearby" }
+        return String(format: "%.1f mi", miles)
+    }
+
     private var searchField: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(.secondary)
 
-            TextField("Find a place", text: $searchText)
+            TextField("Search a place", text: $searchText)
                 .focused(isSearchFocused)
                 .textInputAutocapitalization(.never)
                 .submitLabel(.search)
@@ -201,38 +268,59 @@ struct SearchSheet: View {
     private var resultsList: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                Text(isLiveQuery ? "Results" : "Recent")
-                    .font(.headline)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-
-                Divider()
-                    .padding(.horizontal, 16)
-
-                if isLiveQuery, isSearchingLive {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.vertical, 24)
-                } else if isLiveQuery, let searchErrorMessage {
-                    statusMessage(searchErrorMessage)
-                } else if isLiveQuery, results.isEmpty {
-                    statusMessage("No places found for \"\(searchText)\" near here.")
-                } else {
-                    ForEach(results) { place in
-                        Button {
-                            onSelectPlace(place)
-                        } label: {
-                            resultRow(place)
+                if isLiveQuery {
+                    sectionHeader("Results")
+                    if isSearchingLive {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.vertical, 24)
+                    } else if let searchErrorMessage {
+                        statusMessage(searchErrorMessage)
+                    } else if liveResults.isEmpty {
+                        statusMessage("No places found for \"\(searchText)\" near here.")
+                    } else {
+                        ForEach(liveResults) { place in
+                            row(place, kind: .suggestion)
                         }
-                        .buttonStyle(.plain)
-
-                        Divider()
-                            .padding(.leading, 72)
+                    }
+                } else {
+                    if !recents.isEmpty {
+                        sectionHeader("Recent")
+                        ForEach(recents) { recent in
+                            row(recent.place, kind: .recent)
+                        }
+                    }
+                    sectionHeader("Nearby")
+                    ForEach(places) { place in
+                        row(place, kind: .place)
                     }
                 }
             }
             .padding(.bottom, 24)
         }
+    }
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 6)
+    }
+
+    @ViewBuilder
+    private func row(_ place: Place, kind: RowKind) -> some View {
+        Button {
+            recordRecent(place)
+            onSelectPlace(place)
+        } label: {
+            resultRow(place, kind: kind)
+        }
+        .buttonStyle(.plain)
+
+        Divider()
+            .padding(.leading, 70)
     }
 
     private func statusMessage(_ text: String) -> some View {
@@ -245,35 +333,43 @@ struct SearchSheet: View {
             .multilineTextAlignment(.center)
     }
 
-    private func resultRow(_ place: Place) -> some View {
-        HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(place.accentColor.opacity(0.85))
-                .frame(width: 52, height: 52)
-                .overlay {
-                    Image(systemName: place.gallerySymbols.first ?? "mappin")
-                        .foregroundStyle(.white)
-                        .font(.title3)
-                }
+    private func resultRow(_ place: Place, kind: RowKind) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: kind.icon)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 40, height: 40)
+                .background(Circle().fill(Color.primary.opacity(0.06)))
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(place.name)
-                    .font(.body.weight(.semibold))
+                    .font(.body.weight(.medium))
                     .foregroundStyle(.primary)
-                Text(place.distance.isEmpty ? place.category : "\(place.category) • \(place.distance)")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                if let subtitle = rowSubtitle(place) {
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
 
             Spacer(minLength: 0)
-
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.vertical, 10)
         .contentShape(Rectangle())
+    }
+
+    /// "0.4 mi · Market St · Downtown" — distance and address joined, falling
+    /// back to the category when neither is known.
+    private func rowSubtitle(_ place: Place) -> String? {
+        let parts = [place.distance, place.address].filter { !$0.isEmpty }
+        if parts.isEmpty {
+            return place.category.isEmpty ? nil : place.category
+        }
+        return parts.joined(separator: " · ")
     }
 
 }
