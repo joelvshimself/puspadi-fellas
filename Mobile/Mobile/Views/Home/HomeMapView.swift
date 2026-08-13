@@ -95,7 +95,9 @@ struct HomeMapView: View {
                     // (peek, expanded search, and the place detail) — without
                     // this, .large detents default to opaque white while peek
                     // looks glassy, making them read as two different UIs.
-                    .presentationBackground(.regularMaterial)
+                    // ultraThin keeps the map visibly showing through (the
+                    // glassy look), unlike regularMaterial which reads as flat gray.
+                    .presentationBackground(.ultraThinMaterial)
                     .interactiveDismissDisabled()
                 }
                 .onChange(of: isSearchFocused) { _, focused in
