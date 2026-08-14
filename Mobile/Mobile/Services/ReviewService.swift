@@ -33,7 +33,7 @@ final class ReviewService {
     }()
 
     private init() {
-        client = SupabaseClient(supabaseURL: SupabaseConfig.url, supabaseKey: SupabaseConfig.anonKey)
+        client = SupabaseClientProvider.shared
     }
 
     struct SubmitResponse: Decodable {
@@ -67,6 +67,35 @@ final class ReviewService {
             options: FunctionInvokeOptions(body: ReviewPhotosRequestBody(lat: lat, lng: lng)),
             decoder: decoder
         )
+    }
+
+    /// Subscribes to new `reviews` rows for `placeId`. Yields on each insert so
+    /// Place Detail can refresh grade + photos while the sheet is open.
+    /// Cancelling the surrounding task removes the Realtime channel.
+    func watchReviewInserts(placeId: String) -> AsyncStream<Void> {
+        AsyncStream { continuation in
+            let task = Task {
+                let channel = client.channel("place-reviews-\(placeId)")
+                defer {
+                    Task { await client.removeChannel(channel) }
+                }
+                let inserts = channel.postgresChange(
+                    InsertAction.self,
+                    schema: "public",
+                    table: "reviews",
+                    filter: .eq("place_id", value: placeId)
+                )
+                await channel.subscribe()
+                for await _ in inserts {
+                    if Task.isCancelled { break }
+                    continuation.yield(())
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
+        }
     }
 
     // MARK: - Storage upload
