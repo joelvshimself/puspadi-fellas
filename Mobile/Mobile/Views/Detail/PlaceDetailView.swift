@@ -68,6 +68,7 @@ struct PlaceDetailView: View {
             async let gradeLoad: Void = loadGrade()
             async let photosLoad: Void = loadReviewPhotos()
             _ = await (gradeLoad, photosLoad)
+            await watchPlaceReviews()
         }
         .fullScreenCover(isPresented: $showReviewWizard, onDismiss: {
             // A successful submit recomputes accessibility_grade() server-side
@@ -121,6 +122,22 @@ struct PlaceDetailView: View {
             reviewPhotos = response.photos
         } catch {
             // Leave existing photos on failure; first load stays empty.
+        }
+    }
+
+    /// Live refresh while this sheet stays open: another device's review insert
+    /// for the same `place_id` invalidates the enrich cache and reloads grade + photos.
+    private func watchPlaceReviews() async {
+        guard place.isLiveResult else { return }
+        let placeId = PlaceCacheStore.key(
+            lat: place.coordinate.latitude,
+            lng: place.coordinate.longitude
+        )
+        for await _ in ReviewService.shared.watchReviewInserts(placeId: placeId) {
+            await PlaceCacheStore.shared.remove(placeId)
+            async let gradeLoad: Void = loadGrade()
+            async let photosLoad: Void = loadReviewPhotos()
+            _ = await (gradeLoad, photosLoad)
         }
     }
 
