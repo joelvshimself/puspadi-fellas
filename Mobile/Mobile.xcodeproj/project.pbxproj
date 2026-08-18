@@ -265,6 +265,7 @@
 				DEVELOPMENT_TEAM = 474QX5LGYC;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Puspadi Fellas uses your camera so you can take photos of a place's accessibility features.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Puspadi Fellas uses your location to find and check accessibility info for places near you.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -295,6 +296,7 @@
 				DEVELOPMENT_TEAM = 474QX5LGYC;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Puspadi Fellas uses your camera so you can take photos of a place's accessibility features.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Puspadi Fellas uses your location to find and check accessibility info for places near you.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
