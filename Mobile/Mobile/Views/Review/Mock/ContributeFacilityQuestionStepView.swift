@@ -12,8 +12,8 @@ extension EntranceLocation: Identifiable, CaseIterable {
 
     var displayLabel: String {
         switch self {
-        case .lobby: "Lobby"
-        case .basement: "Basement"
+        case .lobby: "Lobby".localized
+        case .basement: "Basement".localized
         }
     }
 }
@@ -29,7 +29,7 @@ struct ContributeEntranceLocationStepView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PhotoFlowHeader(title: "Entrances", onBack: onBack)
+            PhotoFlowHeader(title: "Entrances".localized, onBack: onBack)
             ReviewProgressBar(currentIndex: progress.current, totalSteps: progress.total)
                 .padding(.horizontal, PhotoMetrics.toolbarHorizontalPadding)
                 .padding(.top, 4)
@@ -39,7 +39,7 @@ struct ContributeEntranceLocationStepView: View {
                     ContributeFacilityIllustration(kind: .entrance)
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Where did you enter?")
+                        Text("Where did you enter?".localized)
                             .font(.title2.bold())
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -76,7 +76,7 @@ struct ContributeFacilityQuestionStepView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PhotoFlowHeader(title: navTitle, onBack: onBack)
+            PhotoFlowHeader(title: navTitle.localized, onBack: onBack)
             ReviewProgressBar(currentIndex: progress.current, totalSteps: progress.total)
                 .padding(.horizontal, PhotoMetrics.toolbarHorizontalPadding)
                 .padding(.top, 4)
@@ -86,9 +86,9 @@ struct ContributeFacilityQuestionStepView: View {
                     ContributeFacilityIllustration(kind: kind)
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(questionTitle)
+                        Text(questionTitle.localized)
                             .font(.title2.bold())
-                        Text("You can select multiple answers")
+                        Text("You can select multiple answers".localized)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -142,7 +142,7 @@ struct ContributeTagChip: View {
             HStack(spacing: 6) {
                 Image(systemName: option.symbol)
                     .font(.system(size: 12, weight: .medium))
-                Text(option.label.capitalized)
+                Text(option.label.localized.capitalized)
                     .font(.system(size: 14, weight: .medium))
             }
             .foregroundStyle(isSelected ? Color.accentColor : .primary)
@@ -194,7 +194,7 @@ struct ContributeContinueButton: View {
 
     var body: some View {
         Button(action: action) {
-            Text(title)
+            Text(title.localized)
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)

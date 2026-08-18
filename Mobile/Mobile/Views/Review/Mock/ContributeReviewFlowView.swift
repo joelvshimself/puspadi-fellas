@@ -129,11 +129,13 @@ struct ContributeReviewFlowView: View {
                 }
             )
         case .facilityPhotos(let kind):
+            let isLast = (screen == screens.last)
             ContributePhotosNotesStepView(
                 facilityName: kind.title,
                 navTitle: navTitle(for: kind),
                 progress: progress(for: screen),
                 note: noteBinding(for: kind),
+                isLastStep: isLast,
                 onBack: goBack,
                 onContinue: goNext
             )

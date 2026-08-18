@@ -312,7 +312,7 @@ struct NotReviewView: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(Color.white, in: Capsule())
+                    .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
             }
         case .unavailable:
             FacilityHeroCard(kind: kind, headline: "Not Available", subtitle: kind.unavailableSubtitle) {
@@ -416,7 +416,7 @@ struct NotReviewView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color.white)
+                        .fill(Color(uiColor: .secondarySystemGroupedBackground))
                 )
         }
     }
@@ -429,7 +429,7 @@ struct NotReviewView: View {
             .padding(24)
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color.white)
+                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
             )
     }
 }

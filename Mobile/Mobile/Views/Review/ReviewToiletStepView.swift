@@ -6,9 +6,9 @@ struct ReviewToiletStepView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text("Toilet")
+            Text("Toilet".localized)
                 .font(.title2.bold())
-            ReviewQuestionBlock(title: "Is there a disabled/accessible toilet?") {
+            ReviewQuestionBlock(title: "Is there a disabled/accessible toilet?".localized) {
                 YesNoPills(value: $toilet.hasDisabledToilet)
             }
         }
