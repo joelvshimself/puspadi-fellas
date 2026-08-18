@@ -110,7 +110,12 @@ struct MockPlaceDetailView: View {
                             coordinate: place.coordinate,
                             remoteImageURL: streetImageURL,
                             attribution: heroAttribution,
-                            resolved: enrichResolved
+                            resolved: enrichResolved,
+                            // Full-bleed: the hero stretches with overscroll and
+                            // sits under the status bar, so it takes the paged
+                            // height and squares off its corners.
+                            height: height,
+                            cornerRadius: 0
                         )
                         .frame(width: geo.size.width, height: height)
                         .clipped()
