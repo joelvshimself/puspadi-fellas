@@ -3,9 +3,9 @@ import SwiftUI
 
 /// Demo "My Review" screen — reached from MockPlaceDetailView's
 /// "Thank you for the review!" row (reviewedByMe state). Mock data only;
-/// "Update Review" reuses the real `ReviewWizardView` the same way
-/// `AnalysingView` is a disconnected demo entry — a throwaway `Place` is
-/// enough to satisfy its init since no submission actually happens here.
+/// "Update Review" opens the real `ContributeReviewFlowView` (real backend
+/// submission) the same way `AnalysingView` is a disconnected demo entry —
+/// a throwaway `Place` is enough to satisfy its init.
 struct MockMyReviewView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selectedTab: MockFacility.ID
@@ -67,7 +67,7 @@ struct MockMyReviewView: View {
         }
         .navigationBarHidden(true)
         .fullScreenCover(isPresented: $showReviewWizard) {
-            ReviewWizardView(place: wizardPlace) { showReviewWizard = false }
+            ContributeReviewFlowView(place: wizardPlace) { showReviewWizard = false }
         }
     }
 

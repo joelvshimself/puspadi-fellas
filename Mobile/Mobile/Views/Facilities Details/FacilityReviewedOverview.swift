@@ -1,9 +1,21 @@
+import CoreLocation
 import SwiftUI
 
 struct FacilityReviewedOverview: View {
     let kind: FacilityKind
     var showsUserReview: Bool = true
     @State private var selectedPhoto: FacilityPhoto?
+    @State private var showContributeFlow = false
+
+    /// No `Place` reaches this screen today — same throwaway-`Place`
+    /// pattern used elsewhere (MockPlaceDetailView, NotReviewView).
+    private var contributePlace: Place {
+        Place.fromSearchResult(
+            name: MockData.placeName,
+            category: "Mall",
+            coordinate: CLLocationCoordinate2D(latitude: 0, longitude: 0)
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -50,7 +62,7 @@ struct FacilityReviewedOverview: View {
                         Text("Your Review")
                             .font(.headline)
                         Spacer()
-                        Button("Update Review") {}
+                        Button("Update Review") { showContributeFlow = true }
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(Color.accentColor)
                     }
@@ -73,6 +85,7 @@ struct FacilityReviewedOverview: View {
                         .font(.title3.bold())
 
                     Button {
+                        showContributeFlow = true
                     } label: {
                         Text("Add New Review")
                             .font(.subheadline.weight(.semibold))
@@ -87,6 +100,11 @@ struct FacilityReviewedOverview: View {
         }
         .fullScreenCover(item: $selectedPhoto) { photo in
             FacilityPhotoDetailView(photo: photo)
+        }
+        .fullScreenCover(isPresented: $showContributeFlow) {
+            ContributeReviewFlowView(place: contributePlace, startingFacility: kind) {
+                showContributeFlow = false
+            }
         }
     }
 

@@ -1,3 +1,4 @@
+import CoreLocation
 import SwiftUI
 
 enum FacilityKind: String, CaseIterable, Identifiable {
@@ -185,6 +186,18 @@ struct NotReviewView: View {
 
     @State private var selectedTab: FacilityDetailTab = .overview
     @State private var isComposingPhotos = false
+    @State private var showContributeFlow = false
+
+    /// No `Place` reaches this screen today (it's driven purely by `kind`
+    /// + `state`) — same throwaway-`Place` pattern used by the Mock/
+    /// screens' own review-flow entry points.
+    private var contributePlace: Place {
+        Place.fromSearchResult(
+            name: MockData.placeName,
+            category: "Mall",
+            coordinate: CLLocationCoordinate2D(latitude: 0, longitude: 0)
+        )
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -229,6 +242,11 @@ struct NotReviewView: View {
         .onChange(of: selectedTab) { _, tab in
             if tab != .photos {
                 isComposingPhotos = false
+            }
+        }
+        .fullScreenCover(isPresented: $showContributeFlow) {
+            ContributeReviewFlowView(place: contributePlace, startingFacility: kind) {
+                showContributeFlow = false
             }
         }
     }
@@ -350,6 +368,7 @@ struct NotReviewView: View {
                         .padding(.top, 8)
 
                     Button {
+                        showContributeFlow = true
                     } label: {
                         Text("Be the first reviewer")
                             .font(.subheadline.weight(.semibold))
@@ -370,6 +389,7 @@ struct NotReviewView: View {
                 .font(.title3.bold())
 
             Button {
+                showContributeFlow = true
             } label: {
                 Text("Add New Review")
                     .font(.subheadline.weight(.semibold))

@@ -14,7 +14,7 @@ struct MockPlaceDetailView: View {
 
     /// Reused by both "Add New Review"/"Be the first reviewer" here and My
     /// Review's "Update Review" — same throwaway-`Place` pattern as
-    /// `AnalysingView`'s standalone demo entry, since `ReviewWizardView`
+    /// `AnalysingView`'s standalone demo entry, since `ContributeReviewFlowView`
     /// needs a real `Place` and there's no backend place behind this mock.
     private var wizardPlace: Place {
         Place.fromSearchResult(
@@ -60,11 +60,11 @@ struct MockPlaceDetailView: View {
         .ignoresSafeArea(edges: .top)
         .navigationBarHidden(true)
         .fullScreenCover(isPresented: $showReviewWizard) {
-            ReviewWizardView(place: wizardPlace) {
+            ContributeReviewFlowView(place: wizardPlace) {
                 showReviewWizard = false
-                // Mock-only stand-in for a real submit: reflect it in the
-                // demo state so "Add New Review" visibly connects to
-                // something instead of being a dead-end sheet.
+                // Reflect the real submit in the demo state so "Add New
+                // Review" visibly connects to something instead of just
+                // dismissing back to the same unreviewed state.
                 demoState = .reviewedByMe
             }
         }
