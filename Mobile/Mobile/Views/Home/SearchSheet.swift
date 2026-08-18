@@ -24,7 +24,7 @@ enum SheetPalette {
     static let grabber = Color(white: 0.55)
     /// Hairline rim shared by the circular buttons and the search pill.
     static let rimGradient = LinearGradient(
-        colors: [.black.opacity(0.06), .black.opacity(0.16)],
+        colors: [.primary.opacity(0.06), .primary.opacity(0.16)],
         startPoint: .top,
         endPoint: .bottom
     )
@@ -34,17 +34,22 @@ enum SheetMetrics {
     // Peek — Homepage 285:1323
     static let grabberWidth: CGFloat = 48
     static let grabberHeight: CGFloat = 6
-    static let grabberTopPadding: CGFloat = 8
+    static let grabberTopPadding: CGFloat = 18
     static let grabberBlockHeight: CGFloat = 16
 
     /// These two must still sum with the grabber and field to 102pt — that is
     /// the detent floor below which iOS squeezes the sheet's contents. To
     /// tighten the gap under the pill, move points from bottom to top.
+    /// NOTE: grabber + this + fieldHeight + rowBottomPadding must stay >= 102.
+    /// That is a hard floor: iOS squeezes a sheet below it instead of honouring
+    /// the detent. Measured — at 98 the sheet renders 87pt, at 92 it renders
+    /// 84pt, both shorter than asked for, with the 6pt grabber crushed to
+    /// nothing. Shrinking the peek means shrinking the field, not the padding.
     static let rowTopPadding: CGFloat = 20
     static let rowBottomPadding: CGFloat = 10
     static let horizontalPadding: CGFloat = 16
 
-    static let fieldHeight: CGFloat = 56
+    static let fieldHeight: CGFloat = 46
     static let fieldSpacing: CGFloat = 8
     static let fieldFillOpacity: CGFloat = 0.8
     static let fieldBorderWidth: CGFloat = 2
@@ -150,7 +155,7 @@ private struct CircleSurface: ViewModifier {
                 )
         case .onSheet:
             content
-                .background(Circle().fill(Color.white))
+                .background(Circle().fill(Color(.systemBackground)))
                 .overlay(Circle().strokeBorder(SheetPalette.rimGradient, lineWidth: 1))
         }
     }
@@ -308,7 +313,7 @@ struct SearchSheet: View {
         .padding(.horizontal, 12)
         .frame(height: SheetMetrics.fieldHeight)
         .background {
-            Capsule().fill(Color.white.opacity(isEditing ? 1 : SheetMetrics.fieldFillOpacity))
+            Capsule().fill(Color(.systemBackground).opacity(isEditing ? 1 : SheetMetrics.fieldFillOpacity))
         }
         .overlay {
             Capsule().strokeBorder(
@@ -415,7 +420,7 @@ struct SearchSheet: View {
 
     private var card: some View {
         RoundedRectangle(cornerRadius: SheetMetrics.rowCornerRadius, style: .continuous)
-            .fill(Color.white.opacity(SheetMetrics.fieldFillOpacity))
+            .fill(Color(.systemBackground).opacity(SheetMetrics.fieldFillOpacity))
     }
 
     private func message(_ text: String) -> some View {
