@@ -18,6 +18,12 @@ struct MockPlaceDetailView: View {
     /// Live accessibility grade for `place`, from `place-accessibility`.
     @State private var liveGrade: [AccessibilityFeatureGrade] = []
     @State private var isLoadingGrade = false
+    /// Hero carousel sources for a real place: the cached Mapillary street
+    /// photo first, then community review photos from `place-review-photos`.
+    @State private var heroURLs: [URL] = []
+    @State private var heroAttribution: String?
+    @State private var streetImageURL: URL?
+    @State private var enrichResolved = false
     @State private var isSaved = false
     @State private var heroPage = 0
     @State private var showReviewWizard = false
@@ -70,6 +76,7 @@ struct MockPlaceDetailView: View {
         .background(Color(.systemBackground))
         .ignoresSafeArea(edges: .top)
         .task(id: place?.id) { await loadLiveGrade() }
+        .task(id: place?.id) { await watchReviews() }
         .navigationBarHidden(true)
         .fullScreenCover(isPresented: $showReviewWizard) {
             ReviewWizardView(place: wizardPlace) {
@@ -96,13 +103,43 @@ struct MockPlaceDetailView: View {
 
             ZStack(alignment: .top) {
                 TabView(selection: $heroPage) {
-                    ForEach(heroImages.indices, id: \.self) { index in
-                        Image(heroImages[index])
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
+                    if let place {
+                        // Page 0 is the street photo: PlaceImageView already
+                        // walks Mapillary -> Look Around -> map snapshot.
+                        PlaceImageView(
+                            coordinate: place.coordinate,
+                            remoteImageURL: streetImageURL,
+                            attribution: heroAttribution,
+                            resolved: enrichResolved
+                        )
+                        .frame(width: geo.size.width, height: height)
+                        .clipped()
+                        .tag(0)
+
+                        // Then whatever the community has contributed.
+                        ForEach(heroURLs.indices, id: \.self) { index in
+                            AsyncImage(url: heroURLs[index]) { phase in
+                                switch phase {
+                                case .success(let image):
+                                    image.resizable().aspectRatio(contentMode: .fill)
+                                default:
+                                    Color(.secondarySystemBackground).overlay { ProgressView() }
+                                }
+                            }
                             .frame(width: geo.size.width, height: height)
                             .clipped()
-                            .tag(index)
+                            .tag(index + 1)
+                        }
+                    } else {
+                        // SavedView's demo entry keeps the bundled fixtures.
+                        ForEach(heroImages.indices, id: \.self) { index in
+                            Image(heroImages[index])
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: geo.size.width, height: height)
+                                .clipped()
+                                .tag(index)
+                        }
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
@@ -303,12 +340,41 @@ struct MockPlaceDetailView: View {
         guard let place else { return }
         isLoadingGrade = true
         defer { isLoadingGrade = false }
-        let response = try? await AccessibilityService.shared.enrich(
+
+        async let enriched = try? await AccessibilityService.shared.enrich(
             lat: place.coordinate.latitude,
             lng: place.coordinate.longitude,
             name: place.name
         )
+        async let reviewPhotos = try? await ReviewService.shared.fetchReviewPhotos(
+            lat: place.coordinate.latitude,
+            lng: place.coordinate.longitude
+        )
+        let (response, photos) = await (enriched, reviewPhotos)
+
         liveGrade = response?.grade ?? []
+        heroAttribution = response?.place?.imageAttribution
+
+        // The street photo is rendered by PlaceImageView (Mapillary, then Look
+        // Around, then a map snapshot); these are the community review photos
+        // that page after it.
+        streetImageURL = response?.place?.imageUrl.flatMap(URL.init(string:))
+        heroURLs = (photos?.photos ?? []).compactMap(\.imageURL)
+        enrichResolved = true
+    }
+
+    /// Realtime: a new review for this place recomputes the grade server-side
+    /// and may add photos, so refetch when one lands.
+    private func watchReviews() async {
+        guard let place else { return }
+        let key = PlaceCacheStore.key(
+            lat: place.coordinate.latitude,
+            lng: place.coordinate.longitude
+        )
+        for await _ in ReviewService.shared.watchReviewInserts(placeId: key) {
+            await PlaceCacheStore.shared.remove(key)
+            await loadLiveGrade()
+        }
     }
 
     private func circularActionButton(icon: String) -> some View {

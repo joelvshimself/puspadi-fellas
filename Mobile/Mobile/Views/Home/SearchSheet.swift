@@ -204,7 +204,6 @@ struct SearchSheet: View {
     /// so focus changes were unreliable in both directions.
     @FocusState private var isFieldFocused: Bool
     let searchRegion: MKCoordinateRegion
-    @Binding var selectedPlace: Place?
     let onSelectPlace: (Place) -> Void
     let onCancelSearch: () -> Void
 
@@ -219,13 +218,7 @@ struct SearchSheet: View {
 
     var body: some View {
         Group {
-            if let selectedPlace {
-                // The designed Place Details screen from main, fed the real
-                // place (its accessibility badge comes from the backend).
-                MockPlaceDetailView(place: selectedPlace, onBack: { self.selectedPlace = nil })
-            } else {
-                searchContent
-            }
+            searchContent
         }
         .frame(maxWidth: .infinity, alignment: .top)
         .onChange(of: searchText) { _, value in scheduleSearch(for: value) }

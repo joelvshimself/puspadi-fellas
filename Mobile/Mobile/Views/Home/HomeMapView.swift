@@ -54,11 +54,9 @@ struct HomeMapView: View {
     @State private var mapSelection: MapFeature?
     /// The place whose accessibility detail is shown inside the bottom sheet
     /// (same-sheet method — no separate pushed page).
-    @State private var selectedPlace: Place?
     /// The sheet detent in effect just before a place detail was opened, so
     /// closing the detail returns to that step (peek if the place came from a
     /// map tap, the expanded search list if it came from a result).
-    @State private var detentBeforePlace: PresentationDetent?
     /// Accessibility grades the user is filtering the map to. Empty = show all
     /// (no filter). See the filter panel opened from the top-left button.
     @State private var selectedGrades: Set<OverallAccessibility> = []
@@ -154,9 +152,10 @@ struct HomeMapView: View {
                 .toolbar(path.isEmpty ? .hidden : .automatic, for: .navigationBar)
                 .navigationDestination(for: HomeRoute.self) { route in
                     switch route {
-                    case .place:
-                        // Place detail now renders inside the sheet, not here.
-                        EmptyView()
+                    case .place(let place):
+                        // Place Details is a full page, not sheet content.
+                        MockPlaceDetailView(place: place)
+                            .navigationBarBackButtonHidden()
                     case .saved:
                         SavedView()
                     case .contribute:
@@ -171,7 +170,6 @@ struct HomeMapView: View {
                         isExpanded: $isSearchActive,
                         searchText: $searchText,
                         searchRegion: visibleRegion,
-                        selectedPlace: $selectedPlace,
                         onSelectPlace: openPlace,
                         onCancelSearch: dismissSearch
                     )
@@ -201,7 +199,6 @@ struct HomeMapView: View {
                 .onChange(of: isSearchActive) { _, active in
                     // The one place the search detent is set, so the sheet makes
                     // a single move rather than several racing writers.
-                    guard selectedPlace == nil else { return }
                     sheetDetent = active ? expandedDetent : peekDetent
                 }
                 .onChange(of: path.count) { _, count in
@@ -218,18 +215,6 @@ struct HomeMapView: View {
                         // otherwise float on top of the pushed page — dismiss
                         // it while we're deeper in the stack.
                         isSheetPresented = false
-                    }
-                }
-                .onChange(of: selectedPlace) { _, place in
-                    if place != nil {
-                        // Expand so the detail isn't shown cramped at peek.
-                        sheetDetent = expandedDetent
-                    } else {
-                        // Closed the detail — return to whatever step we opened
-                        // it from (peek for a map tap, the search list for a
-                        // result), not the focused search.
-                        sheetDetent = detentBeforePlace ?? peekDetent
-                        detentBeforePlace = nil
                     }
                 }
                 .onChange(of: locationManager.currentCoordinate) { _, coordinate in
@@ -396,11 +381,10 @@ struct HomeMapView: View {
     }
 
     private func openPlace(_ place: Place) {
-        // Show the accessibility detail inside the sheet (not a pushed page).
-        // Remember the current step first so closing returns to it; the
-        // onChange(of: selectedPlace) handler drives the detent change.
-        detentBeforePlace = sheetDetent
-        selectedPlace = place
+        // Push the Place Details page. The sheet hides itself while the stack
+        // is deeper than the root (see onChange(of: path.count)).
+        isSearchActive = false
+        path.append(HomeRoute.place(place))
     }
 
 }
