@@ -130,17 +130,19 @@ struct FacilityCard: View {
 
 /// Bespoke capsule segmented control — a floating pill on a track, matching
 /// the mockup (native `.pickerStyle(.segmented)` has a different,
-/// non-capsule look). Generic over any `Hashable` option set. Two color
-/// arrangements depending on what it sits on:
-///  - `.grayTrack` (default, Gallery's filter): gray track, white
-///    selected pill — matches Gallery's white page background.
-///  - `.whiteTrack` (My Review's facility tabs): white track, gray
-///    selected pill — sits on My Review's own gray section background,
-///    so the coloring needs to invert to stay visible.
+/// non-capsule look). Generic over any `Hashable` option set. Two styles:
+///  - `.grayTrack` (default, Gallery's filter): gray track, white selected
+///    pill with a drop shadow, plain crossfade on selection change.
+///  - `.nativeToggle` (My Review's facility tabs): the exact same look as
+///    the real `FacilitySegmentedControl` from Views/Photos/Components —
+///    same colors (`PhotoPalette`), same sizing (`PhotoMetrics`), and the
+///    same `matchedGeometryEffect`-driven sliding capsule instead of a
+///    plain opacity crossfade, so it reads as one native toggle component
+///    rather than a different-looking lookalike.
 struct FilterSegmentedControl<Option: Hashable>: View {
     enum Style {
         case grayTrack
-        case whiteTrack
+        case nativeToggle
     }
 
     let options: [Option]
@@ -148,41 +150,62 @@ struct FilterSegmentedControl<Option: Hashable>: View {
     @Binding var selection: Option
     var style: Style = .grayTrack
 
-    private var trackColor: Color {
-        style == .grayTrack ? Color.mockSectionBackground : Color(.systemBackground)
-    }
-
-    private var selectedColor: Color {
-        style == .grayTrack ? Color(.systemBackground) : Color.mockSectionBackground
-    }
+    @Namespace private var indicator
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: style == .nativeToggle ? PhotoMetrics.segmentedSpacing : 4) {
             ForEach(options, id: \.self) { option in
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        selection = option
-                    }
-                } label: {
-                    Text(label(option))
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(
-                            selection == option ? selectedColor : Color.clear,
-                            in: Capsule()
-                        )
-                        .shadow(
-                            color: .black.opacity(selection == option && style == .grayTrack ? 0.12 : 0),
-                            radius: 3, x: 0, y: 1
-                        )
-                }
-                .buttonStyle(.plain)
+                segment(for: option)
             }
         }
-        .padding(4)
+        .padding(style == .nativeToggle ? PhotoMetrics.segmentedPadding : 4)
         .background(trackColor, in: Capsule())
+    }
+
+    private var trackColor: Color {
+        style == .nativeToggle ? PhotoPalette.segmentedTrack : Color.mockSectionBackground
+    }
+
+    private func segment(for option: Option) -> some View {
+        let isSelected = selection == option
+        return Button {
+            withAnimation(.snappy(duration: 0.22)) {
+                selection = option
+            }
+        } label: {
+            Text(label(option))
+                .font(.system(size: style == .nativeToggle ? PhotoMetrics.segmentedLabelSize : 12, weight: .semibold))
+                .tracking(style == .nativeToggle ? PhotoMetrics.segmentedTracking : 0)
+                .foregroundStyle(style == .nativeToggle ? PhotoPalette.primaryLabel : .primary)
+                .frame(maxWidth: .infinity)
+                .frame(height: style == .nativeToggle ? PhotoMetrics.segmentedItemHeight : nil)
+                .padding(.vertical, style == .nativeToggle ? 0 : 8)
+                .background {
+                    if isSelected {
+                        Group {
+                            if style == .nativeToggle {
+                                // Real frosted-glass material (matches the
+                                // app's other Liquid-Glass surfaces, e.g.
+                                // MockPlaceDetailView's top controls) — a
+                                // flat `.fill(.white)` reads as a solid
+                                // chip, not glass.
+                                Capsule().fill(.ultraThinMaterial)
+                                Capsule().fill(Color.white.opacity(0.35))
+                            } else {
+                                Capsule().fill(.white)
+                            }
+                        }
+                        .matchedGeometryEffect(id: "selectedSegment", in: indicator)
+                        .shadow(
+                            color: .black.opacity(style == .grayTrack ? 0.12 : 0),
+                            radius: 3, x: 0, y: 1
+                        )
+                    }
+                }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
     }
 }
 

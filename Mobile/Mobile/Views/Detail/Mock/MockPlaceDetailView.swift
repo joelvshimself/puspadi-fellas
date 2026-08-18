@@ -213,15 +213,37 @@ struct MockPlaceDetailView: View {
                 .padding(.horizontal, 22)
                 .padding(.top, 16)
 
-            // No facility detail screen — tapping a card is a no-op for now.
+            // Tapping a card opens the real facility-detail screen from
+            // main (Views/Facilities Details/NotReview.swift) — FacilityKind
+            // matches MockFacility.key 1:1 ("entrance"/"elevator"/"toilet").
             VStack(spacing: 12) {
                 ForEach(MockData.facilities) { facility in
-                    FacilityCard(facility: facility)
+                    if let kind = FacilityKind(rawValue: facility.key) {
+                        NavigationLink {
+                            NotReviewView(kind: kind, state: facilityOverviewState)
+                        } label: {
+                            FacilityCard(facility: facility)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        FacilityCard(facility: facility)
+                    }
                 }
             }
             .padding(.horizontal, 22)
             .padding(.top, 16)
             .padding(.bottom, 32)
+        }
+    }
+
+    /// Maps this mock screen's 3-state demo toggle onto the facility
+    /// screen's own state enum, so tapping a card lands on a facility
+    /// detail that's consistent with what Place Details is showing.
+    private var facilityOverviewState: FacilityOverviewState {
+        switch demoState {
+        case .noReview: .empty
+        case .notYetReviewed: .community
+        case .reviewedByMe: .reviewed
         }
     }
 

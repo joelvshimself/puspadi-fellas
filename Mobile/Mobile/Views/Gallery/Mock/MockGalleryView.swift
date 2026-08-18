@@ -21,6 +21,7 @@ struct MockGalleryView: View {
     }
 
     @State private var selectedFilter: Filter = .all
+    @State private var showAddPhotos = false
 
     private var filteredPhotos: [MockPhoto] {
         guard let key = selectedFilter.facilityKey else { return MockData.photos }
@@ -52,11 +53,18 @@ struct MockGalleryView: View {
         .navigationBarTitleDisplayMode(.inline)
         // No custom back button — the system-provided one (native glass
         // pill under the current iOS look) already matches the mockup.
+        .fullScreenCover(isPresented: $showAddPhotos) {
+            // Reuses the real photo-add flow from main (Views/Photos) —
+            // its own gallery/composer/camera UI, not a mock. Scoped to
+            // the whole place rather than one facility since this Gallery
+            // isn't facility-specific.
+            FacilityPhotosView(facilityName: MockData.placeName, onBack: { showAddPhotos = false })
+        }
     }
 
     private var addPhotosButton: some View {
-        // Mockup only — no photo picker/upload wired to a backend yet.
         Button {
+            showAddPhotos = true
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "photo.badge.plus")

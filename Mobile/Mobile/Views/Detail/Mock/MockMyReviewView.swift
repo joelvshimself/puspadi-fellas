@@ -7,6 +7,7 @@ import SwiftUI
 /// `AnalysingView` is a disconnected demo entry — a throwaway `Place` is
 /// enough to satisfy its init since no submission actually happens here.
 struct MockMyReviewView: View {
+    @Environment(\.dismiss) private var dismiss
     @State private var selectedTab: MockFacility.ID
     @State private var showReviewWizard = false
 
@@ -29,33 +30,42 @@ struct MockMyReviewView: View {
     }
 
     var body: some View {
-        // The gray section background is painted on the ScrollView itself
-        // (not just reviewContentSection) so it fills all the way to the
-        // bottom even when content is shorter than the screen — otherwise
-        // a stray white gap shows below Notes. The "Any changes...? /
-        // Update Review" row lives inside reviewContentSection now (last
-        // row, same gray background), matching the design — it's not a
-        // separate pinned white footer bar.
-        ScrollView {
-            VStack(spacing: 0) {
-                placeInfoSection
-                reviewContentSection
+        VStack(spacing: 0) {
+            // Real Photos-flow header (Views/Photos/Components/PhotoFlowHeader)
+            // — same Liquid Glass back button + centered title used across
+            // that flow — instead of the plain system nav bar, so this
+            // screen matches it rather than looking like a different
+            // component. Sits outside the ScrollView so it's naturally
+            // fixed and never interacts with scroll/overscroll.
+            PhotoFlowHeader(title: "Your Review", onBack: { dismiss() })
+                .background(Color(.systemBackground))
+
+            // The gray section background is painted on the ScrollView
+            // itself (not just reviewContentSection) so it fills all the
+            // way to the bottom even when content is shorter than the
+            // screen — otherwise a stray white gap shows below Notes. The
+            // "Any changes...? / Update Review" row lives inside
+            // reviewContentSection now (last row, same gray background),
+            // matching the design — it's not a separate pinned white
+            // footer bar.
+            ScrollView {
+                VStack(spacing: 0) {
+                    placeInfoSection
+                        .background(StretchyTopBackground(color: Color(.systemBackground)))
+                    reviewContentSection
+                }
             }
+            .coordinateSpace(name: "reviewScroll")
+            // Gray for the BOTTOM overscroll (reviewContentSection has no
+            // white cap, so it naturally shows this straight through). The
+            // top stays white via placeInfoSection's own stretchy cap
+            // above — without that, pulling down revealed a
+            // detached-looking gray rectangle between the header and the
+            // white place-info text, instead of that white extending
+            // seamlessly upward.
+            .background(Color.mockSectionBackground)
         }
-        // White, matching the nav bar — not gray. Gray only lives on
-        // reviewContentSection itself (with its own minHeight fallback
-        // below); painting it on the whole ScrollView made pull-to-refresh
-        // overscroll show a gray patch floating below the white nav bar,
-        // visibly "detached" from it, instead of a clean white rubber-band.
-        .background(Color(.systemBackground))
-        .navigationTitle("Your Review")
-        .navigationBarTitleDisplayMode(.inline)
-        // No custom back button — system default matches native look.
-        // Explicit white nav bar background — otherwise the bar picks up
-        // the scroll-edge material and looks translucent/gray instead of
-        // matching the design's plain white top bar.
-        .toolbarBackground(Color(.systemBackground), for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
+        .navigationBarHidden(true)
         .fullScreenCover(isPresented: $showReviewWizard) {
             ReviewWizardView(place: wizardPlace) { showReviewWizard = false }
         }
@@ -97,7 +107,7 @@ struct MockMyReviewView: View {
                 options: review.facilityTabs.map(\.id),
                 label: { id in review.facilityTabs.first { $0.id == id }?.title.uppercased() ?? "" },
                 selection: $selectedTab,
-                style: .whiteTrack
+                style: .nativeToggle
             )
 
             whatProvidedSection
@@ -109,13 +119,9 @@ struct MockMyReviewView: View {
         .padding(.top, 16)
         .padding(.bottom, 24)
         .frame(maxWidth: .infinity, alignment: .leading)
-        // Own gray fill (not the whole ScrollView's) so pull-to-refresh
-        // overscroll at the top stays plain white; the minHeight is a
-        // generous fallback so short content still colors all the way to
-        // the bottom of a typical screen instead of leaving a white gap
-        // below Notes/anyChangesRow.
-        .frame(minHeight: 600)
-        .background(Color.mockSectionBackground)
+        // The gray page background now comes from the ScrollView itself
+        // (see body), so this section no longer needs its own fill/minHeight
+        // fallback to reach the bottom.
     }
 
     private var whatProvidedSection: some View {
@@ -217,6 +223,26 @@ struct MockMyReviewView: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+/// A background that grows upward to fill top pull-to-refresh overscroll —
+/// same idea as MockPlaceDetailView's stretchy hero, just for a flat color
+/// instead of an image. Reads its own position in the `"reviewScroll"`
+/// coordinate space; when pulled below the top (minY > 0) it extends
+/// itself by that amount and shifts up to compensate, so the color reaches
+/// all the way to the top of the bounce instead of leaving a gap.
+private struct StretchyTopBackground: View {
+    let color: Color
+
+    var body: some View {
+        GeometryReader { geo in
+            let minY = geo.frame(in: .named("reviewScroll")).minY
+            let stretch = max(0, minY)
+            color
+                .frame(height: geo.size.height + stretch)
+                .offset(y: -stretch)
+        }
     }
 }
 
