@@ -1,3 +1,4 @@
+import CoreLocation
 import SwiftUI
 
 enum FacilityKind: String, CaseIterable, Identifiable {
@@ -182,9 +183,24 @@ enum FacilityOverviewState {
 struct NotReviewView: View {
     let kind: FacilityKind
     var state: FacilityOverviewState = .empty
+    /// The real place this facility belongs to, when the screen was reached
+    /// from a live search result. Reviews started here submit against these
+    /// coordinates; nil falls back to the MockData fixture for the
+    /// demo/preview entry points.
+    var place: Place? = nil
 
     @State private var selectedTab: FacilityDetailTab = .overview
     @State private var isComposingPhotos = false
+    @State private var showContributeFlow = false
+
+    private var contributePlace: Place {
+        if let place { return place }
+        return Place.fromSearchResult(
+            name: MockData.placeName,
+            category: "Mall",
+            coordinate: CLLocationCoordinate2D(latitude: 0, longitude: 0)
+        )
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -229,6 +245,11 @@ struct NotReviewView: View {
         .onChange(of: selectedTab) { _, tab in
             if tab != .photos {
                 isComposingPhotos = false
+            }
+        }
+        .fullScreenCover(isPresented: $showContributeFlow) {
+            ContributeReviewFlowView(place: contributePlace, startingFacility: kind) {
+                showContributeFlow = false
             }
         }
     }
@@ -316,9 +337,9 @@ struct NotReviewView: View {
         case .unavailable:
             unavailableLower
         case .community:
-            FacilityReviewedOverview(kind: kind, showsUserReview: false)
+            FacilityReviewedOverview(kind: kind, showsUserReview: false, place: place)
         case .reviewed:
-            FacilityReviewedOverview(kind: kind, showsUserReview: true)
+            FacilityReviewedOverview(kind: kind, showsUserReview: true, place: place)
         }
     }
 
@@ -350,6 +371,7 @@ struct NotReviewView: View {
                         .padding(.top, 8)
 
                     Button {
+                        showContributeFlow = true
                     } label: {
                         Text("Be the first reviewer")
                             .font(.subheadline.weight(.semibold))
@@ -370,6 +392,7 @@ struct NotReviewView: View {
                 .font(.title3.bold())
 
             Button {
+                showContributeFlow = true
             } label: {
                 Text("Add New Review")
                     .font(.subheadline.weight(.semibold))
