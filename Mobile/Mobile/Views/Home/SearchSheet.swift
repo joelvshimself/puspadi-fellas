@@ -223,8 +223,19 @@ struct SearchSheet: View {
     @State private var errorMessage: String?
     @State private var searchTask: Task<Void, Never>?
 
-    private var query: String {
+    /// A category the user tapped. Kept out of `searchText` on purpose: writing
+    /// the label into the field made it look like they had typed "Restaurants",
+    /// which then sat in the bar after coming back from a place.
+    @State private var activeCategory: SearchCategory?
+
+    /// What the user actually typed.
+    private var typed: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// What we search for: the typed text, or the tapped category.
+    private var query: String {
+        typed.isEmpty ? (activeCategory?.label ?? "") : typed
     }
 
     var body: some View {
@@ -232,7 +243,18 @@ struct SearchSheet: View {
             searchContent
         }
         .frame(maxWidth: .infinity, alignment: .top)
-        .onChange(of: searchText) { _, value in scheduleSearch(for: value) }
+        .onChange(of: searchText) { _, value in
+            if !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                activeCategory = nil
+            }
+            scheduleSearch(for: query)
+        }
+        .onChange(of: activeCategory) { _, _ in scheduleSearch(for: query) }
+        .onChange(of: isEditing) { _, editing in
+            // Leaving search clears the category too, so the sheet comes back
+            // to a clean bar rather than a stale filter.
+            if !editing { activeCategory = nil }
+        }
         .onChange(of: isFieldFocused) { _, focused in
             if focused != isEditing { isEditing = focused }
         }
@@ -328,7 +350,12 @@ struct SearchSheet: View {
     private var sheetBody: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: SheetMetrics.rowSpacing) {
-                if query.isEmpty {
+                if let activeCategory, typed.isEmpty, !isLoading, !results.isEmpty {
+                    sectionHeader(activeCategory.label)
+                    ForEach(results) { place in
+                        resultRow(place)
+                    }
+                } else if query.isEmpty {
                     sectionHeader("Find nearby accessible spots")
                     ForEach(SearchCategory.allCases) { category in
                         categoryRow(category)
@@ -362,7 +389,7 @@ struct SearchSheet: View {
 
     private func categoryRow(_ category: SearchCategory) -> some View {
         Button {
-            searchText = category.label
+            activeCategory = category
         } label: {
             HStack(spacing: 16) {
                 Image(systemName: category.icon)
