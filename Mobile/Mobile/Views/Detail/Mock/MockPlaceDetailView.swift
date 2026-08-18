@@ -269,7 +269,7 @@ struct MockPlaceDetailView: View {
                 ForEach(MockData.facilities) { facility in
                     if let kind = FacilityKind(rawValue: facility.key) {
                         NavigationLink {
-                            NotReviewView(kind: kind, state: facilityOverviewState)
+                            NotReviewView(kind: kind, state: facilityOverviewState, place: place)
                         } label: {
                             FacilityCard(facility: facility)
                         }

@@ -161,16 +161,18 @@ struct ContributeTagChip: View {
     }
 }
 
-/// Shared hero illustration — Mall/Entrance/Elevator/Toilet Asset PNGs
-/// (Mobile/Mobile/Assets, moved into Resources/Assets.xcassets).
+/// Shared hero illustration for the survey steps. Deliberately uses the
+/// `* Survey Asset` imagesets, NOT the `* Asset` ones — those are the
+/// line-art icons the Place Details facility cards render, and the two
+/// sets are not interchangeable.
 struct ContributeFacilityIllustration: View {
     let kind: FacilityKind
 
     private var assetName: String {
         switch kind {
-        case .entrance: "Entrance Asset"
-        case .elevator: "Elevator Asset"
-        case .toilet: "Toilet Asset"
+        case .entrance: "Entrance Survey Asset"
+        case .elevator: "Elevator Survey Asset"
+        case .toilet: "Toilet Survey Asset"
         }
     }
 

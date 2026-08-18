@@ -27,8 +27,11 @@ struct ContributeCategoryStepView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
+                    // Explicit order — `FacilityKind.allCases` declares
+                    // elevator/toilet/entrance, but the design lists
+                    // Entrances, Elevators, then Accessible Toilets.
                     VStack(spacing: 12) {
-                        ForEach(FacilityKind.allCases) { kind in
+                        ForEach([FacilityKind.entrance, .elevator, .toilet]) { kind in
                             categoryRow(kind)
                         }
                     }
@@ -58,7 +61,7 @@ struct ContributeCategoryStepView: View {
                     .foregroundStyle(isSelected ? Color.accentColor : .primary)
                     .frame(width: 24)
 
-                Text(kind.title)
+                Text(categoryLabel(kind))
                     .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(isSelected ? Color.accentColor : .primary)
 
@@ -77,6 +80,17 @@ struct ContributeCategoryStepView: View {
             }
         }
         .buttonStyle(.plain)
+    }
+
+    /// The design spells the toilet row out as "Accessible Toilets", where
+    /// `FacilityKind.title` is just "Toilets" (that shorter form is what
+    /// the facility detail screens want).
+    private func categoryLabel(_ kind: FacilityKind) -> String {
+        switch kind {
+        case .entrance: "Entrances"
+        case .elevator: "Elevators"
+        case .toilet: "Accessible Toilets"
+        }
     }
 
     private func categoryIcon(_ kind: FacilityKind) -> String {

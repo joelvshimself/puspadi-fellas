@@ -183,16 +183,19 @@ enum FacilityOverviewState {
 struct NotReviewView: View {
     let kind: FacilityKind
     var state: FacilityOverviewState = .empty
+    /// The real place this facility belongs to, when the screen was reached
+    /// from a live search result. Reviews started here submit against these
+    /// coordinates; nil falls back to the MockData fixture for the
+    /// demo/preview entry points.
+    var place: Place? = nil
 
     @State private var selectedTab: FacilityDetailTab = .overview
     @State private var isComposingPhotos = false
     @State private var showContributeFlow = false
 
-    /// No `Place` reaches this screen today (it's driven purely by `kind`
-    /// + `state`) — same throwaway-`Place` pattern used by the Mock/
-    /// screens' own review-flow entry points.
     private var contributePlace: Place {
-        Place.fromSearchResult(
+        if let place { return place }
+        return Place.fromSearchResult(
             name: MockData.placeName,
             category: "Mall",
             coordinate: CLLocationCoordinate2D(latitude: 0, longitude: 0)
@@ -334,9 +337,9 @@ struct NotReviewView: View {
         case .unavailable:
             unavailableLower
         case .community:
-            FacilityReviewedOverview(kind: kind, showsUserReview: false)
+            FacilityReviewedOverview(kind: kind, showsUserReview: false, place: place)
         case .reviewed:
-            FacilityReviewedOverview(kind: kind, showsUserReview: true)
+            FacilityReviewedOverview(kind: kind, showsUserReview: true, place: place)
         }
     }
 

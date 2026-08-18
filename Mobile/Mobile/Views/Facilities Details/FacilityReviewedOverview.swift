@@ -4,13 +4,17 @@ import SwiftUI
 struct FacilityReviewedOverview: View {
     let kind: FacilityKind
     var showsUserReview: Bool = true
+    /// The real place, when reached from a live search result — reviews
+    /// started here submit against its coordinates. nil falls back to the
+    /// MockData fixture for the demo/preview entry points.
+    var place: Place? = nil
+
     @State private var selectedPhoto: FacilityPhoto?
     @State private var showContributeFlow = false
 
-    /// No `Place` reaches this screen today — same throwaway-`Place`
-    /// pattern used elsewhere (MockPlaceDetailView, NotReviewView).
     private var contributePlace: Place {
-        Place.fromSearchResult(
+        if let place { return place }
+        return Place.fromSearchResult(
             name: MockData.placeName,
             category: "Mall",
             coordinate: CLLocationCoordinate2D(latitude: 0, longitude: 0)
