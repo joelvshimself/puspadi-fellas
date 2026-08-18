@@ -30,6 +30,10 @@ struct FacilityPhoto: Identifiable {
 }
 
 extension FacilityPhoto {
+    static let reviewThumbnails: [FacilityPhoto] = (0..<3).map { _ in
+        FacilityPhoto(source: .asset("SamplePlacePhoto"))
+    }
+
     /// Placeholder gallery so the Photos tab matches the mockup out of the box,
     /// mirroring `Place.samples`. The mosaic repeats a 10-photo cycle, so ten
     /// entries fill exactly one full pattern.

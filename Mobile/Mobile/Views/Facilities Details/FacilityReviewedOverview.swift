@@ -3,6 +3,7 @@ import SwiftUI
 struct FacilityReviewedOverview: View {
     let kind: FacilityKind
     var showsUserReview: Bool = true
+    @State private var selectedPhoto: FacilityPhoto?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -56,7 +57,8 @@ struct FacilityReviewedOverview: View {
 
                     FacilityReviewRow(
                         bodyText: kind.reviewBody,
-                        providedList: kind.reviewProvidedList
+                        providedList: kind.reviewProvidedList,
+                        onSelectPhoto: { selectedPhoto = $0 }
                     )
                     .padding(16)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -82,6 +84,9 @@ struct FacilityReviewedOverview: View {
                     .buttonStyle(.plain)
                 }
             }
+        }
+        .fullScreenCover(item: $selectedPhoto) { photo in
+            FacilityPhotoDetailView(photo: photo)
         }
     }
 

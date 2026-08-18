@@ -3,12 +3,8 @@ import SwiftUI
 struct FacilityReviewRow: View {
     let bodyText: String
     let providedList: String
-
-    private let photoColors: [Color] = [
-        Color(.systemGray3),
-        Color(.systemGray4),
-        Color(.systemGray2),
-    ]
+    var photos: [FacilityPhoto] = FacilityPhoto.reviewThumbnails
+    var onSelectPhoto: (FacilityPhoto) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -39,14 +35,15 @@ struct FacilityReviewRow: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(0..<3, id: \.self) { index in
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(photoColors[index])
-                            .frame(width: 88, height: 88)
-                            .overlay {
-                                Image(systemName: "photo")
-                                    .foregroundStyle(.white.opacity(0.85))
-                            }
+                    ForEach(photos) { photo in
+                        Button {
+                            onSelectPhoto(photo)
+                        } label: {
+                            FacilityPhotoImage(photo: photo, cornerRadius: 10)
+                                .frame(width: 88, height: 88)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Review photo")
                     }
                 }
             }
@@ -78,6 +75,7 @@ struct FacilityReviewsList: View {
     let kind: FacilityKind
 
     @State private var selectedFilter: ReviewFilter = .all
+    @State private var selectedPhoto: FacilityPhoto?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -96,11 +94,15 @@ struct FacilityReviewsList: View {
                     }
                     FacilityReviewRow(
                         bodyText: kind.reviewBody,
-                        providedList: kind.reviewProvidedList
+                        providedList: kind.reviewProvidedList,
+                        onSelectPhoto: { selectedPhoto = $0 }
                     )
                     .padding(.vertical, 14)
                 }
             }
+        }
+        .fullScreenCover(item: $selectedPhoto) { photo in
+            FacilityPhotoDetailView(photo: photo)
         }
     }
 

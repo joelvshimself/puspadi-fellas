@@ -6,11 +6,10 @@ import SwiftUI
 struct FacilityPhotoImage: View {
     let photo: FacilityPhoto
     var cornerRadius: CGFloat = PhotoMetrics.smallTileCornerRadius
+    /// Mosaic tiles cover the square; the lightbox fits the whole photo.
+    var fillsFrame: Bool = true
 
     var body: some View {
-        // Sizing from a Color.clear base rather than from the image itself:
-        // `scaledToFill` reports the overflowing size, which would otherwise
-        // push the tile past the frame its parent handed it.
         Color.clear
             .overlay { content }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
@@ -22,18 +21,18 @@ struct FacilityPhotoImage: View {
         case let .local(image):
             Image(uiImage: image)
                 .resizable()
-                .scaledToFill()
+                .aspectRatio(contentMode: fillsFrame ? .fill : .fit)
         case let .asset(name):
             Image(name)
                 .resizable()
-                .scaledToFill()
+                .aspectRatio(contentMode: fillsFrame ? .fill : .fit)
         case let .remote(url):
             AsyncImage(url: url) { phase in
                 switch phase {
                 case let .success(image):
                     image
                         .resizable()
-                        .scaledToFill()
+                        .aspectRatio(contentMode: fillsFrame ? .fill : .fit)
                 case .failure:
                     placeholder(symbol: "photo")
                 default:

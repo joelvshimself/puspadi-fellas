@@ -16,6 +16,7 @@ import SwiftUI
 struct PhotoMosaicGrid: View {
     let photos: [FacilityPhoto]
     let width: CGFloat
+    var onSelect: (FacilityPhoto) -> Void = { _ in }
 
     private var spacing: CGFloat { PhotoMetrics.mosaicSpacing }
     private var smallSize: CGFloat { max((width - spacing * 2) / 3, 0) }
@@ -71,8 +72,14 @@ struct PhotoMosaicGrid: View {
     }
 
     private func tile(_ photo: FacilityPhoto, size: CGFloat, cornerRadius: CGFloat) -> some View {
-        FacilityPhotoImage(photo: photo, cornerRadius: cornerRadius)
-            .frame(width: size, height: size)
+        Button {
+            onSelect(photo)
+        } label: {
+            FacilityPhotoImage(photo: photo, cornerRadius: cornerRadius)
+                .frame(width: size, height: size)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Photo")
     }
 
     // MARK: Block planning

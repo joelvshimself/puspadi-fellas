@@ -12,6 +12,9 @@ struct FacilityPhotosView: View {
     /// Names the facility this gallery belongs to ("Entrances" in the mockup).
     let facilityName: String
     var onBack: () -> Void
+    /// When false, the parent already shows a nav title and tab picker.
+    var showsChrome: Bool
+    var onComposingChanged: ((Bool) -> Void)?
 
     @StateObject private var store: FacilityPhotoStore
 
@@ -25,21 +28,66 @@ struct FacilityPhotosView: View {
     }
 
     @State private var screen: Screen = .gallery
-    @State private var selectedTab: FacilityDetailTab = .photos
+    @State private var internalTab: FacilityDetailTab = .photos
+    private var externalTab: Binding<FacilityDetailTab>?
     @State private var isLibraryPresented = false
     @State private var isCameraPresented = false
     @State private var librarySelection: [PhotosPickerItem] = []
     @State private var stagedPhotos: [FacilityPhoto] = []
+    @State private var selectedPhoto: FacilityPhoto?
     @State private var showsSuccessToast = false
     @State private var toastDismissTask: Task<Void, Never>?
+
+    private var selectedTab: Binding<FacilityDetailTab> {
+        externalTab ?? $internalTab
+    }
 
     init(
         facilityName: String,
         photos: [FacilityPhoto] = FacilityPhoto.samples,
         onBack: @escaping () -> Void = {}
     ) {
+        self.init(
+            facilityName: facilityName,
+            photos: photos,
+            selectedTab: nil,
+            showsChrome: true,
+            onBack: onBack,
+            onComposingChanged: nil
+        )
+    }
+
+    init(
+        facilityName: String,
+        photos: [FacilityPhoto] = FacilityPhoto.samples,
+        selectedTab: Binding<FacilityDetailTab>,
+        showsChrome: Bool,
+        onBack: @escaping () -> Void = {},
+        onComposingChanged: ((Bool) -> Void)? = nil
+    ) {
+        self.init(
+            facilityName: facilityName,
+            photos: photos,
+            selectedTab: Optional(selectedTab),
+            showsChrome: showsChrome,
+            onBack: onBack,
+            onComposingChanged: onComposingChanged
+        )
+    }
+
+    private init(
+        facilityName: String,
+        photos: [FacilityPhoto],
+        selectedTab: Binding<FacilityDetailTab>?,
+        showsChrome: Bool,
+        onBack: @escaping () -> Void,
+        onComposingChanged: ((Bool) -> Void)?
+    ) {
         self.facilityName = facilityName
         self.onBack = onBack
+        self.showsChrome = showsChrome
+        self.onComposingChanged = onComposingChanged
+        self.externalTab = selectedTab
         _store = StateObject(wrappedValue: FacilityPhotoStore(photos: photos))
     }
 
@@ -87,22 +135,31 @@ struct FacilityPhotosView: View {
             .ignoresSafeArea()
         }
         .onDisappear { toastDismissTask?.cancel() }
+        .fullScreenCover(item: $selectedPhoto) { photo in
+            FacilityPhotoDetailView(photo: photo)
+        }
     }
 
     private var gallery: some View {
         GeometryReader { proxy in
             VStack(spacing: 0) {
-                PhotoFlowHeader(title: facilityName, onBack: onBack)
+                if showsChrome {
+                    PhotoFlowHeader(title: facilityName, onBack: onBack)
 
-                // The tab switcher is pinned: only the Add Photos pill and the
-                // gallery below it scroll, so changing tabs is always reachable.
-                FacilitySegmentedControl(selection: $selectedTab)
-                    .padding(.horizontal, PhotoMetrics.gutter)
-                    .background(Color(.systemBackground))
-                    .zIndex(1)
+                    // The tab switcher is pinned: only the Add Photos pill and the
+                    // gallery below it scroll, so changing tabs is always reachable.
+                    FacilitySegmentedControl(selection: selectedTab)
+                        .padding(.horizontal, PhotoMetrics.gutter)
+                        .background(Color(.systemBackground))
+                        .zIndex(1)
+                }
 
                 ScrollView {
-                    tabContent(contentWidth: proxy.size.width)
+                    if showsChrome {
+                        tabContent(contentWidth: proxy.size.width)
+                    } else {
+                        photosTab(contentWidth: proxy.size.width)
+                    }
                 }
             }
             // The toast covers the top of the content block, not the toolbar
@@ -113,7 +170,10 @@ struct FacilityPhotosView: View {
                         hideToast()
                     }
                     .padding(.horizontal, PhotoMetrics.composerHorizontalPadding)
-                    .offset(y: PhotoMetrics.toolbarHeight + PhotoMetrics.toastTopOffset)
+                    .offset(
+                        y: (showsChrome ? PhotoMetrics.toolbarHeight : 0)
+                            + PhotoMetrics.toastTopOffset
+                    )
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
@@ -124,7 +184,7 @@ struct FacilityPhotosView: View {
 
     @ViewBuilder
     private func tabContent(contentWidth: CGFloat) -> some View {
-        switch selectedTab {
+        switch selectedTab.wrappedValue {
         case .photos:
             photosTab(contentWidth: contentWidth)
         case .overview, .reviews:
@@ -142,7 +202,8 @@ struct FacilityPhotosView: View {
 
             PhotoMosaicGrid(
                 photos: store.photos,
-                width: max(contentWidth - PhotoMetrics.gutter * 2, 0)
+                width: max(contentWidth - PhotoMetrics.gutter * 2, 0),
+                onSelect: { selectedPhoto = $0 }
             )
             .padding(PhotoMetrics.gutter)
         }
@@ -153,7 +214,7 @@ struct FacilityPhotosView: View {
             Image(systemName: "square.dashed")
                 .font(.largeTitle)
                 .foregroundStyle(.tertiary)
-            Text("\(selectedTab.title) isn't available yet.")
+            Text("\(selectedTab.wrappedValue.title) isn't available yet.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -213,11 +274,13 @@ struct FacilityPhotosView: View {
         guard !photos.isEmpty else { return }
         stagedPhotos = photos
         withAnimation(.snappy(duration: 0.3)) { screen = .composer }
+        onComposingChanged?(true)
     }
 
     private func goToGallery() {
         stagedPhotos = []
         withAnimation(.snappy(duration: 0.3)) { screen = .gallery }
+        onComposingChanged?(false)
     }
 
     // MARK: Toast

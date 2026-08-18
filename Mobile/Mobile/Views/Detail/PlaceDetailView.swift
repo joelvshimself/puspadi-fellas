@@ -90,7 +90,7 @@ struct PlaceDetailView: View {
             ReviewWizardView(place: place) { showReviewWizard = false }
         }
         .fullScreenCover(isPresented: $showPhotos) {
-            FacilityPhotosView(facilityName: place.name) { showPhotos = false }
+            FacilityPhotosView(facilityName: place.name, onBack: { showPhotos = false })
         }
     }
 

@@ -184,48 +184,32 @@ struct NotReviewView: View {
     var state: FacilityOverviewState = .empty
 
     @State private var selectedTab: FacilityDetailTab = .overview
+    @State private var isComposingPhotos = false
 
     var body: some View {
-        GeometryReader { geo in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    VStack(alignment: .leading, spacing: 20) {
-                        Picker("Section", selection: $selectedTab) {
-                            ForEach(FacilityDetailTab.allCases) { tab in
-                                Text(tab.title.uppercased()).tag(tab)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-
-                        if selectedTab == .overview {
-                            overviewHero
-                        }
+        VStack(spacing: 0) {
+            if selectedTab != .photos || !isComposingPhotos {
+                Picker("Section", selection: $selectedTab) {
+                    ForEach(FacilityDetailTab.allCases) { tab in
+                        Text(tab.title.uppercased()).tag(tab)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 20)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(chromeBackground)
-
-                    Group {
-                        switch selectedTab {
-                        case .overview:
-                            overviewLower
-                        case .reviews:
-                            if state == .reviewed {
-                                FacilityReviewsList(kind: kind)
-                            } else {
-                                emptyCard(message: "No one review this place yet")
-                            }
-                        case .photos:
-                            emptyCard(message: "No photos yet")
-                        }
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 32)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    .background(contentBackground)
                 }
-                .frame(minHeight: geo.size.height, alignment: .top)
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 12)
+                .background(chromeBackground)
+            }
+
+            if selectedTab == .photos {
+                FacilityPhotosView(
+                    facilityName: kind.title,
+                    selectedTab: $selectedTab,
+                    showsChrome: false,
+                    onBack: { selectedTab = .overview },
+                    onComposingChanged: { isComposingPhotos = $0 }
+                )
+            } else {
+                overviewAndReviews
             }
         }
         .background {
@@ -242,6 +226,49 @@ struct NotReviewView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .navigationTitle(kind.title)
         .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: selectedTab) { _, tab in
+            if tab != .photos {
+                isComposingPhotos = false
+            }
+        }
+    }
+
+    private var overviewAndReviews: some View {
+        GeometryReader { geo in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    VStack(alignment: .leading, spacing: 20) {
+                        if selectedTab == .overview {
+                            overviewHero
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, selectedTab == .overview ? 20 : 0)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(chromeBackground)
+
+                    Group {
+                        switch selectedTab {
+                        case .overview:
+                            overviewLower
+                        case .reviews:
+                            if state == .reviewed {
+                                FacilityReviewsList(kind: kind)
+                            } else {
+                                emptyCard(message: "No one review this place yet")
+                            }
+                        case .photos:
+                            EmptyView()
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 32)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .background(contentBackground)
+                }
+                .frame(minHeight: geo.size.height, alignment: .top)
+            }
+        }
     }
 
     private var chromeBackground: Color {
@@ -250,7 +277,7 @@ struct NotReviewView: View {
 
     private var contentBackground: Color {
         if selectedTab == .reviews { return .white }
-        if selectedTab == .photos { return Color(.systemGroupedBackground) }
+        if selectedTab == .photos { return Color(.systemBackground) }
         return state.bodyBackground
     }
 
