@@ -1,21 +1,25 @@
 import MapKit
 import SwiftUI
 
-// The system drag indicator is drawn over the top of the sheet content and
-// fits inside the search bar's own top padding, so no extra height is needed
-// for it — the peek detent is just the measured bar. (The sheet always adds
-// the bottom home-indicator safe-area strip on top of this.)
-private let grabberInset: CGFloat = 0
 /// A tall CUSTOM detent instead of .large: iOS gives the true .large detent an
 /// opaque background, but custom/medium detents keep the translucent Liquid
 /// Glass treatment — so the expanded sheet stays glassy like the peek.
-let expandedDetent: PresentationDetent = .fraction(0.92)
+/// The tallest a floating glass sheet will go. The design puts the focused
+/// sheet's top edge at 60pt, but iOS clamps a non-`.large` sheet to ~715pt
+/// here (both `.fraction(0.98)` and `.height(777)` land at the ceiling), and
+/// `.large` is the wrong look — it turns opaque and anchors to the screen
+/// edges instead of floating.
+let expandedDetent: PresentationDetent = .fraction(0.98)
+
+/// Initial and recenter zoom. Roughly a 1.3km span — close enough to read
+/// street names, like Apple Maps opens.
+let defaultMapSpan: Double = 0.012
 
 struct HomeMapView: View {
     @State private var cameraPosition: MapCameraPosition = .region(
         MKCoordinateRegion(
             center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
-            span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
+            span: MKCoordinateSpan(latitudeDelta: defaultMapSpan, longitudeDelta: defaultMapSpan)
         )
     )
     /// Tracked separately from `cameraPosition` (which is opaque) so
@@ -23,21 +27,20 @@ struct HomeMapView: View {
     /// toward what's currently on screen.
     @State private var visibleRegion = MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
-        span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
+        span: MKCoordinateSpan(latitudeDelta: defaultMapSpan, longitudeDelta: defaultMapSpan)
     )
     /// A persistent, draggable bottom sheet (native .sheet + presentationDetents,
     /// same pattern snackbud uses elsewhere) instead of a view that swaps its
     /// own frame/background — this is what gives the real drag-up-to-expand,
     /// map-stays-interactive-underneath feel of Google/Apple Maps.
     @State private var isSheetPresented = true
-    /// Measured height of the search-bar row (reported by SearchSheet). The
-    /// peek detent is derived from this so it fits the bar exactly instead of
-    /// a hardcoded value. Seeded with a sane fallback for the first layout
-    /// pass, then corrected once the bar reports its real size.
-    @State private var peekBarHeight: CGFloat = 68
-    @State private var sheetDetent: PresentationDetent = .height(68 + 24)
+    @State private var sheetDetent: PresentationDetent = .height(SheetMetrics.peekHeight)
+    /// The single source of truth for "the user is searching". Kept separate
+    /// from `sheetDetent` because iOS resizes the sheet around the keyboard;
+    /// deriving this from the detent made the sheet flip between its collapsed
+    /// and expanded looks while typing.
+    @State private var isSearchActive = false
     @State private var searchText = ""
-    @FocusState private var isSearchFocused: Bool
     @State private var showAnalysing = false
     @State private var path = NavigationPath()
     @StateObject private var locationManager = LocationManager()
@@ -66,7 +69,7 @@ struct HomeMapView: View {
 
     private let places = Place.samples
 
-    private var isSearching: Bool { sheetDetent == expandedDetent }
+    private var isSearching: Bool { isSearchActive }
 
     /// Pins shown on the map — narrowed to the selected grades when the filter
     /// is active. Ungraded places drop out while any filter is on.
@@ -78,9 +81,10 @@ struct HomeMapView: View {
         }
     }
 
-    /// The peek detent, sized to the measured search bar plus the system drag
-    /// handle — no hardcoded sheet height.
-    private var peekDetent: PresentationDetent { .height(peekBarHeight + grabberInset) }
+    /// The peek detent. Fixed to the design's peek height rather than measured:
+    /// the sheet compresses content that doesn't fit the detent, so feeding a
+    /// measured (already-compressed) height back in sent it into a shrink loop.
+    private var peekDetent: PresentationDetent { .height(SheetMetrics.peekHeight) }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -95,6 +99,30 @@ struct HomeMapView: View {
                     }
                 )
                 .ignoresSafeArea()
+                // Search - Focused (285:1589): the map dims and blurs behind
+                // the expanded sheet.
+                .overlay {
+                    if isSearching {
+                        Rectangle()
+                            .fill(SheetPalette.searchScrim.opacity(0.6))
+                            .background(.ultraThinMaterial)
+                            .ignoresSafeArea()
+                            .transition(.opacity)
+                    }
+                }
+                // Ellipse 8 (285:1327): a big blurred blue blob sitting just
+                // below the screen edge. The sheet's glass picks its colour up,
+                // which is what gives the peek its blue cast.
+                .overlay(alignment: .bottom) {
+                    Ellipse()
+                        .fill(SheetPalette.glow)
+                        .frame(width: SheetMetrics.glowWidth, height: SheetMetrics.glowHeight)
+                        .blur(radius: SheetMetrics.glowBlur)
+                        .opacity(SheetMetrics.glowOpacity)
+                        .offset(y: SheetMetrics.glowOffsetY)
+                        .allowsHitTesting(false)
+                        .ignoresSafeArea()
+                }
                 // Dim the map while the filter panel is open (frame 2).
                 .overlay {
                     if showFilter {
@@ -130,7 +158,7 @@ struct HomeMapView: View {
                     if !isSearching && !showFilter {
                         locationButton
                             .padding(.trailing, 16)
-                            .padding(.bottom, peekBarHeight + bottomSafeInset + 12)
+                            .padding(.bottom, SheetMetrics.peekHeight + bottomSafeInset + 16)
                             .transition(.opacity)
                     }
                 }
@@ -151,44 +179,47 @@ struct HomeMapView: View {
                 }
                 .sheet(isPresented: $isSheetPresented) {
                     SearchSheet(
-                        detent: $sheetDetent,
+                        isExpanded: $isSearchActive,
                         searchText: $searchText,
-                        isSearchFocused: $isSearchFocused,
-                        places: places,
                         searchRegion: visibleRegion,
                         selectedPlace: $selectedPlace,
                         onSelectPlace: openPlace,
-                        onCancelSearch: dismissSearch,
-                        onPeekHeightChange: { height in
-                            guard height > 0, abs(height - peekBarHeight) > 0.5 else { return }
-                            peekBarHeight = height
-                        }
+                        onCancelSearch: dismissSearch
                     )
                     // While a place detail is showing, lock the sheet to the
                     // expanded detent — collapsing detail content to the 230pt
                     // peek cut it into an ugly sliver. Search/browse keeps both.
+                    // Deliberately a constant set. Swapping the detents while
+                    // the sheet is up makes it reconfigure mid-edit, which costs
+                    // keystrokes; `isSearchActive` already keeps the content's
+                    // appearance stable regardless of how iOS resizes the sheet
+                    // around the keyboard.
                     .presentationDetents(
-                        selectedPlace == nil ? [peekDetent, expandedDetent] : [expandedDetent],
+                        [peekDetent, expandedDetent],
                         selection: $sheetDetent
                     )
                     .presentationBackgroundInteraction(.enabled)
-                    .presentationDragIndicator(.visible)
-                    .presentationCornerRadius(24)
+                    .presentationDragIndicator(.hidden)
+                    // No presentationCornerRadius: iOS 26 already draws the
+                    // design's 34pt top / 58pt bottom corners itself, pulling
+                    // the bottom edges in at small heights. Pinning one radius
+                    // overrode that.
                     // No explicit presentationBackground — the iOS 26 default
                     // sheet is Liquid Glass (translucent, map shows through).
                     // An explicit material override flattened it to gray.
                     .interactiveDismissDisabled()
                 }
-                .onChange(of: isSearchFocused) { _, focused in
-                    // TextField focus does not fire parent tap gestures; expand from focus.
-                    if focused, !isSearching {
-                        sheetDetent = expandedDetent
-                    }
+                .onChange(of: isSearchActive) { _, active in
+                    // The one place the search detent is set, so the sheet makes
+                    // a single move rather than several racing writers.
+                    guard selectedPlace == nil else { return }
+                    sheetDetent = active ? expandedDetent : peekDetent
                 }
                 .onChange(of: path.count) { _, count in
                     if count == 0 {
                         // Back at the map root — bring the search sheet back
                         // at its peek height.
+                        isSearchActive = false
                         sheetDetent = peekDetent
                         isSheetPresented = true
                     } else {
@@ -210,15 +241,6 @@ struct HomeMapView: View {
                         // result), not the focused search.
                         sheetDetent = detentBeforePlace ?? peekDetent
                         detentBeforePlace = nil
-                    }
-                }
-                .onChange(of: peekBarHeight) { _, _ in
-                    // The peek detent's value just changed, so the old value
-                    // is no longer in the detents set. If we're sitting at the
-                    // peek, re-point the selection at the new one so the sheet
-                    // doesn't snap to a fallback detent.
-                    if sheetDetent != expandedDetent {
-                        sheetDetent = peekDetent
                     }
                 }
                 .onChange(of: locationManager.currentCoordinate) { _, coordinate in
@@ -353,37 +375,29 @@ struct HomeMapView: View {
     }
 
     private var locationButton: some View {
-        Button {
+        GlassCircleButton {
             if let coordinate = locationManager.currentCoordinate {
-                recenter(on: coordinate.clLocation, span: 0.04)
+                recenter(on: coordinate.clLocation, span: defaultMapSpan)
             } else {
                 locationManager.requestLocation()
             }
         } label: {
             Image(systemName: "location.fill")
-                .font(.system(size: 17, weight: .semibold))
+                .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(.primary)
-                .frame(width: 44, height: 44)
-                .background(.ultraThinMaterial, in: Circle())
-                .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
         }
-        .buttonStyle(.plain)
         .accessibilityLabel("My location")
     }
 
     private func circularButton(systemName: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        GlassCircleButton(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(.primary)
-                .frame(width: 44, height: 44)
-                .background(.ultraThinMaterial, in: Circle())
-                .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
         }
-        .buttonStyle(.plain)
     }
 
-    private func recenter(on coordinate: CLLocationCoordinate2D, span: Double = 0.08) {
+    private func recenter(on coordinate: CLLocationCoordinate2D, span: Double = defaultMapSpan) {
         let region = MKCoordinateRegion(
             center: coordinate,
             span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)
@@ -394,17 +408,19 @@ struct HomeMapView: View {
         visibleRegion = region
     }
 
+    /// ✕ / cancel: clear what was typed and collapse back to the peek. The
+    /// sheet drops focus itself when `isSearchActive` goes false.
     private func dismissSearch() {
-        isSearchFocused = false
         searchText = ""
-        sheetDetent = peekDetent
+        withAnimation(.easeInOut(duration: 0.25)) {
+            isSearchActive = false
+        }
     }
 
     private func openPlace(_ place: Place) {
         // Show the accessibility detail inside the sheet (not a pushed page).
         // Remember the current step first so closing returns to it; the
         // onChange(of: selectedPlace) handler drives the detent change.
-        isSearchFocused = false
         detentBeforePlace = sheetDetent
         selectedPlace = place
     }

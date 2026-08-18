@@ -26,28 +26,12 @@ struct PlaceDetailView: View {
             VStack(alignment: .leading, spacing: 20) {
                 topActions
                 titleBlock
-                if place.isLiveResult {
-                    // Order: locator map -> accessibility grade -> directions
-                    // up top (the decision-making info), then the street photo
-                    // and reviews as supporting detail at the bottom.
-                    FacilityMapHeader(coordinate: place.coordinate, name: place.name)
-                    accessibilityGradeSection
-                    directionsButton
-
-                    PlaceImageView(
-                        coordinate: place.coordinate,
-                        remoteImageURL: imageURL,
-                        attribution: imageAttribution,
-                        resolved: enrichResolved
-                    )
-
-                    liveReviewsSection
-                } else {
-                    // Mock sample places keep the original rating/summary card.
-                    heroCard
-                    tabBar
-                    tabContent
-                }
+                // One layout for every place. A live search result fills it
+                // from the `place-accessibility` response; the mock samples
+                // fill it from their canned fields.
+                heroCard
+                tabBar
+                tabContent
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 32)
@@ -252,40 +236,64 @@ struct PlaceDetailView: View {
         }
     }
 
+    /// The badge shown on the hero card: the real computed grade for a live
+    /// place, the canned stand-in for a mock sample.
+    private var displayGrade: OverallAccessibility? {
+        place.isLiveResult ? overallGrade : mockOverallGrade
+    }
+
+    private var heroHeadline: String {
+        guard place.isLiveResult else { return place.ratingLabel }
+        if let overallGrade { return overallGrade.label }
+        return isLoadingGrade ? "Checking accessibility…" : "Not graded yet"
+    }
+
+    /// For a live place this is derived from the actual per-feature grades
+    /// rather than invented copy — there is no summary field on the backend.
+    private var heroSummary: String {
+        guard place.isLiveResult else { return place.summary }
+        if isLoadingGrade { return "Loading accessibility data…" }
+        if gradeLoadFailed { return "Couldn't load accessibility data right now." }
+        guard !grade.isEmpty else {
+            return "No accessibility data yet for this place — be the first to review it."
+        }
+        let byValue = Dictionary(grouping: grade, by: \.bestValue)
+        var parts: [String] = []
+        for (value, title) in [("yes", "Accessible"), ("limited", "Limited"), ("no", "Not accessible")] {
+            if let rows = byValue[value], !rows.isEmpty {
+                parts.append("\(title): \(rows.map(\.featureLabel).joined(separator: ", "))")
+            }
+        }
+        return parts.joined(separator: " · ")
+    }
+
     private var heroCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "person.crop.circle.fill")
                     .font(.title3)
                     .foregroundStyle(.secondary)
-                Text(place.ratingLabel)
+                Text(heroHeadline)
                     .font(.headline)
                 Spacer()
-                Text(mockOverallGrade.label)
-                    .font(.caption.weight(.bold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(mockOverallGrade.color.opacity(0.15), in: Capsule())
-                    .foregroundStyle(mockOverallGrade.color)
+                if let displayGrade {
+                    Text(displayGrade.label)
+                        .font(.caption.weight(.bold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(displayGrade.color.opacity(0.15), in: Capsule())
+                        .foregroundStyle(displayGrade.color)
+                }
             }
 
-            Text(place.summary)
+            Text(heroSummary)
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Button {
-                // Directions mock — no navigation SDK wired.
-            } label: {
-                Label("Directions", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .foregroundStyle(.white)
-            }
-            .buttonStyle(.plain)
-            .padding(.top, 4)
+            // Real Maps hand-off for both — it only needs a coordinate.
+            directionsButton
+                .padding(.top, 4)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -320,14 +328,48 @@ struct PlaceDetailView: View {
     private var tabContent: some View {
         switch selectedTab {
         case .facilities:
-            facilitiesContent
+            if place.isLiveResult {
+                liveFacilitiesContent
+            } else {
+                facilitiesContent
+            }
         case .routes:
-            Text(place.description)
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if place.isLiveResult {
+                liveRoutesContent
+            } else {
+                Text(place.description)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         case .review:
-            reviewsBox
+            if place.isLiveResult {
+                liveReviewsSection
+            } else {
+                reviewsBox
+            }
+        }
+    }
+
+    /// Real per-feature grades from the backend, plus the cached street photo.
+    private var liveFacilitiesContent: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            accessibilityGradeSection
+            PlaceImageView(
+                coordinate: place.coordinate,
+                remoteImageURL: imageURL,
+                attribution: imageAttribution,
+                resolved: enrichResolved
+            )
+        }
+    }
+
+    /// The locator map and a real Maps hand-off — a live place has no written
+    /// route description on the backend, so none is invented here.
+    private var liveRoutesContent: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            FacilityMapHeader(coordinate: place.coordinate, name: place.name)
+            directionsButton
         }
     }
 
