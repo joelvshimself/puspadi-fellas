@@ -18,6 +18,8 @@ struct PlaceImageView: View {
     /// URL exists before deciding to fall back. Avoids a fallback flash.
     var resolved: Bool = true
     var height: CGFloat = 180
+    /// 0 for a full-bleed hero; the default rounds the inline card.
+    var cornerRadius: CGFloat = 16
 
     @State private var image: UIImage?
     @State private var shownAttribution: String?
@@ -56,7 +58,7 @@ struct PlaceImageView: View {
         }
         .frame(height: height)
         .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         // Re-run when the enrich result resolves (so the Mapillary URL, if any,
         // is known before we decide on a fallback).
         .task(id: taskKey) {

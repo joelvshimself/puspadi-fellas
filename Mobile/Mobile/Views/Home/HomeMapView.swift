@@ -196,6 +196,17 @@ struct HomeMapView: View {
                     // An explicit material override flattened it to gray.
                     .interactiveDismissDisabled()
                 }
+                .onChange(of: sheetDetent) { _, detent in
+                    // Dragging the grabber up must behave exactly like tapping
+                    // the field: the detent is a user gesture too, so mirror it
+                    // into the search state rather than only reacting to focus.
+                    let expanded = (detent == expandedDetent)
+                    if expanded != isSearchActive {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            isSearchActive = expanded
+                        }
+                    }
+                }
                 .onChange(of: isSearchActive) { _, active in
                     // The one place the search detent is set, so the sheet makes
                     // a single move rather than several racing writers.

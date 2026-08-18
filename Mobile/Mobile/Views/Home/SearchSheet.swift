@@ -229,8 +229,10 @@ struct SearchSheet: View {
             }
         }
         .onChange(of: isExpanded) { _, expanded in
+            // Expanding by any route — tap, keystroke, or dragging the grabber
+            // up — puts the caret in the field so all three feel identical.
             // Collapsing (✕, or a drag down) gives up the keyboard.
-            if !expanded { isFieldFocused = false }
+            isFieldFocused = expanded
         }
     }
 
