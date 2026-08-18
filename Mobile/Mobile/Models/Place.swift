@@ -7,6 +7,8 @@ struct Place: Identifiable, Hashable {
     let name: String
     let category: String
     let distance: String
+    /// Short street/area line shown under the name in search results.
+    var address: String = ""
     let ratingLabel: String
     let summary: String
     let description: String
@@ -16,9 +18,12 @@ struct Place: Identifiable, Hashable {
     let facilitySymbols: [String]
     let elevatorDetails: [ElevatorDetail]
     let reviewsSummary: String
+    /// Overall accessibility grade used to color and filter the map pin.
+    /// nil for live search results until the backend enrichment resolves.
+    var grade: OverallAccessibility? = nil
     /// Populated for places from a real MKLocalSearch result once the
     /// backend enrichment call resolves — nil (and unused) for the mock
-    /// `samples` below. See PlaceDetailView's live grade loading.
+    /// mock detail fixtures. See PlaceDetailView's live grade loading.
     var isLiveResult: Bool = false
 
     struct ElevatorDetail: Hashable {
@@ -41,12 +46,13 @@ extension Place {
     /// reviews summary) don't exist for a real place, so they're left
     /// empty rather than faked — PlaceDetailView only renders them when
     /// non-empty, and shows the real, live Accessibility Grade instead.
-    static func fromSearchResult(name: String, category: String, coordinate: CLLocationCoordinate2D) -> Place {
+    static func fromSearchResult(name: String, category: String, coordinate: CLLocationCoordinate2D, address: String = "", distance: String = "") -> Place {
         Place(
             id: UUID(),
             name: name,
             category: category,
-            distance: "",
+            distance: distance,
+            address: address,
             ratingLabel: "",
             summary: "",
             description: "",
