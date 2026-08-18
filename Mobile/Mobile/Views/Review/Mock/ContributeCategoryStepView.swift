@@ -12,16 +12,16 @@ struct ContributeCategoryStepView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PhotoFlowHeader(title: "Contribute", onBack: onBack)
+            PhotoFlowHeader(title: "Contribute".localized, onBack: onBack)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     ContributeMallIllustration()
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("What accessible facilities does \(placeName) have?")
+                        Text("\("What accessible facilities does".localized) \(placeName) \("have?".localized)")
                             .font(.title2.bold())
-                        Text("You can select multiple answers")
+                        Text("You can select multiple answers".localized)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -67,7 +67,7 @@ struct ContributeCategoryStepView: View {
 
                 Spacer()
 
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
                     .font(.system(size: 20))
                     .foregroundStyle(isSelected ? Color.accentColor : Color(.tertiaryLabel))
             }
@@ -87,9 +87,9 @@ struct ContributeCategoryStepView: View {
     /// the facility detail screens want).
     private func categoryLabel(_ kind: FacilityKind) -> String {
         switch kind {
-        case .entrance: "Entrances"
-        case .elevator: "Elevators"
-        case .toilet: "Accessible Toilets"
+        case .entrance: "Entrances".localized
+        case .elevator: "Elevators".localized
+        case .toilet: "Accessible Toilets".localized
         }
     }
 

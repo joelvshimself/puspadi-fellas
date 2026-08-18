@@ -11,6 +11,7 @@ struct ContributePhotosNotesStepView: View {
     let navTitle: String
     let progress: (current: Int, total: Int)
     @Binding var note: ReviewNoteDraft
+    var isLastStep: Bool = false
     let onBack: () -> Void
     let onContinue: () -> Void
 
@@ -33,16 +34,24 @@ struct ContributePhotosNotesStepView: View {
                 }
                 .padding(20)
             }
+            .scrollDismissesKeyboard(.interactively)
 
-            // Always enabled — this step is optional, matches the mockup
-            // (every "Photos/Notes" Continue is reachable with nothing filled).
-            ContributeContinueButton(isEnabled: true, action: onContinue)
+            // Always enabled — explicit tap on this button submits/continues
+            ContributeContinueButton(
+                title: isLastStep ? "Submit Review" : "Continue",
+                isEnabled: true,
+                action: onContinue
+            )
         }
         .background(Color(.systemBackground))
-        .confirmationDialog("Add Photo", isPresented: $showSourceDialog, titleVisibility: .visible) {
-            Button("Choose Existing") { showPhotosPicker = true }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
+        .confirmationDialog("Add Photo".localized, isPresented: $showSourceDialog, titleVisibility: .visible) {
+            Button("Choose Existing".localized) { showPhotosPicker = true }
             if CameraPicker.isAvailable {
-                Button("Take New Photo") { showCamera = true }
+                Button("Take New Photo".localized) { showCamera = true }
             }
         }
         .photosPicker(
@@ -73,18 +82,24 @@ struct ContributePhotosNotesStepView: View {
     private var photosSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 4) {
-                Text("Photos of \(facilityName)")
+                Text("\("Photos of".localized) \(facilityName.localized)")
                     .font(.system(size: 18, weight: .bold))
-                Text("(Optional)")
+                Text("(Optional)".localized)
                     .font(.system(size: 14))
                     .foregroundStyle(.secondary)
             }
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 10)], spacing: 10) {
+            if note.canAddMorePhotos {
                 addPhotosBox
+            }
 
-                ForEach(note.photos) { photo in
-                    photoThumbnail(photo)
+            if !note.photos.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(note.photos) { photo in
+                            photoThumbnail(photo)
+                        }
+                    }
                 }
             }
         }
@@ -98,21 +113,21 @@ struct ContributePhotosNotesStepView: View {
         } label: {
             VStack(spacing: 8) {
                 Image(systemName: "photo.badge.plus")
-                    .font(.title2)
+                    .font(.system(size: 28))
                     .foregroundStyle(Color.accentColor)
-                Text("Add Photos")
-                    .font(.subheadline.weight(.medium))
+                Text(note.photos.isEmpty ? "Add Photos".localized : "Add More Photos".localized)
+                    .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(Color.accentColor)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 100)
+            .frame(height: 120)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(Color(.secondarySystemBackground))
             )
             .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(Color(.separator), style: StrokeStyle(lineWidth: 1, dash: [6]))
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.accentColor.opacity(0.4), style: StrokeStyle(lineWidth: 1.5, dash: [6]))
             }
         }
         .buttonStyle(.plain)
@@ -125,8 +140,7 @@ struct ContributePhotosNotesStepView: View {
             Image(uiImage: photo.image)
                 .resizable()
                 .scaledToFill()
-                .frame(height: 100)
-                .frame(maxWidth: .infinity)
+                .frame(width: 100, height: 100)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
             Button {
@@ -146,31 +160,21 @@ struct ContributePhotosNotesStepView: View {
     private var notesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 4) {
-                Text("Notes")
+                Text("Notes".localized)
                     .font(.system(size: 18, weight: .bold))
-                Text("(Optional)")
+                Text("(Optional)".localized)
                     .font(.system(size: 14))
                     .foregroundStyle(.secondary)
             }
 
-            ZStack(alignment: .topLeading) {
-                if note.text.isEmpty {
-                    Text("Tell us more about your experience …")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 14)
-                }
-                TextEditor(text: $note.text)
-                    .font(.subheadline)
-                    .padding(10)
-                    .scrollContentBackground(.hidden)
-                    .frame(minHeight: 120)
-            }
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color(.secondarySystemBackground))
-            )
+            TextField("Tell us more about your experience …".localized, text: $note.text, axis: .vertical)
+                .font(.subheadline)
+                .lineLimit(4...8)
+                .padding(14)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color(.secondarySystemBackground))
+                )
         }
     }
 

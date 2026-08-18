@@ -110,40 +110,56 @@ struct FlowRow: Layout {
     var spacing: CGFloat = 8
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let maxWidth = proposal.width ?? .infinity
-        var rowWidth: CGFloat = 0
-        var totalHeight: CGFloat = 0
-        var rowHeight: CGFloat = 0
+        let maxAllowedWidth = proposal.width ?? .infinity
+        var currentX: CGFloat = 0
+        var currentY: CGFloat = 0
+        var currentRowHeight: CGFloat = 0
+        var maxRowWidth: CGFloat = 0
 
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if rowWidth + size.width > maxWidth, rowWidth > 0 {
-                totalHeight += rowHeight + spacing
-                rowWidth = 0
-                rowHeight = 0
+            let size = subview.sizeThatFits(ProposedViewSize(width: maxAllowedWidth, height: nil))
+            let itemWidth = min(size.width, maxAllowedWidth)
+
+            if currentX + itemWidth > maxAllowedWidth, currentX > 0 {
+                currentY += currentRowHeight + spacing
+                currentX = 0
+                currentRowHeight = 0
             }
-            rowWidth += size.width + (rowWidth > 0 ? spacing : 0)
-            rowHeight = max(rowHeight, size.height)
+
+            currentX += itemWidth + spacing
+            currentRowHeight = max(currentRowHeight, size.height)
+            maxRowWidth = max(maxRowWidth, currentX - spacing)
         }
-        totalHeight += rowHeight
-        return CGSize(width: maxWidth == .infinity ? rowWidth : maxWidth, height: totalHeight)
+
+        let totalHeight = currentY + currentRowHeight
+        let finalWidth = proposal.width ?? maxRowWidth
+        return CGSize(width: finalWidth, height: totalHeight)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX
-        var y = bounds.minY
-        var rowHeight: CGFloat = 0
+        let maxAllowedWidth = bounds.width
+        var currentX: CGFloat = bounds.minX
+        var currentY: CGFloat = bounds.minY
+        var currentRowHeight: CGFloat = 0
 
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x + size.width > bounds.maxX, x > bounds.minX {
-                x = bounds.minX
-                y += rowHeight + spacing
-                rowHeight = 0
+            let size = subview.sizeThatFits(ProposedViewSize(width: maxAllowedWidth, height: nil))
+            let itemWidth = min(size.width, maxAllowedWidth)
+
+            if currentX + itemWidth > bounds.maxX, currentX > bounds.minX {
+                currentX = bounds.minX
+                currentY += currentRowHeight + spacing
+                currentRowHeight = 0
             }
-            subview.place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: .unspecified)
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
+
+            subview.place(
+                at: CGPoint(x: currentX, y: currentY),
+                anchor: .topLeading,
+                proposal: ProposedViewSize(width: itemWidth, height: size.height)
+            )
+
+            currentX += itemWidth + spacing
+            currentRowHeight = max(currentRowHeight, size.height)
         }
     }
 }

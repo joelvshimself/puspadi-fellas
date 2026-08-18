@@ -39,11 +39,11 @@ struct ContributeSubmittedView: View {
                     .foregroundStyle(.white)
             }
 
-            Text("Review Submitted!")
+            Text("Review Submitted!".localized)
                 .font(.system(size: 26, weight: .bold))
                 .padding(.top, 28)
 
-            Text("Thank you for helping out!")
+            Text("Thank you for helping out!".localized)
                 .font(.system(size: 16))
                 .foregroundStyle(.secondary)
                 .padding(.top, 8)
@@ -51,7 +51,7 @@ struct ContributeSubmittedView: View {
             Spacer()
 
             Button(action: onDone) {
-                Text("Back to Home")
+                Text("Back to Home".localized)
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)

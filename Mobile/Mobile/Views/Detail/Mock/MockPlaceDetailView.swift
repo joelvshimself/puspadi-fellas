@@ -14,6 +14,7 @@ struct MockPlaceDetailView: View {
     var onBack: (() -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var languageManager: LanguageManager
     @State private var demoState: PlaceDetailDemoState = .notYetReviewed
     /// Live accessibility grade for `place`, from `place-accessibility`.
     @State private var liveGrade: [AccessibilityFeatureGrade] = []
@@ -23,9 +24,10 @@ struct MockPlaceDetailView: View {
     @State private var heroURLs: [URL] = []
     @State private var heroAttribution: String?
     @State private var streetImageURL: URL?
+    @State private var reviewPhotosList: [ReviewPhoto] = []
     @State private var enrichResolved = false
     @State private var isSaved = false
-    @State private var heroPage = 0
+    @State private var heroPage: Int? = 0
     @State private var showReviewWizard = false
 
     /// Reused by both "Add New Review"/"Be the first reviewer" here and My
@@ -44,19 +46,23 @@ struct MockPlaceDetailView: View {
     /// Demo-only multi-photo hero carousel — duplicates the 2 real place
     /// PNGs we have out to 5 slides purely so paging/indicator behavior is
     /// testable (no real multi-photo backend yet).
-    private let heroImages = [
-        "Park23 Header picture", "Park23 Image",
-        "Park23 Header picture", "Park23 Image",
-        "Park23 Header picture",
-    ]
-
     private let heroHeight: CGFloat = 253
 
+    private var totalHeroCount: Int {
+        max(10, 1 + heroURLs.count)
+    }
+
+    private func offsetCoordinate(_ base: CLLocationCoordinate2D, index: Int) -> CLLocationCoordinate2D {
+        let latOffsets: [Double] = [0.0, 0.0003, -0.0003, 0.0004, -0.0002, 0.0005, -0.0005, 0.0, 0.0, 0.0002]
+        let lngOffsets: [Double] = [0.0, 0.0003, -0.0003, -0.0002, 0.0004, 0.0, 0.0, 0.0005, -0.0005, 0.0002]
+        let idx = index % latOffsets.count
+        return CLLocationCoordinate2D(
+            latitude: base.latitude + latOffsets[idx],
+            longitude: base.longitude + lngOffsets[idx]
+        )
+    }
+
     var body: some View {
-        // topControls lives OUTSIDE the ScrollView, in this ZStack, so it
-        // stays pinned on screen at a fixed position while everything else
-        // scrolls underneath it — like Airbnb/Zillow-style listing screens,
-        // rather than scrolling away with the hero photo.
         ZStack(alignment: .top) {
             ScrollView {
                 VStack(spacing: 0) {
@@ -69,21 +75,18 @@ struct MockPlaceDetailView: View {
 
             topControls
         }
-        // System background, not black — the stretchy hero already covers
-        // top overscroll by growing itself (see heroSection), so this is
-        // only ever seen at the BOTTOM on overscroll past the content,
-        // where it should read as normal page background, not a black gap.
         .background(Color(.systemBackground))
         .ignoresSafeArea(edges: .top)
+        .onAppear {
+            let targetKey = place?.name ?? MockData.placeName
+            isSaved = SavedPlacesService.shared.isSaved(placeId: targetKey)
+        }
         .task(id: place?.id) { await loadLiveGrade() }
         .task(id: place?.id) { await watchReviews() }
         .navigationBarHidden(true)
         .fullScreenCover(isPresented: $showReviewWizard) {
             ContributeReviewFlowView(place: wizardPlace) {
                 showReviewWizard = false
-                // Reflect the real submit in the demo state so "Add New
-                // Review" visibly connects to something instead of just
-                // dismissing back to the same unreviewed state.
                 demoState = .reviewedByMe
             }
         }
@@ -91,10 +94,6 @@ struct MockPlaceDetailView: View {
 
     // MARK: Hero
 
-    /// Classic "stretchy header": reads its own scroll offset via
-    /// GeometryReader, and when pulled down past the top (minY > 0) grows
-    /// the hero taller by that amount and shifts it up to compensate — so
-    /// the photo fills the overscroll instead of leaving a gap behind it.
     private var heroSection: some View {
         GeometryReader { geo in
             let minY = geo.frame(in: .named("heroScroll")).minY
@@ -102,52 +101,61 @@ struct MockPlaceDetailView: View {
             let height = heroHeight + stretch
 
             ZStack(alignment: .top) {
-                TabView(selection: $heroPage) {
-                    if let place {
-                        // Page 0 is the street photo: PlaceImageView already
-                        // walks Mapillary -> Look Around -> map snapshot.
-                        PlaceImageView(
-                            coordinate: place.coordinate,
-                            remoteImageURL: streetImageURL,
-                            attribution: heroAttribution,
-                            resolved: enrichResolved,
-                            // Full-bleed: the hero stretches with overscroll and
-                            // sits under the status bar, so it takes the paged
-                            // height and squares off its corners.
-                            height: height,
-                            cornerRadius: 0
-                        )
-                        .frame(width: geo.size.width, height: height)
-                        .clipped()
-                        .tag(0)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 0) {
+                        let activeCoord = place?.coordinate ?? CLLocationCoordinate2D(latitude: -8.7169, longitude: 115.1694)
 
-                        // Then whatever the community has contributed.
-                        ForEach(heroURLs.indices, id: \.self) { index in
-                            AsyncImage(url: heroURLs[index]) { phase in
-                                switch phase {
-                                case .success(let image):
-                                    image.resizable().aspectRatio(contentMode: .fill)
-                                default:
-                                    Color(.secondarySystemBackground).overlay { ProgressView() }
-                                }
-                            }
-                            .frame(width: geo.size.width, height: height)
-                            .clipped()
-                            .tag(index + 1)
-                        }
-                    } else {
-                        // SavedView's demo entry keeps the bundled fixtures.
-                        ForEach(heroImages.indices, id: \.self) { index in
-                            Image(heroImages[index])
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
+                        ForEach(0..<totalHeroCount, id: \.self) { index in
+                            if index == 0 {
+                                PlaceImageView(
+                                    coordinate: activeCoord,
+                                    remoteImageURL: streetImageURL,
+                                    attribution: heroAttribution,
+                                    resolved: enrichResolved,
+                                    height: height,
+                                    cornerRadius: 0
+                                )
                                 .frame(width: geo.size.width, height: height)
                                 .clipped()
-                                .tag(index)
+                                .id(0)
+                            } else if index - 1 < heroURLs.count {
+                                AsyncImage(url: heroURLs[index - 1]) { phase in
+                                    switch phase {
+                                    case .success(let image):
+                                        image.resizable().aspectRatio(contentMode: .fill)
+                                    default:
+                                        PlaceImageView(
+                                            coordinate: offsetCoordinate(activeCoord, index: index),
+                                            remoteImageURL: nil,
+                                            attribution: heroAttribution,
+                                            resolved: true,
+                                            height: height,
+                                            cornerRadius: 0
+                                        )
+                                    }
+                                }
+                                .frame(width: geo.size.width, height: height)
+                                .clipped()
+                                .id(index)
+                            } else {
+                                PlaceImageView(
+                                    coordinate: offsetCoordinate(activeCoord, index: index),
+                                    remoteImageURL: nil,
+                                    attribution: heroAttribution,
+                                    resolved: true,
+                                    height: height,
+                                    cornerRadius: 0
+                                )
+                                .frame(width: geo.size.width, height: height)
+                                .clipped()
+                                .id(index)
+                            }
                         }
                     }
+                    .scrollTargetLayout()
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
+                .scrollPosition(id: $heroPage)
+                .scrollTargetBehavior(.paging)
                 .frame(width: geo.size.width, height: height)
                 .overlay(alignment: .bottom) {
                     LinearGradient(
@@ -172,9 +180,6 @@ struct MockPlaceDetailView: View {
 
     private var topControls: some View {
         HStack {
-            // The nav bar is hidden (custom hero header instead), so this
-            // circular button is the real back affordance — `dismiss()`
-            // pops this NavigationStack push same as the system back button.
             Button {
                 if let onBack { onBack() } else { dismiss() }
             } label: {
@@ -192,12 +197,22 @@ struct MockPlaceDetailView: View {
             Spacer()
 
             HStack(spacing: 22) {
-                Image(systemName: "square.and.arrow.up.fill")
-                    .font(.system(size: 20, weight: .medium))
                 Button {
-                    isSaved.toggle()
+                    sharePlace()
                 } label: {
-                    Image(systemName: "bookmark.fill")
+                    Image(systemName: "square.and.arrow.up.fill")
+                        .font(.system(size: 20, weight: .medium))
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    let targetKey = place?.name ?? MockData.placeName
+                    Task {
+                        await SavedPlacesService.shared.toggleSave(placeId: targetKey)
+                        isSaved = SavedPlacesService.shared.isSaved(placeId: targetKey)
+                    }
+                } label: {
+                    Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
                         .font(.system(size: 20, weight: .medium))
                 }
                 .buttonStyle(.plain)
@@ -215,27 +230,32 @@ struct MockPlaceDetailView: View {
     }
 
     private var bottomOverlay: some View {
-        HStack {
+        let activePage = heroPage ?? 0
+        return HStack {
             HStack(spacing: 4) {
-                ForEach(heroImages.indices, id: \.self) { index in
-                    if index == heroPage {
+                ForEach(0..<totalHeroCount, id: \.self) { index in
+                    if index == activePage {
                         Capsule().fill(.white).frame(width: 27, height: 4)
                     } else {
                         Circle().fill(.white.opacity(0.5)).frame(width: 4, height: 4)
                     }
                 }
             }
-            .animation(.easeInOut(duration: 0.2), value: heroPage)
+            .animation(.snappy(duration: 0.2), value: activePage)
 
             Spacer()
 
             NavigationLink {
-                MockGalleryView()
+                MockGalleryView(
+                    streetImageURL: streetImageURL,
+                    reviewPhotos: reviewPhotosList,
+                    placeName: place?.name
+                )
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "photo.fill.on.rectangle.fill")
                         .font(.system(size: 12, weight: .semibold))
-                    Text("GALLERY")
+                    Text("GALLERY".localized)
                         .font(.system(size: 12, weight: .semibold))
                 }
                 .foregroundStyle(.primary)
@@ -275,6 +295,7 @@ struct MockPlaceDetailView: View {
                     if let kind = FacilityKind(rawValue: facility.key) {
                         NavigationLink {
                             NotReviewView(kind: kind, state: facilityOverviewState, place: place)
+                                .enableSwipeBack()
                         } label: {
                             FacilityCard(facility: facility)
                         }
@@ -315,8 +336,12 @@ struct MockPlaceDetailView: View {
                 Spacer()
 
                 HStack(spacing: 8) {
-                    circularActionButton(icon: "location.fill")
-                    circularActionButton(icon: "phone.fill")
+                    circularActionButton(icon: "location.fill") {
+                        openMaps()
+                    }
+                    circularActionButton(icon: "phone.fill") {
+                        callWhatsApp()
+                    }
                 }
             }
 
@@ -328,12 +353,13 @@ struct MockPlaceDetailView: View {
     /// badge entirely (matches the "No Review Yet" mockup, which has no
     /// badge at all rather than a "No Data Available" one).
     private var badgeGrade: OverallAccessibility? {
-        // A real place is graded from the backend rows, not the demo toggle.
-        if place != nil {
-            guard !liveGrade.isEmpty else { return isLoadingGrade ? nil : .noData }
-            if liveGrade.contains(where: { $0.bestValue == "no" }) { return .notAccessible }
-            if liveGrade.allSatisfy({ $0.bestValue == "yes" }) { return .accessible }
-            return .partiallyAccessible
+        if let place {
+            if !liveGrade.isEmpty {
+                if liveGrade.contains(where: { $0.bestValue == "no" }) { return .notAccessible }
+                if liveGrade.allSatisfy({ $0.bestValue == "yes" }) { return .accessible }
+                return .partiallyAccessible
+            }
+            return place.grade ?? .noData
         }
         switch demoState {
         case .noReview: return nil
@@ -360,11 +386,10 @@ struct MockPlaceDetailView: View {
         liveGrade = response?.grade ?? []
         heroAttribution = response?.place?.imageAttribution
 
-        // The street photo is rendered by PlaceImageView (Mapillary, then Look
-        // Around, then a map snapshot); these are the community review photos
-        // that page after it.
         streetImageURL = response?.place?.imageUrl.flatMap(URL.init(string:))
-        heroURLs = (photos?.photos ?? []).compactMap(\.imageURL)
+        let fetchedReviewPhotos = photos?.photos ?? []
+        reviewPhotosList = fetchedReviewPhotos
+        heroURLs = fetchedReviewPhotos.compactMap(\.imageURL)
         enrichResolved = true
     }
 
@@ -382,12 +407,83 @@ struct MockPlaceDetailView: View {
         }
     }
 
-    private func circularActionButton(icon: String) -> some View {
-        Image(systemName: icon)
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(Color.accentColor)
-            .frame(width: 40, height: 40)
-            .background(Color.accentColor.opacity(0.15), in: Circle())
+    private func circularActionButton(icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 40, height: 40)
+                .background(Color.accentColor.opacity(0.15), in: Circle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func openMaps() {
+        let lat = place?.coordinate.latitude ?? -8.7400
+        let lng = place?.coordinate.longitude ?? 115.1800
+        let name = (place?.name ?? MockData.placeName).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "Place"
+        let urlString = "maps://?daddr=\(lat),\(lng)&q=\(name)"
+        if let url = URL(string: urlString), UIApplication.shared.canOpenURL(url) {
+            UIApplication.shared.open(url)
+        } else if let webUrl = URL(string: "https://maps.apple.com/?daddr=\(lat),\(lng)") {
+            UIApplication.shared.open(webUrl)
+        }
+    }
+
+    private func callWhatsApp() {
+        let targetName = place?.name ?? MockData.placeName
+        let isIndo = languageManager.currentLanguage == .indonesia
+        let message = isIndo
+            ? "Halo! Saya ingin bertanya mengenai aksesibilitas di \(targetName)."
+            : "Hello! I would like to inquire about accessibility facilities at \(targetName)."
+        let encodedMsg = message.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let waURLString = "https://wa.me/6281234567890?text=\(encodedMsg)"
+        if let url = URL(string: waURLString), UIApplication.shared.canOpenURL(url) {
+            UIApplication.shared.open(url)
+        } else if let telUrl = URL(string: "tel://6281234567890") {
+            UIApplication.shared.open(telUrl)
+        }
+    }
+
+    private func sharePlace() {
+        let name = place?.name ?? MockData.placeName
+        let gradeText = (badgeGrade ?? .accessible).label
+        let isIndo = languageManager.currentLanguage == .indonesia
+
+        let shareText: String
+        if isIndo {
+            shareText = """
+            Hai! Cek tempat ini *\(name)* — tempat ini *\(gradeText)*!
+
+            Fasilitas Aksesibilitas:
+            ♿️ Ramp
+            🤝 Pegangan Tangan (Rail)
+            🚪 Pintu Otomatis
+            🛗 Pintu Lift Lebar
+            🚽 Toilet Aksesibel
+
+            Temukan tempat aksesibel di sekitarmu di Puspadi Fellas!
+            """
+        } else {
+            shareText = """
+            Hey! Check out this place *\(name)* — it is *\(gradeText)*!
+
+            Accessibility Facilities:
+            ♿️ Ramp
+            🤝 Handrail
+            🚪 Automatic Doors
+            🛗 Wide Elevator Entrance
+            🚽 Accessible Restroom
+
+            Find accessible places near you on Puspadi Fellas!
+            """
+        }
+
+        let av = UIActivityViewController(activityItems: [shareText], applicationActivities: nil)
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let rootVC = windowScene.windows.first?.rootViewController {
+            rootVC.present(av, animated: true)
+        }
     }
 
     @ViewBuilder
@@ -429,7 +525,7 @@ struct MockPlaceDetailView: View {
         Button {
             showReviewWizard = true
         } label: {
-            Text(title)
+            Text(title.localized)
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
@@ -448,7 +544,7 @@ struct MockPlaceDetailView: View {
     private var facilitiesHeader: some View {
         HStack {
             Label {
-                Text("Facilities")
+                Text("Facilities".localized)
                     .font(.system(size: 18, weight: .semibold))
             } icon: {
                 Image(systemName: "info.circle.fill")
@@ -501,18 +597,21 @@ struct MockPlaceDetailView: View {
 #Preview("No Review") {
     NavigationStack {
         MockPlaceDetailView(demoState: .noReview)
+            .environmentObject(LanguageManager.shared)
     }
 }
 
 #Preview("Default") {
     NavigationStack {
         MockPlaceDetailView(demoState: .notYetReviewed)
+            .environmentObject(LanguageManager.shared)
     }
 }
 
 #Preview("Reviewed") {
     NavigationStack {
         MockPlaceDetailView(demoState: .reviewedByMe)
+            .environmentObject(LanguageManager.shared)
     }
 }
 

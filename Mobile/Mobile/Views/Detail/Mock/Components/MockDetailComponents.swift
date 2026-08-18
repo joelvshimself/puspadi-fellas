@@ -5,16 +5,12 @@ import SwiftUI
 // SwiftUI/native-look out — no backend calls, no navigation logic here.
 
 extension Color {
-    /// The one light-gray "sub background" / small-pill fill used
-    /// throughout these mockup screens (facility cards, tag pills, filter
-    /// tracks, the gray tabbed section on My Review). Figma spec #F2F4F7 —
-    /// not the semantic `secondarySystemBackground`/`tertiarySystemBackground`
-    /// tones, which render a visibly different (more neutral/darker) gray
-    /// than the design's cool light gray.
-    static let mockSectionBackground = Color(red: 242 / 255, green: 244 / 255, blue: 247 / 255)
+    /// Adaptive section background: Light Mode Figma #F2F4F7, Dark Mode tertiarySystemGroupedBackground
+    static let mockSectionBackground = Color(uiColor: UIColor { trait in
+        trait.userInterfaceStyle == .dark ? .tertiarySystemGroupedBackground : UIColor(red: 242/255, green: 244/255, blue: 247/255, alpha: 1.0)
+    })
     /// Matching secondary text color for content on `mockSectionBackground`
-    /// (Figma #5F5F5F).
-    static let mockSecondaryText = Color(red: 95 / 255, green: 95 / 255, blue: 95 / 255)
+    static let mockSecondaryText = Color(uiColor: .secondaryLabel)
 }
 
 /// The 4-state accessibility badge (Accessible / Partially Accessible /
@@ -62,15 +58,15 @@ struct PillTag: View {
     }
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             Image(systemName: "door.right.hand.open")
                 .font(.system(size: 10, weight: .semibold))
-            Text(tag.label)
-                .font(.system(size: 10, weight: .regular))
+            Text(tag.label.localized)
+                .font(.system(size: 10, weight: .semibold))
         }
         .foregroundStyle(.primary)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
         .background(fill, in: Capsule())
     }
 }
@@ -82,25 +78,25 @@ struct FacilityCard: View {
     let facility: MockFacility
 
     var body: some View {
-        HStack(alignment: .center, spacing: 16) {
+        HStack(alignment: .top, spacing: 12) {
             Image(facility.iconAssetName)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 80, height: 72)
+                .frame(width: 72, height: 64)
 
             VStack(alignment: .leading, spacing: 8) {
-                Text(facility.title)
+                Text(facility.title.localized)
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.primary)
 
                 if let emptyStateText = facility.emptyStateText {
-                    Text(emptyStateText)
+                    Text(emptyStateText.localized)
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    FlowRow(spacing: 8) {
+                    FlowRow(spacing: 6) {
                         ForEach(facility.tags) { tag in
                             PillTag(tag: tag)
                         }
@@ -111,16 +107,12 @@ struct FacilityCard: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            // Claims all remaining width ahead of the fixed-size chevron,
-            // instead of a trailing Spacer(minLength: 0) — that left the
-            // text column measuring its own intrinsic (narrow) width,
-            // wrapping the Toilet empty-state text far earlier than the
-            // available space allowed.
             .layoutPriority(1)
 
             Image(systemName: "chevron.right")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)
+                .padding(.top, 4)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)

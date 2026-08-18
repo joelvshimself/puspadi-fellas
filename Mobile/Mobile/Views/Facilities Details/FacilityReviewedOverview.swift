@@ -80,7 +80,7 @@ struct FacilityReviewedOverview: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(Color.white)
+                            .fill(Color(uiColor: .secondarySystemGroupedBackground))
                     )
                 }
             } else {
@@ -125,7 +125,7 @@ struct FacilityReviewedOverview: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color.white)
+                        .fill(Color(uiColor: .secondarySystemGroupedBackground))
                 )
         }
     }

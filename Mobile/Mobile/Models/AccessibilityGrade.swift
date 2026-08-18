@@ -82,10 +82,10 @@ enum OverallAccessibility: String, CaseIterable, Identifiable, Hashable {
 
     var label: String {
         switch self {
-        case .accessible: "Accessible"
-        case .partiallyAccessible: "Partially Accessible"
-        case .notAccessible: "Not Accessible"
-        case .noData: "No Data Available"
+        case .accessible: "Accessible".localized
+        case .partiallyAccessible: "Moderately Accessible".localized
+        case .notAccessible: "Not Accessible".localized
+        case .noData: "No Data Available".localized
         }
     }
 
@@ -103,7 +103,7 @@ enum OverallAccessibility: String, CaseIterable, Identifiable, Hashable {
     var symbolName: String {
         switch self {
         case .accessible: "hand.thumbsup.fill"
-        case .partiallyAccessible: "hand.thumbsup.and.hand.thumbsdown.fill"
+        case .partiallyAccessible: "hand.thumbsdown.hand.thumbsup.fill"
         case .notAccessible: "hand.thumbsdown.fill"
         case .noData: "questionmark.circle.fill"
         }

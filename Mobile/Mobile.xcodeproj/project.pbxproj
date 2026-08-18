@@ -267,6 +267,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Puspadi Fellas uses your camera so you can take photos of a place's accessibility features.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Puspadi Fellas uses your location to find and check accessibility info for places near you.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Puspadi Fellas uses your microphone for voice search.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Puspadi Fellas uses speech recognition to search places with your voice.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -298,6 +300,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Puspadi Fellas uses your camera so you can take photos of a place's accessibility features.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Puspadi Fellas uses your location to find and check accessibility info for places near you.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Puspadi Fellas uses your microphone for voice search.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Puspadi Fellas uses speech recognition to search places with your voice.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

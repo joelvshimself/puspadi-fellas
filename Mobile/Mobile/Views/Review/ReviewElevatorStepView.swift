@@ -25,22 +25,22 @@ struct ReviewElevatorStepView: View {
 
     @ViewBuilder
     private var presenceContent: some View {
-        Text("Elevator")
+        Text("Elevator".localized)
             .font(.title2.bold())
-        ReviewQuestionBlock(title: "Is there an elevator?") {
+        ReviewQuestionBlock(title: "Is there an elevator?".localized) {
             YesNoPills(value: $elevator.exists)
         }
     }
 
     @ViewBuilder
     private var wheelchairFitContent: some View {
-        Text("Elevator")
+        Text("Elevator".localized)
             .font(.title2.bold())
-        ReviewQuestionBlock(title: "Can a wheelchair get inside?") {
+        ReviewQuestionBlock(title: "Can a wheelchair get inside?".localized) {
             YesNoPills(value: $elevator.wheelchairAccessible)
         }
         if elevator.wheelchairAccessible == false {
-            ReviewQuestionBlock(title: "What's the issue?") {
+            ReviewQuestionBlock(title: "What's the issue?".localized) {
                 MultiSelectPills(options: ElevatorBlocker.allCases, label: \.label, selection: $elevator.blockers)
             }
         }

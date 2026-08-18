@@ -15,28 +15,36 @@ struct ReviewAddNoteStepView: View {
     @State private var photoPickerItems: [PhotosPickerItem] = []
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Add a note")
-                    .font(.title2.bold())
-                Text("Optional — \(context). Add photos or a note to help other users.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Add a note".localized)
+                        .font(.title2.bold())
+                    Text("\("Optional".localized) — \(context.localized). \("Add photos or a note to help other users.".localized)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
 
-            photoSection
+                photoSection
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Notes about \(title)")
-                    .font(.headline)
-                TextField("What should other users know?", text: $note.text, axis: .vertical)
-                    .lineLimit(4...8)
-                    .padding(12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color(.secondarySystemBackground))
-                    )
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("\("Notes about".localized) \(title.localized)")
+                        .font(.headline)
+                    TextField("What should other users know?".localized, text: $note.text, axis: .vertical)
+                        .lineLimit(4...8)
+                        .padding(14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color(.secondarySystemBackground))
+                        )
+                }
             }
+            .padding(20)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         }
         .onChange(of: photoPickerItems) { _, newItems in
             guard !newItems.isEmpty else { return }
@@ -78,10 +86,10 @@ struct ReviewAddNoteStepView: View {
             Image(systemName: "camera.fill")
                 .font(.title2)
                 .foregroundStyle(.secondary)
-            Text(note.photos.isEmpty ? "Add Photos" : "Add More Photos")
+            Text(note.photos.isEmpty ? "Add Photos".localized : "Add More Photos".localized)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
-            Text("Up to \(ReviewNoteDraft.maxPhotos)")
+            Text("Up to \(ReviewNoteDraft.maxPhotos)".localized)
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }

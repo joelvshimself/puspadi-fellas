@@ -5,6 +5,7 @@ enum HomeRoute: Hashable {
     case place(Place)
     case saved
     case contribute
+    case profile(ProfileTab = .reviews)
 }
 
 // MARK: - Design tokens
@@ -24,7 +25,7 @@ enum SheetPalette {
     static let grabber = Color(white: 0.55)
     /// Hairline rim shared by the circular buttons and the search pill.
     static let rimGradient = LinearGradient(
-        colors: [.primary.opacity(0.06), .primary.opacity(0.16)],
+        colors: [.black.opacity(0.06), .black.opacity(0.16)],
         startPoint: .top,
         endPoint: .bottom
     )
@@ -34,22 +35,17 @@ enum SheetMetrics {
     // Peek — Homepage 285:1323
     static let grabberWidth: CGFloat = 48
     static let grabberHeight: CGFloat = 6
-    static let grabberTopPadding: CGFloat = 18
+    static let grabberTopPadding: CGFloat = 8
     static let grabberBlockHeight: CGFloat = 16
 
     /// These two must still sum with the grabber and field to 102pt — that is
     /// the detent floor below which iOS squeezes the sheet's contents. To
     /// tighten the gap under the pill, move points from bottom to top.
-    /// NOTE: grabber + this + fieldHeight + rowBottomPadding must stay >= 102.
-    /// That is a hard floor: iOS squeezes a sheet below it instead of honouring
-    /// the detent. Measured — at 98 the sheet renders 87pt, at 92 it renders
-    /// 84pt, both shorter than asked for, with the 6pt grabber crushed to
-    /// nothing. Shrinking the peek means shrinking the field, not the padding.
     static let rowTopPadding: CGFloat = 20
     static let rowBottomPadding: CGFloat = 10
     static let horizontalPadding: CGFloat = 16
 
-    static let fieldHeight: CGFloat = 46
+    static let fieldHeight: CGFloat = 56
     static let fieldSpacing: CGFloat = 8
     static let fieldFillOpacity: CGFloat = 0.8
     static let fieldBorderWidth: CGFloat = 2
@@ -131,9 +127,11 @@ struct GlassCircleButton<Label: View>: View {
         Button(action: action) {
             label
                 .frame(width: diameter, height: diameter)
+                .contentShape(Circle())
                 .modifier(CircleSurface(surface: surface))
         }
         .buttonStyle(.plain)
+        .contentShape(Circle())
     }
 }
 
@@ -155,42 +153,13 @@ private struct CircleSurface: ViewModifier {
                 )
         case .onSheet:
             content
-                .background(Circle().fill(Color(.systemBackground)))
+                .background(Circle().fill(Color(uiColor: .secondarySystemGroupedBackground)))
                 .overlay(Circle().strokeBorder(SheetPalette.rimGradient, lineWidth: 1))
         }
     }
 }
 
-// MARK: - Categories
 
-/// The Apple-Maps-style shortcuts shown before anything is typed.
-enum SearchCategory: String, CaseIterable, Identifiable {
-    case malls, restaurants, cafes, parks, hotels, transit
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .malls: "Malls"
-        case .restaurants: "Restaurants"
-        case .cafes: "Cafes"
-        case .parks: "Parks"
-        case .hotels: "Hotels"
-        case .transit: "Transit"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .malls: "bag.fill"
-        case .restaurants: "fork.knife"
-        case .cafes: "cup.and.saucer.fill"
-        case .parks: "tree.fill"
-        case .hotels: "bed.double.fill"
-        case .transit: "tram.fill"
-        }
-    }
-}
 
 // MARK: - Search sheet
 
@@ -198,16 +167,11 @@ enum SearchCategory: String, CaseIterable, Identifiable {
 /// takes focus, category shortcuts before anything is typed, and live
 /// MKLocalSearch results once it is.
 struct SearchSheet: View {
-    /// Whether the sheet is tall enough to show the list. Purely a height
-    /// question — Apple Maps reveals its list as the sheet grows, whether or
-    /// not you are editing.
-    let showsResults: Bool
-
-    /// Whether the field is being edited. Deliberately NOT the sheet's height:
-    /// Apple Maps lets you drag to full height with no keyboard. Keeping the
-    /// two apart is what stops a keyboard-driven resize from changing the
-    /// field's appearance or focus.
-    @Binding var isEditing: Bool
+    /// Explicit state, never derived from the sheet's height — iOS resizes the
+    /// sheet around the keyboard, and inferring intent from the detent made the
+    /// content flip back mid-edit.
+    @EnvironmentObject private var languageManager: LanguageManager
+    @Binding var isExpanded: Bool
     @Binding var searchText: String
     /// Owned here, next to the TextField. It used to live in HomeMapView and be
     /// passed across the `.sheet` boundary — but @FocusState is scoped to the
@@ -218,24 +182,14 @@ struct SearchSheet: View {
     let onSelectPlace: (Place) -> Void
     let onCancelSearch: () -> Void
 
+    @StateObject private var speechRecognizer = SpeechRecognizer()
     @State private var results: [Place] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var searchTask: Task<Void, Never>?
 
-    /// A category the user tapped. Kept out of `searchText` on purpose: writing
-    /// the label into the field made it look like they had typed "Restaurants",
-    /// which then sat in the bar after coming back from a place.
-    @State private var activeCategory: SearchCategory?
-
-    /// What the user actually typed.
-    private var typed: String {
-        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    /// What we search for: the typed text, or the tapped category.
     private var query: String {
-        typed.isEmpty ? (activeCategory?.label ?? "") : typed
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     var body: some View {
@@ -243,24 +197,21 @@ struct SearchSheet: View {
             searchContent
         }
         .frame(maxWidth: .infinity, alignment: .top)
-        .onChange(of: searchText) { _, value in
-            if !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                activeCategory = nil
-            }
-            scheduleSearch(for: query)
-        }
-        .onChange(of: activeCategory) { _, _ in scheduleSearch(for: query) }
-        .onChange(of: isEditing) { _, editing in
-            // Leaving search clears the category too, so the sheet comes back
-            // to a clean bar rather than a stale filter.
-            if !editing { activeCategory = nil }
-        }
+        .onChange(of: searchText) { _, value in scheduleSearch(for: value) }
         .onChange(of: isFieldFocused) { _, focused in
-            if focused != isEditing { isEditing = focused }
+            // Taking focus is what opens the sheet.
+            if focused, !isExpanded {
+                withAnimation(.easeInOut(duration: 0.25)) { isExpanded = true }
+            }
         }
-        .onChange(of: isEditing) { _, editing in
-            // Only ✕ / cancel drives this from outside; dragging never does.
-            if !editing { isFieldFocused = false }
+        .onChange(of: isExpanded) { _, expanded in
+            isFieldFocused = expanded
+            if !expanded {
+                speechRecognizer.stopListening()
+            }
+        }
+        .onDisappear {
+            speechRecognizer.stopListening()
         }
     }
 
@@ -271,37 +222,49 @@ struct SearchSheet: View {
             grabber
 
             // The search row's structure never changes between states — only
-            // values do. An `if` around this subtree would give it a new
-            // identity, tearing down the TextField and dropping keystrokes.
+            // values do.
             HStack(spacing: SheetMetrics.fieldSpacing) {
                 searchField
 
-                GlassCircleButton(surface: .onSheet, action: onCancelSearch) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(.primary)
+                if isExpanded {
+                    GlassCircleButton(surface: .onSheet) {
+                        speechRecognizer.stopListening()
+                        onCancelSearch()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(.primary)
+                    }
+                    .transition(.scale.combined(with: .opacity))
                 }
-                .frame(width: isEditing ? SheetMetrics.buttonDiameter : 0)
-                .opacity(isEditing ? 1 : 0)
-                .clipped()
             }
             .padding(.horizontal, SheetMetrics.horizontalPadding)
             .padding(.top, SheetMetrics.rowTopPadding)
             .padding(.bottom, SheetMetrics.rowBottomPadding)
 
-            // Revealed as the sheet grows, like Apple Maps — never gated on
-            // editing, so dragging and tapping cannot disagree. Hidden at the
-            // peek height, where its section header would otherwise show
-            // through the home-indicator strip under the search field.
+            // Always present, height-gated with smooth snappy transition.
             sheetBody
-                .opacity(showsResults ? 1 : 0)
+                .opacity(isExpanded ? 1 : 0)
+                .frame(maxHeight: isExpanded ? .infinity : 0)
+                .clipped()
         }
         .frame(maxWidth: .infinity, alignment: .top)
+        .animation(.snappy(duration: 0.28), value: isExpanded)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if !isExpanded {
+                withAnimation(.snappy(duration: 0.28)) {
+                    isExpanded = true
+                }
+            } else {
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            }
+        }
     }
 
     private var grabber: some View {
         Capsule()
-            .fill(SheetPalette.grabber.opacity(isEditing ? 0.5 : 0.65))
+            .fill(SheetPalette.grabber.opacity(isExpanded ? 0.5 : 0.65))
             .frame(width: SheetMetrics.grabberWidth, height: SheetMetrics.grabberHeight)
             .padding(.top, SheetMetrics.grabberTopPadding)
             .frame(maxWidth: .infinity, minHeight: SheetMetrics.grabberBlockHeight, alignment: .top)
@@ -313,52 +276,64 @@ struct SearchSheet: View {
                 .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(.primary.opacity(SheetMetrics.textOpacity))
 
-            TextField("Search a place", text: $searchText)
-                .font(.system(size: SheetMetrics.textSize))
-                .tracking(SheetMetrics.textTracking)
-                .foregroundStyle(.primary.opacity(SheetMetrics.textOpacity))
-                .tint(SheetPalette.brandBlue)
-                .focused($isFieldFocused)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .submitLabel(.search)
+            ZStack(alignment: .leading) {
+                if searchText.isEmpty {
+                    TypewriterPlaceholderView()
+                }
 
-            // The design names this microphone.fill, which is the SF Symbols
-            // 2024 rename and needs iOS 18; mic.fill is the same glyph and works
-            // on the project's iOS 17 deployment target.
-            Image(systemName: "mic.fill")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: SheetMetrics.rowIconWidth)
-                .accessibilityHidden(true)
+                TextField("", text: $searchText)
+                    .font(.system(size: SheetMetrics.textSize))
+                    .tracking(SheetMetrics.textTracking)
+                    .foregroundStyle(.primary.opacity(SheetMetrics.textOpacity))
+                    .tint(SheetPalette.brandBlue)
+                    .focused($isFieldFocused)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.search)
+            }
+
+            Button {
+                if !isExpanded {
+                    withAnimation(.snappy(duration: 0.28)) {
+                        isExpanded = true
+                    }
+                }
+                speechRecognizer.updateLanguage(languageIdentifier: languageManager.currentLanguage == .indonesia ? "id-ID" : "en-US")
+                speechRecognizer.toggleListening { recognizedText in
+                    searchText = recognizedText
+                }
+            } label: {
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(speechRecognizer.isListening ? Color.red : .secondary)
+                    .scaleEffect(speechRecognizer.isListening ? 1.15 : 1.0)
+                    .animation(speechRecognizer.isListening ? .easeInOut(duration: 0.6).repeatForever(autoreverses: true) : .default, value: speechRecognizer.isListening)
+                    .frame(width: SheetMetrics.rowIconWidth)
+            }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 12)
         .frame(height: SheetMetrics.fieldHeight)
         .background {
-            Capsule().fill(Color(.systemBackground).opacity(isEditing ? 1 : SheetMetrics.fieldFillOpacity))
+            Capsule().fill(Color(uiColor: .secondarySystemGroupedBackground))
         }
         .overlay {
             Capsule().strokeBorder(
-                isEditing ? AnyShapeStyle(SheetPalette.brandBlue) : AnyShapeStyle(SheetPalette.rimGradient),
-                lineWidth: isEditing ? SheetMetrics.fieldBorderWidth : 1
+                isExpanded ? AnyShapeStyle(SheetPalette.brandBlue) : AnyShapeStyle(SheetPalette.rimGradient),
+                lineWidth: isExpanded ? SheetMetrics.fieldBorderWidth : 1
             )
         }
     }
 
-    /// Categories before anything is typed, results after.
+    /// Malls of Bali before anything is typed, live API search results after.
     @ViewBuilder
     private var sheetBody: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: SheetMetrics.rowSpacing) {
-                if let activeCategory, typed.isEmpty, !isLoading, !results.isEmpty {
-                    sectionHeader(activeCategory.label)
-                    ForEach(results) { place in
+                if query.isEmpty {
+                    sectionHeader("Malls of Bali".localized)
+                    ForEach(Place.baliMalls) { place in
                         resultRow(place)
-                    }
-                } else if query.isEmpty {
-                    sectionHeader("Find nearby accessible spots")
-                    ForEach(SearchCategory.allCases) { category in
-                        categoryRow(category)
                     }
                 } else if isLoading {
                     ProgressView()
@@ -377,42 +352,20 @@ struct SearchSheet: View {
             .padding(.horizontal, SheetMetrics.horizontalPadding)
             .padding(.bottom, 24)
         }
+        .scrollDisabled(!isExpanded)
         .scrollDismissesKeyboard(.interactively)
     }
 
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
-            .font(.system(size: SheetMetrics.sectionHeaderSize))
-            .foregroundStyle(.primary.opacity(0.7))
+            .font(.system(size: SheetMetrics.sectionHeaderSize, weight: .semibold))
+            .foregroundStyle(.primary.opacity(0.8))
             .padding(.bottom, SheetMetrics.rowSpacing)
-    }
-
-    private func categoryRow(_ category: SearchCategory) -> some View {
-        Button {
-            activeCategory = category
-        } label: {
-            HStack(spacing: 16) {
-                Image(systemName: category.icon)
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(SheetPalette.accentBlue)
-                    .frame(width: SheetMetrics.rowIconWidth)
-
-                Text(category.label)
-                    .font(.system(size: SheetMetrics.rowTitleSize, weight: .semibold))
-                    .foregroundStyle(.primary)
-
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(card)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 
     private func resultRow(_ place: Place) -> some View {
         Button {
+            speechRecognizer.stopListening()
             onSelectPlace(place)
         } label: {
             HStack(spacing: 16) {
@@ -447,7 +400,12 @@ struct SearchSheet: View {
 
     private var card: some View {
         RoundedRectangle(cornerRadius: SheetMetrics.rowCornerRadius, style: .continuous)
-            .fill(Color(.systemBackground).opacity(SheetMetrics.fieldFillOpacity))
+            .fill(Color(uiColor: .secondarySystemGroupedBackground))
+            .shadow(color: Color.black.opacity(0.04), radius: 3, x: 0, y: 1)
+            .overlay {
+                RoundedRectangle(cornerRadius: SheetMetrics.rowCornerRadius, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+            }
     }
 
     private func message(_ text: String) -> some View {
@@ -478,7 +436,7 @@ struct SearchSheet: View {
             return
         }
 
-        if !isEditing { isEditing = true }
+        if !isExpanded { isExpanded = true }
         isLoading = true
         errorMessage = nil
 
@@ -534,5 +492,104 @@ struct SearchSheet: View {
         let metres = from.distance(from: to)
         return metres < 1000 ? "\(Int(metres)) m"
                              : String(format: "%.1f km", metres / 1000)
+    }
+}
+
+// MARK: - Typewriter Placeholder
+
+/// Animated typewriter placeholder for search bar with rotating suggestions.
+struct TypewriterPlaceholderView: View {
+    @EnvironmentObject private var languageManager: LanguageManager
+
+    private let englishPhrases: [String] = [
+        "Search a place...",
+        "Search Malls in Bali...",
+        "Find Beachwalk, Level 21...",
+        "Discover accessible spots...",
+        "Search shopping centers..."
+    ]
+
+    private let indonesianPhrases: [String] = [
+        "Cari tempat...",
+        "Cari Mall di Bali...",
+        "Temukan Beachwalk, Level 21...",
+        "Cari tempat aksesibel...",
+        "Cari pusat perbelanjaan..."
+    ]
+
+    private var phrases: [String] {
+        languageManager.currentLanguage == .indonesia ? indonesianPhrases : englishPhrases
+    }
+
+    @State private var displayedText: String = ""
+    @State private var phraseIndex: Int = 0
+    @State private var charIndex: Int = 0
+    @State private var isDeleting: Bool = false
+    @State private var timer: Timer? = nil
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Text(displayedText)
+                .font(.system(size: SheetMetrics.textSize))
+                .foregroundStyle(.secondary.opacity(0.65))
+            Spacer()
+        }
+        .allowsHitTesting(false)
+        .onAppear { startTyping() }
+        .onDisappear { stopTyping() }
+        .onChange(of: languageManager.currentLanguage) { _, _ in
+            phraseIndex = 0
+            charIndex = 0
+            isDeleting = false
+            displayedText = ""
+            startTyping()
+        }
+    }
+
+    private func startTyping() {
+        stopTyping()
+        stepAnimation()
+    }
+
+    private func stopTyping() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    private func stepAnimation() {
+        let currentPhrases = phrases
+        guard !currentPhrases.isEmpty else { return }
+        let targetPhrase = currentPhrases[phraseIndex % currentPhrases.count]
+
+        if !isDeleting {
+            if charIndex < targetPhrase.count {
+                charIndex += 1
+                let index = targetPhrase.index(targetPhrase.startIndex, offsetBy: charIndex)
+                displayedText = String(targetPhrase[..<index])
+                timer = Timer.scheduledTimer(withTimeInterval: 0.07, repeats: false) { _ in
+                    stepAnimation()
+                }
+            } else {
+                timer = Timer.scheduledTimer(withTimeInterval: 2.2, repeats: false) { _ in
+                    isDeleting = true
+                    stepAnimation()
+                }
+            }
+        } else {
+            if charIndex > 0 {
+                charIndex -= 1
+                let index = targetPhrase.index(targetPhrase.startIndex, offsetBy: charIndex)
+                displayedText = String(targetPhrase[..<index])
+                timer = Timer.scheduledTimer(withTimeInterval: 0.035, repeats: false) { _ in
+                    stepAnimation()
+                }
+            } else {
+                isDeleting = false
+                phraseIndex = (phraseIndex + 1) % currentPhrases.count
+                timer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: false) { _ in
+                    stepAnimation()
+                }
+            }
+        }
     }
 }

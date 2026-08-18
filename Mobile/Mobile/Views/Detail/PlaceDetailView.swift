@@ -301,10 +301,14 @@ struct PlaceDetailView: View {
     /// as the live grade card, purely so the badge is visible in previews —
     /// not a real grading rule.
     private var mockOverallGrade: OverallAccessibility {
+        if let g = place.grade {
+            return g
+        }
         switch place.ratingLabel {
-        case "Excellent", "Great": .accessible
-        case "Good": .partiallyAccessible
-        default: .notAccessible
+        case "Accessible": return .accessible
+        case "Moderately Accessible": return .partiallyAccessible
+        case "Not Accessible": return .notAccessible
+        default: return .noData
         }
     }
 

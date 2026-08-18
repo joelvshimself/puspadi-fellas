@@ -31,23 +31,23 @@ struct ReviewLobbyBasementStepView: View {
 
     @ViewBuilder
     private var rampsRailsContent: some View {
-        ReviewQuestionBlock(title: "Any dropoff or ramps?", hint: "Look for a step-free path from the curb.") {
+        ReviewQuestionBlock(title: "Any dropoff or ramps?".localized, hint: "Look for a step-free path from the curb.".localized) {
             YesNoPills(value: $entrance.hasDropoffRamp)
         }
-        ReviewQuestionBlock(title: "Is there a rails?") {
+        ReviewQuestionBlock(title: "Is there a rails?".localized) {
             YesNoPills(value: $entrance.hasRails)
         }
-        ReviewQuestionBlock(title: "How easy is it to go through?") {
+        ReviewQuestionBlock(title: "How easy is it to go through?".localized) {
             SelectionPills(options: EaseOfAccess.allCases, label: \.label, selection: $entrance.easeOfAccess)
         }
     }
 
     @ViewBuilder
     private var doorContent: some View {
-        ReviewQuestionBlock(title: "Door entrance", hint: "What kind of door is it?") {
+        ReviewQuestionBlock(title: "Door entrance".localized, hint: "What kind of door is it?".localized) {
             SelectionPills(options: DoorType.allCases, label: \.label, selection: $entrance.doorType)
         }
-        ReviewQuestionBlock(title: "Is it wide enough for a wheelchair?") {
+        ReviewQuestionBlock(title: "Is it wide enough for a wheelchair?".localized) {
             YesNoPills(value: $entrance.isWideEnough)
         }
     }
