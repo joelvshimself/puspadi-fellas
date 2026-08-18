@@ -1,9 +1,14 @@
 import SwiftUI
 
-/// Demo "Gallery" screen — ALL/ENTRANCE/ELEVATOR/TOILET filter over the
-/// mock Park23 Mall photo set. Mock data only, reached from
-/// MockPlaceDetailView's "GALLERY" chip.
+/// "Gallery" screen — renders real backend photos (Mapillary street photo +
+/// community review photos from Supabase) using the exact header switcher
+/// (`FilterSegmentedControl` with `.nativeToggle` style) and photo mosaic grid
+/// (`PhotoMosaicGrid`) from Facility Details.
 struct MockGalleryView: View {
+    var streetImageURL: URL? = nil
+    var reviewPhotos: [ReviewPhoto] = []
+    var placeName: String? = nil
+
     private enum Filter: String, CaseIterable {
         case all = "ALL"
         case entrance = "ENTRANCE"
@@ -22,43 +27,81 @@ struct MockGalleryView: View {
 
     @State private var selectedFilter: Filter = .all
     @State private var showAddPhotos = false
+    @State private var selectedPhoto: FacilityPhoto?
 
-    private var filteredPhotos: [MockPhoto] {
-        guard let key = selectedFilter.facilityKey else { return MockData.photos }
-        return MockData.photos.filter { $0.facility == key }
+    private var galleryFacilityPhotos: [FacilityPhoto] {
+        var photos: [FacilityPhoto] = []
+
+        // 1. Remote photos from backend (street photo + community photos)
+        if selectedFilter == .all, let streetImageURL {
+            photos.append(FacilityPhoto(source: .remote(streetImageURL)))
+        }
+
+        let matchingReviewPhotos = reviewPhotos.filter { photo in
+            guard let key = selectedFilter.facilityKey else { return true }
+            let fac = photo.facility.lowercased()
+            return fac.contains(key) ||
+                (key == "entrance" && (fac.contains("lobby") || fac.contains("basement")))
+        }
+
+        for photo in matchingReviewPhotos {
+            if let url = photo.imageURL {
+                photos.append(FacilityPhoto(source: .remote(url)))
+            }
+        }
+
+        return photos
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            FilterSegmentedControl(
-                options: Filter.allCases,
-                label: \.rawValue,
-                selection: $selectedFilter
-            )
-            .padding(.horizontal, 12)
-            .padding(.top, 12)
+        GeometryReader { proxy in
+            VStack(spacing: 0) {
+                FilterSegmentedControl(
+                    options: Filter.allCases,
+                    label: { $0.rawValue.localized },
+                    selection: $selectedFilter,
+                    style: .nativeToggle
+                )
+                .padding(.horizontal, PhotoMetrics.gutter)
+                .padding(.top, 12)
 
-            addPhotosButton
-                .padding(.horizontal, 12)
-                .padding(.vertical, 16)
+                addPhotosButton
+                    .padding(.horizontal, PhotoMetrics.gutter)
+                    .padding(.vertical, 16)
 
-            ScrollView(showsIndicators: false) {
-                photoGrid
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 24)
+                if galleryFacilityPhotos.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "photo.on.rectangle.angled")
+                            .font(.system(size: 40, weight: .light))
+                            .foregroundStyle(.secondary)
+                        Text("No Photos Available")
+                            .font(.headline)
+                        Text("Be the first to add photos for this location.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollView(showsIndicators: false) {
+                        PhotoMosaicGrid(
+                            photos: galleryFacilityPhotos,
+                            width: max(proxy.size.width - PhotoMetrics.gutter * 2, 0),
+                            onSelect: { selectedPhoto = $0 }
+                        )
+                        .padding(.horizontal, PhotoMetrics.gutter)
+                        .padding(.bottom, 24)
+                    }
+                }
             }
         }
         .background(Color(.systemBackground))
-        .navigationTitle("Gallery")
+        .navigationTitle("GALLERY".localized.capitalized)
         .navigationBarTitleDisplayMode(.inline)
-        // No custom back button — the system-provided one (native glass
-        // pill under the current iOS look) already matches the mockup.
         .fullScreenCover(isPresented: $showAddPhotos) {
-            // Reuses the real photo-add flow from main (Views/Photos) —
-            // its own gallery/composer/camera UI, not a mock. Scoped to
-            // the whole place rather than one facility since this Gallery
-            // isn't facility-specific.
-            FacilityPhotosView(facilityName: MockData.placeName, onBack: { showAddPhotos = false })
+            FacilityPhotosView(facilityName: placeName ?? MockData.placeName, onBack: { showAddPhotos = false })
+        }
+        .fullScreenCover(item: $selectedPhoto) { photo in
+            FacilityPhotoDetailView(photo: photo)
         }
     }
 
@@ -69,7 +112,7 @@ struct MockGalleryView: View {
             HStack(spacing: 10) {
                 Image(systemName: "photo.badge.plus")
                     .font(.system(size: 16, weight: .medium))
-                Text("Add Photos")
+                Text("Add Photos".localized)
                     .font(.system(size: 15, weight: .medium))
             }
             .foregroundStyle(Color.accentColor)
@@ -78,41 +121,6 @@ struct MockGalleryView: View {
             .background(Color(.secondarySystemBackground), in: Capsule())
         }
         .buttonStyle(.plain)
-    }
-
-    /// Simple, robust layout: full-width hero photo, then the remainder in
-    /// a plain 2-column grid of equal square tiles.
-    private var photoGrid: some View {
-        let photos = filteredPhotos
-        let hero = photos.first
-        let rest = Array(photos.dropFirst())
-        let columns = [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)]
-
-        return VStack(spacing: 6) {
-            if let hero {
-                MockPhotoTile(photo: hero)
-                    .aspectRatio(4 / 3, contentMode: .fill)
-                    .frame(maxWidth: .infinity)
-                    .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            } else {
-                Text("No photos yet for this filter.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, 40)
-            }
-
-            if !rest.isEmpty {
-                LazyVGrid(columns: columns, spacing: 6) {
-                    ForEach(rest) { photo in
-                        MockPhotoTile(photo: photo)
-                            .aspectRatio(1, contentMode: .fill)
-                            .clipped()
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-                }
-            }
-        }
     }
 }
 

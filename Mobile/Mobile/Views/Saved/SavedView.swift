@@ -1,36 +1,63 @@
 import SwiftUI
 
 struct SavedView: View {
-    var body: some View {
-        List {
-            // Mock-data-only demo row (Park23 Mall) — connects to the
-            // Place Details / Gallery / My Review mockup screens
-            // (Views/Detail/Mock, Views/Gallery/Mock). This is a real
-            // saved place until the bookmark backend exists, at which
-            // point this row is replaced by actual saved-place data.
-            NavigationLink {
-                MockPlaceDetailView()
-            } label: {
-                HStack(spacing: 12) {
-                    Image("Park23 Image")
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 52, height: 52)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    @StateObject private var savedPlacesService = SavedPlacesService.shared
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(MockData.placeName)
-                            .font(.body.weight(.semibold))
-                        Text("Reviewed at \(MockData.review.reviewedDateLabel)")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+    private var savedPlaces: [Place] {
+        Place.baliMalls.filter { savedPlacesService.isSaved(placeId: $0.name) || savedPlacesService.isSaved(placeId: $0.id.uuidString) }
+    }
+
+    var body: some View {
+        Group {
+            if savedPlaces.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "bookmark.slash")
+                        .font(.system(size: 48, weight: .light))
+                        .foregroundStyle(.secondary)
+                    Text("No Saved Places")
+                        .font(.headline)
+                    Text("Bookmark places to easily view them here.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List(savedPlaces) { place in
+                    NavigationLink {
+                        MockPlaceDetailView(place: place)
+                            .enableSwipeBack()
+                    } label: {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(Color(.secondarySystemBackground))
+                                Image(systemName: "building.2.fill")
+                                    .font(.system(size: 22))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .frame(width: 52, height: 52)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(place.name)
+                                    .font(.body.weight(.semibold))
+                                Text(place.address.isEmpty ? place.category : place.address)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .padding(.vertical, 4)
                     }
                 }
-                .padding(.vertical, 4)
             }
         }
         .navigationTitle("Saved")
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            await savedPlacesService.fetchSavedPlaceIds()
+        }
     }
 }
 

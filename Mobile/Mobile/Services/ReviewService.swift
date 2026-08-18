@@ -85,10 +85,14 @@ final class ReviewService {
                     table: "reviews",
                     filter: .eq("place_id", value: placeId)
                 )
-                await channel.subscribe()
-                for await _ in inserts {
-                    if Task.isCancelled { break }
-                    continuation.yield(())
+                do {
+                    _ = try await channel.subscribeWithError()
+                    for await _ in inserts {
+                        if Task.isCancelled { break }
+                        continuation.yield(())
+                    }
+                } catch {
+                    print("Realtime subscription notice for \(placeId): \(error)")
                 }
                 continuation.finish()
             }
@@ -158,5 +162,38 @@ final class ReviewService {
         let scalars = value.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }
         let cleaned = String(scalars)
         return cleaned.isEmpty ? "unknown" : cleaned
+    }
+
+    // MARK: - Direct DB Access
+
+    struct DBReviewRow: Decodable {
+        let id: UUID
+        let placeId: String
+        let notes: String?
+        let createdAt: String
+        let elevatorPhotoUrls: [String]?
+        let toiletPhotoUrls: [String]?
+    }
+
+    /// Uploads a single JPEG image to Supabase Storage in review-photos bucket and returns public URL.
+    func uploadPhoto(jpegData: Data, folderName: String = "uploads") async throws -> String {
+        let storage = client.storage.from(Self.reviewPhotosBucket)
+        let filename = "\(folderName)/\(UUID().uuidString).jpg"
+        try await storage.upload(
+            filename,
+            data: jpegData,
+            options: FileOptions(contentType: "image/jpeg", upsert: true)
+        )
+        let publicURL = try storage.getPublicURL(path: filename)
+        return publicURL.absoluteString
+    }
+
+    /// Fetches all submitted reviews from the Supabase `reviews` table.
+    func fetchAllReviews() async throws -> [DBReviewRow] {
+        try await client.from("reviews")
+            .select("id, place_id, notes, created_at, elevator_photo_urls, toilet_photo_urls")
+            .order("created_at", ascending: false)
+            .execute()
+            .value
     }
 }
