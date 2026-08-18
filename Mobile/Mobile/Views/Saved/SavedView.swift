@@ -2,22 +2,33 @@ import SwiftUI
 
 struct SavedView: View {
     var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "bookmark.fill")
-                .font(.system(size: 44))
-                .foregroundStyle(.secondary)
+        List {
+            // Mock-data-only demo row (Park23 Mall) — connects to the
+            // Place Details / Gallery / My Review mockup screens
+            // (Views/Detail/Mock, Views/Gallery/Mock). This is a real
+            // saved place until the bookmark backend exists, at which
+            // point this row is replaced by actual saved-place data.
+            NavigationLink {
+                MockPlaceDetailView()
+            } label: {
+                HStack(spacing: 12) {
+                    Image("Park23 Image")
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 52, height: 52)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
-            Text("Saved")
-                .font(.title2.bold())
-
-            Text("TODO: Saved places will appear here.")
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(MockData.placeName)
+                            .font(.body.weight(.semibold))
+                        Text("Reviewed at \(MockData.review.reviewedDateLabel)")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemBackground))
         .navigationTitle("Saved")
         .navigationBarTitleDisplayMode(.inline)
     }
