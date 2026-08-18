@@ -35,11 +35,10 @@ struct HomeMapView: View {
     /// map-stays-interactive-underneath feel of Google/Apple Maps.
     @State private var isSheetPresented = true
     @State private var sheetDetent: PresentationDetent = .height(SheetMetrics.peekHeight)
-    /// The single source of truth for "the user is searching". Kept separate
-    /// from `sheetDetent` because iOS resizes the sheet around the keyboard;
-    /// deriving this from the detent made the sheet flip between its collapsed
-    /// and expanded looks while typing.
-    @State private var isSearchActive = false
+    /// Whether the search field is being edited. Independent of how tall the
+    /// sheet is: dragging the grabber changes the detent only, exactly as in
+    /// Apple Maps, where you can pull the sheet up without the keyboard.
+    @State private var isEditing = false
     @State private var searchText = ""
     @State private var showAnalysing = false
     @State private var path = NavigationPath()
@@ -66,7 +65,7 @@ struct HomeMapView: View {
     @State private var bottomSafeInset: CGFloat = 34
 
 
-    private var isSearching: Bool { isSearchActive }
+    private var isSearching: Bool { isEditing }
 
     /// The peek detent. Fixed to the design's peek height rather than measured:
     /// the sheet compresses content that doesn't fit the detent, so feeding a
@@ -167,7 +166,8 @@ struct HomeMapView: View {
                 }
                 .sheet(isPresented: $isSheetPresented) {
                     SearchSheet(
-                        isExpanded: $isSearchActive,
+                        showsResults: sheetDetent == expandedDetent,
+                        isEditing: $isEditing,
                         searchText: $searchText,
                         searchRegion: visibleRegion,
                         onSelectPlace: openPlace,
@@ -178,7 +178,7 @@ struct HomeMapView: View {
                     // peek cut it into an ugly sliver. Search/browse keeps both.
                     // Deliberately a constant set. Swapping the detents while
                     // the sheet is up makes it reconfigure mid-edit, which costs
-                    // keystrokes; `isSearchActive` already keeps the content's
+                    // keystrokes; `isEditing` already keeps the content's
                     // appearance stable regardless of how iOS resizes the sheet
                     // around the keyboard.
                     .presentationDetents(
@@ -196,27 +196,17 @@ struct HomeMapView: View {
                     // An explicit material override flattened it to gray.
                     .interactiveDismissDisabled()
                 }
-                .onChange(of: sheetDetent) { _, detent in
-                    // Dragging the grabber up must behave exactly like tapping
-                    // the field: the detent is a user gesture too, so mirror it
-                    // into the search state rather than only reacting to focus.
-                    let expanded = (detent == expandedDetent)
-                    if expanded != isSearchActive {
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            isSearchActive = expanded
-                        }
-                    }
-                }
-                .onChange(of: isSearchActive) { _, active in
-                    // The one place the search detent is set, so the sheet makes
-                    // a single move rather than several racing writers.
-                    sheetDetent = active ? expandedDetent : peekDetent
+                .onChange(of: isEditing) { _, editing in
+                    // Editing raises the sheet, like tapping Apple Maps' field.
+                    // Dragging is left alone: the user can pull the sheet to any
+                    // detent without being forced into editing.
+                    sheetDetent = editing ? expandedDetent : peekDetent
                 }
                 .onChange(of: path.count) { _, count in
                     if count == 0 {
                         // Back at the map root — bring the search sheet back
                         // at its peek height.
-                        isSearchActive = false
+                        isEditing = false
                         sheetDetent = peekDetent
                         isSheetPresented = true
                     } else {
@@ -383,18 +373,18 @@ struct HomeMapView: View {
     }
 
     /// ✕ / cancel: clear what was typed and collapse back to the peek. The
-    /// sheet drops focus itself when `isSearchActive` goes false.
+    /// sheet drops focus itself when `isEditing` goes false.
     private func dismissSearch() {
         searchText = ""
         withAnimation(.easeInOut(duration: 0.25)) {
-            isSearchActive = false
+            isEditing = false
         }
     }
 
     private func openPlace(_ place: Place) {
         // Push the Place Details page. The sheet hides itself while the stack
         // is deeper than the root (see onChange(of: path.count)).
-        isSearchActive = false
+        isEditing = false
         path.append(HomeRoute.place(place))
     }
 
