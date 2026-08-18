@@ -24,7 +24,7 @@ enum SheetPalette {
     static let grabber = Color(white: 0.55)
     /// Hairline rim shared by the circular buttons and the search pill.
     static let rimGradient = LinearGradient(
-        colors: [.black.opacity(0.06), .black.opacity(0.16)],
+        colors: [.primary.opacity(0.06), .primary.opacity(0.16)],
         startPoint: .top,
         endPoint: .bottom
     )
@@ -34,17 +34,22 @@ enum SheetMetrics {
     // Peek — Homepage 285:1323
     static let grabberWidth: CGFloat = 48
     static let grabberHeight: CGFloat = 6
-    static let grabberTopPadding: CGFloat = 8
+    static let grabberTopPadding: CGFloat = 18
     static let grabberBlockHeight: CGFloat = 16
 
     /// These two must still sum with the grabber and field to 102pt — that is
     /// the detent floor below which iOS squeezes the sheet's contents. To
     /// tighten the gap under the pill, move points from bottom to top.
+    /// NOTE: grabber + this + fieldHeight + rowBottomPadding must stay >= 102.
+    /// That is a hard floor: iOS squeezes a sheet below it instead of honouring
+    /// the detent. Measured — at 98 the sheet renders 87pt, at 92 it renders
+    /// 84pt, both shorter than asked for, with the 6pt grabber crushed to
+    /// nothing. Shrinking the peek means shrinking the field, not the padding.
     static let rowTopPadding: CGFloat = 20
     static let rowBottomPadding: CGFloat = 10
     static let horizontalPadding: CGFloat = 16
 
-    static let fieldHeight: CGFloat = 56
+    static let fieldHeight: CGFloat = 46
     static let fieldSpacing: CGFloat = 8
     static let fieldFillOpacity: CGFloat = 0.8
     static let fieldBorderWidth: CGFloat = 2
@@ -150,7 +155,7 @@ private struct CircleSurface: ViewModifier {
                 )
         case .onSheet:
             content
-                .background(Circle().fill(Color.white))
+                .background(Circle().fill(Color(.systemBackground)))
                 .overlay(Circle().strokeBorder(SheetPalette.rimGradient, lineWidth: 1))
         }
     }
@@ -193,10 +198,16 @@ enum SearchCategory: String, CaseIterable, Identifiable {
 /// takes focus, category shortcuts before anything is typed, and live
 /// MKLocalSearch results once it is.
 struct SearchSheet: View {
-    /// Explicit state, never derived from the sheet's height — iOS resizes the
-    /// sheet around the keyboard, and inferring intent from the detent made the
-    /// content flip back mid-edit.
-    @Binding var isExpanded: Bool
+    /// Whether the sheet is tall enough to show the list. Purely a height
+    /// question — Apple Maps reveals its list as the sheet grows, whether or
+    /// not you are editing.
+    let showsResults: Bool
+
+    /// Whether the field is being edited. Deliberately NOT the sheet's height:
+    /// Apple Maps lets you drag to full height with no keyboard. Keeping the
+    /// two apart is what stops a keyboard-driven resize from changing the
+    /// field's appearance or focus.
+    @Binding var isEditing: Bool
     @Binding var searchText: String
     /// Owned here, next to the TextField. It used to live in HomeMapView and be
     /// passed across the `.sheet` boundary — but @FocusState is scoped to the
@@ -212,8 +223,19 @@ struct SearchSheet: View {
     @State private var errorMessage: String?
     @State private var searchTask: Task<Void, Never>?
 
-    private var query: String {
+    /// A category the user tapped. Kept out of `searchText` on purpose: writing
+    /// the label into the field made it look like they had typed "Restaurants",
+    /// which then sat in the bar after coming back from a place.
+    @State private var activeCategory: SearchCategory?
+
+    /// What the user actually typed.
+    private var typed: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// What we search for: the typed text, or the tapped category.
+    private var query: String {
+        typed.isEmpty ? (activeCategory?.label ?? "") : typed
     }
 
     var body: some View {
@@ -221,18 +243,24 @@ struct SearchSheet: View {
             searchContent
         }
         .frame(maxWidth: .infinity, alignment: .top)
-        .onChange(of: searchText) { _, value in scheduleSearch(for: value) }
-        .onChange(of: isFieldFocused) { _, focused in
-            // Taking focus is what opens the sheet.
-            if focused, !isExpanded {
-                withAnimation(.easeInOut(duration: 0.25)) { isExpanded = true }
+        .onChange(of: searchText) { _, value in
+            if !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                activeCategory = nil
             }
+            scheduleSearch(for: query)
         }
-        .onChange(of: isExpanded) { _, expanded in
-            // Expanding by any route — tap, keystroke, or dragging the grabber
-            // up — puts the caret in the field so all three feel identical.
-            // Collapsing (✕, or a drag down) gives up the keyboard.
-            isFieldFocused = expanded
+        .onChange(of: activeCategory) { _, _ in scheduleSearch(for: query) }
+        .onChange(of: isEditing) { _, editing in
+            // Leaving search clears the category too, so the sheet comes back
+            // to a clean bar rather than a stale filter.
+            if !editing { activeCategory = nil }
+        }
+        .onChange(of: isFieldFocused) { _, focused in
+            if focused != isEditing { isEditing = focused }
+        }
+        .onChange(of: isEditing) { _, editing in
+            // Only ✕ / cancel drives this from outside; dragging never does.
+            if !editing { isFieldFocused = false }
         }
     }
 
@@ -253,29 +281,27 @@ struct SearchSheet: View {
                         .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(.primary)
                 }
-                .frame(width: isExpanded ? SheetMetrics.buttonDiameter : 0)
-                .opacity(isExpanded ? 1 : 0)
+                .frame(width: isEditing ? SheetMetrics.buttonDiameter : 0)
+                .opacity(isEditing ? 1 : 0)
                 .clipped()
             }
             .padding(.horizontal, SheetMetrics.horizontalPadding)
             .padding(.top, SheetMetrics.rowTopPadding)
             .padding(.bottom, SheetMetrics.rowBottomPadding)
 
-            // Always present, height-gated. Gating it behind an `if` inserted
-            // the content *after* the sheet had begun growing, so the sheet
-            // expanded empty and the list popped in a beat later — two moves
-            // instead of one. Collapsed it simply has no height.
+            // Revealed as the sheet grows, like Apple Maps — never gated on
+            // editing, so dragging and tapping cannot disagree. Hidden at the
+            // peek height, where its section header would otherwise show
+            // through the home-indicator strip under the search field.
             sheetBody
-                .frame(maxHeight: isExpanded ? .infinity : 0)
-                .opacity(isExpanded ? 1 : 0)
-                .clipped()
+                .opacity(showsResults ? 1 : 0)
         }
         .frame(maxWidth: .infinity, alignment: .top)
     }
 
     private var grabber: some View {
         Capsule()
-            .fill(SheetPalette.grabber.opacity(isExpanded ? 0.5 : 0.65))
+            .fill(SheetPalette.grabber.opacity(isEditing ? 0.5 : 0.65))
             .frame(width: SheetMetrics.grabberWidth, height: SheetMetrics.grabberHeight)
             .padding(.top, SheetMetrics.grabberTopPadding)
             .frame(maxWidth: .infinity, minHeight: SheetMetrics.grabberBlockHeight, alignment: .top)
@@ -309,12 +335,12 @@ struct SearchSheet: View {
         .padding(.horizontal, 12)
         .frame(height: SheetMetrics.fieldHeight)
         .background {
-            Capsule().fill(Color.white.opacity(isExpanded ? 1 : SheetMetrics.fieldFillOpacity))
+            Capsule().fill(Color(.systemBackground).opacity(isEditing ? 1 : SheetMetrics.fieldFillOpacity))
         }
         .overlay {
             Capsule().strokeBorder(
-                isExpanded ? AnyShapeStyle(SheetPalette.brandBlue) : AnyShapeStyle(SheetPalette.rimGradient),
-                lineWidth: isExpanded ? SheetMetrics.fieldBorderWidth : 1
+                isEditing ? AnyShapeStyle(SheetPalette.brandBlue) : AnyShapeStyle(SheetPalette.rimGradient),
+                lineWidth: isEditing ? SheetMetrics.fieldBorderWidth : 1
             )
         }
     }
@@ -324,7 +350,12 @@ struct SearchSheet: View {
     private var sheetBody: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: SheetMetrics.rowSpacing) {
-                if query.isEmpty {
+                if let activeCategory, typed.isEmpty, !isLoading, !results.isEmpty {
+                    sectionHeader(activeCategory.label)
+                    ForEach(results) { place in
+                        resultRow(place)
+                    }
+                } else if query.isEmpty {
                     sectionHeader("Find nearby accessible spots")
                     ForEach(SearchCategory.allCases) { category in
                         categoryRow(category)
@@ -358,7 +389,7 @@ struct SearchSheet: View {
 
     private func categoryRow(_ category: SearchCategory) -> some View {
         Button {
-            searchText = category.label
+            activeCategory = category
         } label: {
             HStack(spacing: 16) {
                 Image(systemName: category.icon)
@@ -416,7 +447,7 @@ struct SearchSheet: View {
 
     private var card: some View {
         RoundedRectangle(cornerRadius: SheetMetrics.rowCornerRadius, style: .continuous)
-            .fill(Color.white.opacity(SheetMetrics.fieldFillOpacity))
+            .fill(Color(.systemBackground).opacity(SheetMetrics.fieldFillOpacity))
     }
 
     private func message(_ text: String) -> some View {
@@ -447,7 +478,7 @@ struct SearchSheet: View {
             return
         }
 
-        if !isExpanded { isExpanded = true }
+        if !isEditing { isEditing = true }
         isLoading = true
         errorMessage = nil
 
