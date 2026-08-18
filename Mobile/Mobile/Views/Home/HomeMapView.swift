@@ -15,30 +15,17 @@ let expandedDetent: PresentationDetent = .fraction(0.98)
 /// street names, like Apple Maps opens.
 let defaultMapSpan: Double = 0.012
 
+let baliRegion = MKCoordinateRegion(
+    center: CLLocationCoordinate2D(latitude: -8.7200, longitude: 115.2000),
+    span: MKCoordinateSpan(latitudeDelta: 0.22, longitudeDelta: 0.22)
+)
+
 struct HomeMapView: View {
-    @State private var cameraPosition: MapCameraPosition = .region(
-        MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
-            span: MKCoordinateSpan(latitudeDelta: defaultMapSpan, longitudeDelta: defaultMapSpan)
-        )
-    )
-    /// Tracked separately from `cameraPosition` (which is opaque) so
-    /// SearchSheet has a plain MKCoordinateRegion to bias MKLocalSearch
-    /// toward what's currently on screen.
-    @State private var visibleRegion = MKCoordinateRegion(
-        center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
-        span: MKCoordinateSpan(latitudeDelta: defaultMapSpan, longitudeDelta: defaultMapSpan)
-    )
-    /// A persistent, draggable bottom sheet (native .sheet + presentationDetents,
-    /// same pattern snackbud uses elsewhere) instead of a view that swaps its
-    /// own frame/background — this is what gives the real drag-up-to-expand,
-    /// map-stays-interactive-underneath feel of Google/Apple Maps.
+    @State private var cameraPosition: MapCameraPosition = .region(baliRegion)
+    @State private var visibleRegion = baliRegion
+    @State private var selectedMall: Place? = nil
     @State private var isSheetPresented = true
     @State private var sheetDetent: PresentationDetent = .height(SheetMetrics.peekHeight)
-    /// The single source of truth for "the user is searching". Kept separate
-    /// from `sheetDetent` because iOS resizes the sheet around the keyboard;
-    /// deriving this from the detent made the sheet flip between its collapsed
-    /// and expanded looks while typing.
     @State private var isSearchActive = false
     @State private var searchText = ""
     @State private var showAnalysing = false
@@ -61,10 +48,9 @@ struct HomeMapView: View {
     /// (no filter). See the filter panel opened from the top-left button.
     @State private var selectedGrades: Set<OverallAccessibility> = []
     @State private var showFilter = false
-    /// Bottom safe-area height, captured before the map ignores safe areas, so
-    /// the location button can be floated just above the peek sheet.
+    /// Top and bottom safe-area insets captured before map ignores safe area.
+    @State private var topSafeInset: CGFloat = 54
     @State private var bottomSafeInset: CGFloat = 34
-
 
     private var isSearching: Bool { isSearchActive }
 
@@ -74,201 +60,176 @@ struct HomeMapView: View {
     private var peekDetent: PresentationDetent { .height(SheetMetrics.peekHeight) }
 
     var body: some View {
-        NavigationStack(path: $path) {
-            mapLayer
-                .background(
-                    GeometryReader { proxy in
-                        Color.clear
-                            .onAppear { bottomSafeInset = proxy.safeAreaInsets.bottom }
-                            .onChange(of: proxy.safeAreaInsets.bottom) { _, value in
-                                bottomSafeInset = value
-                            }
-                    }
-                )
-                .ignoresSafeArea()
-                // Search - Focused (285:1589): the map dims and blurs behind
-                // the expanded sheet.
-                .overlay {
-                    if isSearching {
-                        Rectangle()
-                            .fill(SheetPalette.searchScrim.opacity(0.6))
-                            .background(.ultraThinMaterial)
-                            .ignoresSafeArea()
-                            .transition(.opacity)
-                    }
-                }
-                // Ellipse 8 (285:1327): a big blurred blue blob sitting just
-                // below the screen edge. The sheet's glass picks its colour up,
-                // which is what gives the peek its blue cast.
-                .overlay(alignment: .bottom) {
-                    Ellipse()
-                        .fill(SheetPalette.glow)
-                        .frame(width: SheetMetrics.glowWidth, height: SheetMetrics.glowHeight)
-                        .blur(radius: SheetMetrics.glowBlur)
-                        .opacity(SheetMetrics.glowOpacity)
-                        .offset(y: SheetMetrics.glowOffsetY)
-                        .allowsHitTesting(false)
-                        .ignoresSafeArea()
-                }
-                // Dim the map while the filter panel is open (frame 2).
-                .overlay {
-                    if showFilter {
-                        Color.black.opacity(0.4)
-                            .ignoresSafeArea()
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    showFilter = false
-                                }
-                            }
-                            .transition(.opacity)
-                    }
-                }
-                .overlay(alignment: .top) {
-                    topBar
-                        .padding(.horizontal, 16)
-                        .padding(.top, 8)
-                }
-                .overlay(alignment: .topLeading) {
-                    if showFilter {
-                        // Options fan out to the right of the filter button,
-                        // first row aligned with it (matches the mockup).
-                        filterPanel
-                            .padding(.leading, 72)
-                            .padding(.top, 8)
-                            .transition(.opacity.combined(with: .move(edge: .leading)))
-                    }
-                }
-                .overlay(alignment: .bottomTrailing) {
-                    // Floated just above the peek sheet (which otherwise covers
-                    // the screen bottom). Hidden while searching or filtering.
-                    if !isSearching && !showFilter {
-                        locationButton
-                            .padding(.trailing, 16)
-                            .padding(.bottom, SheetMetrics.peekHeight + bottomSafeInset + 16)
-                            .transition(.opacity)
-                    }
-                }
-                .toolbar(path.isEmpty ? .hidden : .automatic, for: .navigationBar)
-                .navigationDestination(for: HomeRoute.self) { route in
-                    switch route {
-                    case .place(let place):
-                        // Place Details is a full page, not sheet content.
-                        MockPlaceDetailView(place: place)
-                            .navigationBarBackButtonHidden()
-                    case .saved:
-                        SavedView()
-                    case .contribute:
-                        ContributeView()
-                    }
-                }
-                .fullScreenCover(isPresented: $showAnalysing) {
-                    AnalysingView(onDismiss: { showAnalysing = false })
-                }
-                .sheet(isPresented: $isSheetPresented) {
-                    SearchSheet(
-                        isExpanded: $isSearchActive,
-                        searchText: $searchText,
-                        searchRegion: visibleRegion,
-                        onSelectPlace: openPlace,
-                        onCancelSearch: dismissSearch
-                    )
-                    // While a place detail is showing, lock the sheet to the
-                    // expanded detent — collapsing detail content to the 230pt
-                    // peek cut it into an ugly sliver. Search/browse keeps both.
-                    // Deliberately a constant set. Swapping the detents while
-                    // the sheet is up makes it reconfigure mid-edit, which costs
-                    // keystrokes; `isSearchActive` already keeps the content's
-                    // appearance stable regardless of how iOS resizes the sheet
-                    // around the keyboard.
-                    .presentationDetents(
-                        [peekDetent, expandedDetent],
-                        selection: $sheetDetent
-                    )
-                    .presentationBackgroundInteraction(.enabled)
-                    .presentationDragIndicator(.hidden)
-                    // No presentationCornerRadius: iOS 26 already draws the
-                    // design's 34pt top / 58pt bottom corners itself, pulling
-                    // the bottom edges in at small heights. Pinning one radius
-                    // overrode that.
-                    // No explicit presentationBackground — the iOS 26 default
-                    // sheet is Liquid Glass (translucent, map shows through).
-                    // An explicit material override flattened it to gray.
-                    .interactiveDismissDisabled()
-                }
-                .onChange(of: sheetDetent) { _, detent in
-                    // Dragging the grabber up must behave exactly like tapping
-                    // the field: the detent is a user gesture too, so mirror it
-                    // into the search state rather than only reacting to focus.
-                    let expanded = (detent == expandedDetent)
-                    if expanded != isSearchActive {
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            isSearchActive = expanded
+        GeometryReader { proxy in
+            NavigationStack(path: $path) {
+                mapLayer
+                    .ignoresSafeArea()
+                    // Search - Focused (285:1589): the map dims and blurs behind
+                    // the expanded sheet.
+                    .overlay {
+                        if isSearching {
+                            Rectangle()
+                                .fill(SheetPalette.searchScrim.opacity(0.6))
+                                .background(.ultraThinMaterial)
+                                .ignoresSafeArea()
+                                .transition(.opacity)
                         }
                     }
-                }
-                .onChange(of: isSearchActive) { _, active in
-                    // The one place the search detent is set, so the sheet makes
-                    // a single move rather than several racing writers.
-                    sheetDetent = active ? expandedDetent : peekDetent
-                }
-                .onChange(of: path.count) { _, count in
-                    if count == 0 {
-                        // Back at the map root — bring the search sheet back
-                        // at its peek height.
-                        isSearchActive = false
-                        sheetDetent = peekDetent
-                        isSheetPresented = true
-                    } else {
-                        // Navigated into a pushed destination (place detail,
-                        // saved, contribute). The sheet is presented modally
-                        // above the whole NavigationStack, so it would
-                        // otherwise float on top of the pushed page — dismiss
-                        // it while we're deeper in the stack.
-                        isSheetPresented = false
+                    // Ellipse 8 (285:1327): a big blurred blue blob sitting just
+                    // below the screen edge. The sheet's glass picks its colour up,
+                    // which is what gives the peek its blue cast.
+                    .overlay(alignment: .bottom) {
+                        Ellipse()
+                            .fill(SheetPalette.glow)
+                            .frame(width: SheetMetrics.glowWidth, height: SheetMetrics.glowHeight)
+                            .blur(radius: SheetMetrics.glowBlur)
+                            .opacity(SheetMetrics.glowOpacity)
+                            .offset(y: SheetMetrics.glowOffsetY)
+                            .allowsHitTesting(false)
+                            .ignoresSafeArea()
                     }
-                }
-                .onChange(of: locationManager.currentCoordinate) { _, coordinate in
-                    guard let coordinate, !hasCenteredOnUser else { return }
-                    hasCenteredOnUser = true
-                    recenter(on: coordinate.clLocation)
-                }
-                .task {
-                    locationManager.requestLocation()
-                }
+                    // Dim the map while the filter panel is open (frame 2).
+                    .overlay {
+                        if showFilter {
+                            Color.black.opacity(0.4)
+                                .ignoresSafeArea()
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                        showFilter = false
+                                    }
+                                }
+                                .transition(.opacity)
+                        }
+                    }
+                    .overlay(alignment: .top) {
+                        topBar
+                            .padding(.horizontal, 16)
+                            .safeAreaPadding(.top)
+                    }
+                    .overlay(alignment: .topLeading) {
+                        if showFilter {
+                            // Options fan out to the right of the filter button,
+                            // first row aligned with it (matches the mockup).
+                            filterPanel
+                                .padding(.leading, 72)
+                                .safeAreaPadding(.top)
+                                .transition(.opacity.combined(with: .move(edge: .leading)))
+                        }
+                    }
+                    .overlay(alignment: .bottomTrailing) {
+                        // Floated just above the peek sheet (which otherwise covers
+                        // the screen bottom). Hidden while searching or filtering.
+                        if !isSearching && !showFilter {
+                            locationButton
+                                .padding(.trailing, 16)
+                                .padding(.bottom, SheetMetrics.peekHeight + 12)
+                                .transition(.opacity)
+                        }
+                    }
+                    .toolbar(path.isEmpty ? .hidden : .automatic, for: .navigationBar)
+                    .navigationDestination(for: HomeRoute.self) { route in
+                        switch route {
+                        case .place(let place):
+                            // Place Details is a full page, not sheet content.
+                            MockPlaceDetailView(place: place)
+                                .navigationBarBackButtonHidden()
+                                .enableSwipeBack()
+                        case .saved:
+                            SavedView()
+                                .enableSwipeBack()
+                        case .contribute:
+                            ContributeView()
+                                .enableSwipeBack()
+                        case .profile(let tab):
+                            ProfileView(initialTab: tab)
+                                .enableSwipeBack()
+                        }
+                    }
+                    .fullScreenCover(isPresented: $showAnalysing) {
+                        AnalysingView(onDismiss: { showAnalysing = false })
+                    }
+                    .sheet(isPresented: $isSheetPresented) {
+                        SearchSheet(
+                            isExpanded: $isSearchActive,
+                            searchText: $searchText,
+                            searchRegion: visibleRegion,
+                            onSelectPlace: openPlace,
+                            onCancelSearch: dismissSearch
+                        )
+                        .presentationDetents(
+                            [peekDetent, expandedDetent],
+                            selection: $sheetDetent
+                        )
+                        .presentationBackgroundInteraction(.enabled(upThrough: expandedDetent))
+                        .presentationContentInteraction(.scrolls)
+                        .presentationCornerRadius(28)
+                        .presentationDragIndicator(.hidden)
+                        .interactiveDismissDisabled()
+                    }
+                    .onChange(of: sheetDetent) { _, detent in
+                        let expanded = (detent == expandedDetent)
+                        if expanded != isSearchActive {
+                            withAnimation(.snappy(duration: 0.28)) {
+                                isSearchActive = expanded
+                            }
+                        }
+                    }
+                    .onChange(of: isSearchActive) { _, active in
+                        withAnimation(.snappy(duration: 0.28)) {
+                            sheetDetent = active ? expandedDetent : peekDetent
+                        }
+                    }
+                    .onChange(of: path.count) { _, count in
+                        if count == 0 {
+                            isSearchActive = false
+                            sheetDetent = peekDetent
+                            isSheetPresented = true
+                        } else {
+                            isSheetPresented = false
+                        }
+                    }
+                    .onChange(of: locationManager.currentCoordinate) { _, coordinate in
+                        guard let coordinate, !hasCenteredOnUser else { return }
+                        hasCenteredOnUser = true
+                        recenter(on: coordinate.clLocation)
+                    }
+                    .task {
+                        locationManager.requestLocation()
+                    }
+            }
         }
     }
 
+    private var displayedMalls: [Place] {
+        if selectedGrades.isEmpty {
+            return Place.baliMalls
+        }
+        return Place.baliMalls.filter { selectedGrades.contains($0.grade ?? .noData) }
+    }
+
     private var mapLayer: some View {
-        Map(position: $cameraPosition, selection: $mapSelection) {
-            // The blue "current location" dot (with heading) — this is the
-            // person's own position pin. The mock `Place.samples` pins that
-            // used to sit alongside it are gone: main removed that fixture data
-            // in favour of live results.
+        Map(position: $cameraPosition) {
             UserAnnotation()
+
+            ForEach(displayedMalls) { place in
+                Annotation("", coordinate: place.coordinate, anchor: .bottom) {
+                    CustomPinpointMarkerView(
+                        name: place.name,
+                        grade: place.grade ?? .noData,
+                        isSelected: selectedMall?.id == place.id
+                    )
+                    .onTapGesture {
+                        selectedMall = place
+                        openPlace(place)
+                    }
+                }
+            }
         }
         .onMapCameraChange { context in
             visibleRegion = context.region
         }
         .mapStyle(.standard(elevation: .realistic))
-        .onChange(of: mapSelection) { _, selection in
-            handleMapSelection(selection)
-        }
-    }
-
-    /// A tapped map POI carries a name + coordinate — exactly what the
-    /// accessibility pipeline needs — so route it through the same
-    /// openPlace() path a search-result tap uses.
-    private func handleMapSelection(_ feature: MapFeature?) {
-        guard let feature else { return }
-        mapSelection = nil
-        openPlace(
-            Place.fromSearchResult(
-                name: feature.title ?? "Selected place",
-                category: "Place",
-                coordinate: feature.coordinate
-            )
-        )
     }
 
     private var topBar: some View {
@@ -293,15 +254,16 @@ struct HomeMapView: View {
 
             Spacer()
 
-            // Profile button opens Saved (the home tab bar was removed in the
-            // redesign; Saved lives here, Contribute is on a place's detail).
+            // Profile button opens Profile Menu
             circularButton(systemName: "person.fill") {
-                path.append(HomeRoute.saved)
+                path.append(HomeRoute.profile())
             }
-                .onLongPressGesture(minimumDuration: 0.5) {
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.5).onEnded { _ in
                     showAnalysing = true
                 }
-                .accessibilityHint("Long press to open Analysing demo")
+            )
+            .accessibilityHint("Long press to open Analysing demo")
         }
     }
 
@@ -315,16 +277,12 @@ struct HomeMapView: View {
                     HStack(spacing: 14) {
                         Image(systemName: grade.symbolName)
                             .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(isOn ? Color.white : Color.primary)
+                            .foregroundStyle(isOn ? grade.badgeForeground : .primary)
                             .frame(width: 44, height: 44)
                             .background {
-                                if isOn {
-                                    Circle().fill(grade.color)
-                                } else {
-                                    Circle().fill(.ultraThinMaterial)
-                                }
+                                Circle().fill(isOn ? grade.badgeBackground : Color(uiColor: .secondarySystemGroupedBackground))
                             }
-                            .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
+                            .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
 
                         Text(grade.label)
                             .font(.title3.weight(.semibold))
@@ -397,9 +355,86 @@ struct HomeMapView: View {
         isSearchActive = false
         path.append(HomeRoute.place(place))
     }
+}
 
+// MARK: - Custom Pinpoint Marker View
+
+struct CustomPinpointMarkerView: View {
+    let name: String
+    var grade: OverallAccessibility = .accessible
+    var isSelected: Bool = false
+
+    var body: some View {
+        VStack(spacing: 4) {
+            ZStack(alignment: .center) {
+                // Teardrop colored pin body matching grade
+                TeardropPinShape()
+                    .fill(
+                        LinearGradient(
+                            colors: pinColors(for: grade),
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .shadow(color: .black.opacity(0.35), radius: 5, x: 0, y: 3)
+
+                // Accessibility symbol in center of pin head
+                Image(systemName: grade.symbolName)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .offset(y: -9)
+            }
+            .frame(width: 32, height: 50)
+
+            // Pin label tag
+            Text(name)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
+                .shadow(color: .black.opacity(0.18), radius: 3, y: 2)
+        }
+    }
+
+    private func pinColors(for grade: OverallAccessibility) -> [Color] {
+        switch grade {
+        case .accessible:
+            [Color(red: 40 / 255, green: 180 / 255, blue: 70 / 255), Color(red: 25 / 255, green: 130 / 255, blue: 45 / 255)]
+        case .partiallyAccessible:
+            [Color(red: 255 / 255, green: 145 / 255, blue: 20 / 255), Color(red: 220 / 255, green: 90 / 255, blue: 0 / 255)]
+        case .notAccessible:
+            [Color(red: 235 / 255, green: 60 / 255, blue: 50 / 255), Color(red: 180 / 255, green: 30 / 255, blue: 20 / 255)]
+        case .noData:
+            [Color(red: 140 / 255, green: 140 / 255, blue: 145 / 255), Color(red: 100 / 255, green: 100 / 255, blue: 105 / 255)]
+        }
+    }
+}
+
+/// Teardrop pin geometry matching media_1787056690775.png
+struct TeardropPinShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let width = rect.width
+        let height = rect.height
+        let radius = width / 2
+
+        // Top circular head
+        path.addArc(
+            center: CGPoint(x: width / 2, y: radius),
+            radius: radius,
+            startAngle: .degrees(25),
+            endAngle: .degrees(155),
+            clockwise: true
+        )
+        // Stem tapering down to sharp point
+        path.addLine(to: CGPoint(x: width / 2, y: height))
+        path.closeSubpath()
+        return path
+    }
 }
 
 #Preview {
     HomeMapView()
+        .environmentObject(LanguageManager.shared)
 }
