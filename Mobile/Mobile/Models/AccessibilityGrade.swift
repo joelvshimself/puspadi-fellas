@@ -71,6 +71,12 @@ enum OverallAccessibility: String, CaseIterable, Identifiable, Hashable {
     case accessible
     case partiallyAccessible
     case notAccessible
+    /// No signal at all yet (distinct from "not accessible" — this means
+    /// unknown, not confirmed-inaccessible). Matches the mockup's 4th
+    /// badge state; not yet surfaced by the live grade card (that one only
+    /// ever has the first 3, since it hides itself entirely when `grade`
+    /// is empty — see PlaceDetailView.accessibilityGradeSection).
+    case noData
 
     var id: String { rawValue }
 
@@ -79,24 +85,47 @@ enum OverallAccessibility: String, CaseIterable, Identifiable, Hashable {
         case .accessible: "Accessible"
         case .partiallyAccessible: "Partially Accessible"
         case .notAccessible: "Not Accessible"
+        case .noData: "No Data Available"
         }
     }
 
+    /// Used by the live grade card's existing badge (systemGray4 for a 4th
+    /// case, since that badge never actually renders `.noData` today).
     var color: Color {
         switch self {
         case .accessible: .green
         case .partiallyAccessible: .orange
         case .notAccessible: .red
+        case .noData: Color(.systemGray)
         }
     }
 
-    /// Leading glyph for the filter menu — the 👍 / ◐ / 👎 states from the
-    /// design mockup (SF Symbols stand-in until custom icons are supplied).
     var symbolName: String {
         switch self {
         case .accessible: "hand.thumbsup.fill"
-        case .partiallyAccessible: "circle.lefthalf.filled"
+        case .partiallyAccessible: "hand.thumbsup.and.hand.thumbsdown.fill"
         case .notAccessible: "hand.thumbsdown.fill"
+        case .noData: "questionmark.circle.fill"
+        }
+    }
+
+    /// Exact Figma badge palette (separate light background + saturated
+    /// foreground pair per state, not a single `color.opacity(...)` tint).
+    var badgeBackground: Color {
+        switch self {
+        case .accessible: Color(red: 223 / 255, green: 245 / 255, blue: 226 / 255) // #DFF5E2
+        case .partiallyAccessible: Color(red: 255 / 255, green: 232 / 255, blue: 187 / 255) // #FFE8BB
+        case .notAccessible: Color(red: 255 / 255, green: 231 / 255, blue: 229 / 255) // #FFE7E5
+        case .noData: Color(red: 231 / 255, green: 231 / 255, blue: 231 / 255) // #E7E7E7
+        }
+    }
+
+    var badgeForeground: Color {
+        switch self {
+        case .accessible: Color(red: 10 / 255, green: 110 / 255, blue: 23 / 255) // #0A6E17
+        case .partiallyAccessible: Color(red: 200 / 255, green: 107 / 255, blue: 0 / 255) // #C86B00
+        case .notAccessible: Color(red: 222 / 255, green: 54 / 255, blue: 44 / 255) // #DE362C
+        case .noData: Color(red: 95 / 255, green: 95 / 255, blue: 95 / 255) // #5F5F5F
         }
     }
 }

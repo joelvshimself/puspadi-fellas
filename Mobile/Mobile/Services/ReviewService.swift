@@ -1,15 +1,16 @@
 import Foundation
 import Supabase
 
-/// Owner 3's Edge Function — `submit-accessibility-review`
-/// (backend/supabase/functions/submit-accessibility-review/index.ts).
-/// Accepts the entrances/elevator/toilet contribution payload, writes it to
-/// `reviews` + `review_entrances`, fans elevator/toilet/entrance into
-/// `accessibility_signals`, and returns the freshly recomputed
-/// `accessibility_grade()` for the place — same pattern as
-/// AccessibilityService's `place-accessibility` call.
+/// Owner 3 Edge Functions — submit + read-back of community reviews.
 ///
-/// Photo flow: JPEG bytes upload to the public `review-photos` Storage bucket
+/// `submit-accessibility-review` accepts the entrances/elevator/toilet
+/// contribution payload, writes `reviews` + `review_entrances`, fans signals
+/// into `accessibility_grade()`, and returns the live grade.
+///
+/// `place-review-photos` returns public photo URLs already stored on those
+/// rows, labeled by facility, for Place Detail.
+///
+/// Photo upload: JPEG bytes go to the public `review-photos` Storage bucket
 /// first; the resulting public URLs are sent as `photoUrls` on each facility
 /// review. DB columns store those URL arrays (not blobs).
 ///
@@ -32,7 +33,7 @@ final class ReviewService {
     }()
 
     private init() {
-        client = SupabaseClient(supabaseURL: SupabaseConfig.url, supabaseKey: SupabaseConfig.anonKey)
+        client = SupabaseClientProvider.shared
     }
 
     struct SubmitResponse: Decodable {
@@ -40,6 +41,11 @@ final class ReviewService {
         let reviewId: String
         let placeId: String
         let grade: [AccessibilityFeatureGrade]
+    }
+
+    private struct ReviewPhotosRequestBody: Encodable {
+        let lat: Double
+        let lng: Double
     }
 
     @discardableResult
@@ -51,6 +57,45 @@ final class ReviewService {
             options: FunctionInvokeOptions(body: payload),
             decoder: decoder
         )
+    }
+
+    /// Loads community review photos for the canonical place key derived from
+    /// lat/lng (same `loc_{lat5}_{lng5}` as submit / place-accessibility).
+    func fetchReviewPhotos(lat: Double, lng: Double) async throws -> PlaceReviewPhotosResponse {
+        try await client.functions.invoke(
+            "place-review-photos",
+            options: FunctionInvokeOptions(body: ReviewPhotosRequestBody(lat: lat, lng: lng)),
+            decoder: decoder
+        )
+    }
+
+    /// Subscribes to new `reviews` rows for `placeId`. Yields on each insert so
+    /// Place Detail can refresh grade + photos while the sheet is open.
+    /// Cancelling the surrounding task removes the Realtime channel.
+    func watchReviewInserts(placeId: String) -> AsyncStream<Void> {
+        AsyncStream { continuation in
+            let task = Task {
+                let channel = client.channel("place-reviews-\(placeId)")
+                defer {
+                    Task { await client.removeChannel(channel) }
+                }
+                let inserts = channel.postgresChange(
+                    InsertAction.self,
+                    schema: "public",
+                    table: "reviews",
+                    filter: .eq("place_id", value: placeId)
+                )
+                await channel.subscribe()
+                for await _ in inserts {
+                    if Task.isCancelled { break }
+                    continuation.yield(())
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
+        }
     }
 
     // MARK: - Storage upload

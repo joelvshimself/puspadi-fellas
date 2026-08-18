@@ -67,19 +67,8 @@ struct HomeMapView: View {
     /// the location button can be floated just above the peek sheet.
     @State private var bottomSafeInset: CGFloat = 34
 
-    private let places = Place.samples
 
     private var isSearching: Bool { isSearchActive }
-
-    /// Pins shown on the map — narrowed to the selected grades when the filter
-    /// is active. Ungraded places drop out while any filter is on.
-    private var filteredPlaces: [Place] {
-        guard !selectedGrades.isEmpty else { return places }
-        return places.filter { place in
-            guard let grade = place.grade else { return false }
-            return selectedGrades.contains(grade)
-        }
-    }
 
     /// The peek detent. Fixed to the design's peek height rather than measured:
     /// the sheet compresses content that doesn't fit the detent, so feeding a
@@ -257,21 +246,10 @@ struct HomeMapView: View {
     private var mapLayer: some View {
         Map(position: $cameraPosition, selection: $mapSelection) {
             // The blue "current location" dot (with heading) — this is the
-            // person's own position pin.
+            // person's own position pin. The mock `Place.samples` pins that
+            // used to sit alongside it are gone: main removed that fixture data
+            // in favour of live results.
             UserAnnotation()
-
-            ForEach(filteredPlaces) { place in
-                Annotation(place.name, coordinate: place.coordinate) {
-                    Image(systemName: "mappin.circle.fill")
-                        .font(.title)
-                        .foregroundStyle(place.grade?.color ?? .red)
-                        .background(
-                            Circle()
-                                .fill(.white)
-                                .frame(width: 18, height: 18)
-                        )
-                }
-            }
         }
         .onMapCameraChange { context in
             visibleRegion = context.region

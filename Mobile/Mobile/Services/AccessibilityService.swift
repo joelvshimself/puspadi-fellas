@@ -21,7 +21,7 @@ final class AccessibilityService {
     }()
 
     private init() {
-        client = SupabaseClient(supabaseURL: SupabaseConfig.url, supabaseKey: SupabaseConfig.anonKey)
+        client = SupabaseClientProvider.shared
     }
 
     private struct EnrichRequestBody: Encodable {
