@@ -6,8 +6,18 @@ import SwiftUI
 /// calls — kept fully separate from the live, MapKit-backed
 /// `PlaceDetailView`. Reached via SavedView's demo entry point.
 struct MockPlaceDetailView: View {
+    /// A real place when this screen is opened from search; nil for
+    /// SavedView's demo entry point, which keeps the MockData fixtures.
+    var place: Place? = nil
+    /// Set when presented inside the home sheet, where `dismiss()` would
+    /// close the whole sheet rather than go back to the results.
+    var onBack: (() -> Void)? = nil
+
     @Environment(\.dismiss) private var dismiss
     @State private var demoState: PlaceDetailDemoState = .notYetReviewed
+    /// Live accessibility grade for `place`, from `place-accessibility`.
+    @State private var liveGrade: [AccessibilityFeatureGrade] = []
+    @State private var isLoadingGrade = false
     @State private var isSaved = false
     @State private var heroPage = 0
     @State private var showReviewWizard = false
@@ -17,7 +27,8 @@ struct MockPlaceDetailView: View {
     /// `AnalysingView`'s standalone demo entry, since `ReviewWizardView`
     /// needs a real `Place` and there's no backend place behind this mock.
     private var wizardPlace: Place {
-        Place.fromSearchResult(
+        if let place { return place }
+        return Place.fromSearchResult(
             name: MockData.placeName,
             category: "Mall",
             coordinate: CLLocationCoordinate2D(latitude: 0, longitude: 0)
@@ -58,6 +69,7 @@ struct MockPlaceDetailView: View {
         // where it should read as normal page background, not a black gap.
         .background(Color(.systemBackground))
         .ignoresSafeArea(edges: .top)
+        .task(id: place?.id) { await loadLiveGrade() }
         .navigationBarHidden(true)
         .fullScreenCover(isPresented: $showReviewWizard) {
             ReviewWizardView(place: wizardPlace) {
@@ -122,7 +134,7 @@ struct MockPlaceDetailView: View {
             // circular button is the real back affordance — `dismiss()`
             // pops this NavigationStack push same as the system back button.
             Button {
-                dismiss()
+                if let onBack { onBack() } else { dismiss() }
             } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 22, weight: .semibold))
@@ -254,7 +266,7 @@ struct MockPlaceDetailView: View {
             }
 
             HStack {
-                Text(MockData.placeName)
+                Text(place?.name ?? MockData.placeName)
                     .font(.system(size: 24, weight: .bold))
                     .foregroundStyle(.primary)
 
@@ -274,10 +286,29 @@ struct MockPlaceDetailView: View {
     /// badge entirely (matches the "No Review Yet" mockup, which has no
     /// badge at all rather than a "No Data Available" one).
     private var badgeGrade: OverallAccessibility? {
-        switch demoState {
-        case .noReview: nil
-        case .notYetReviewed, .reviewedByMe: .accessible
+        // A real place is graded from the backend rows, not the demo toggle.
+        if place != nil {
+            guard !liveGrade.isEmpty else { return isLoadingGrade ? nil : .noData }
+            if liveGrade.contains(where: { $0.bestValue == "no" }) { return .notAccessible }
+            if liveGrade.allSatisfy({ $0.bestValue == "yes" }) { return .accessible }
+            return .partiallyAccessible
         }
+        switch demoState {
+        case .noReview: return nil
+        case .notYetReviewed, .reviewedByMe: return .accessible
+        }
+    }
+
+    private func loadLiveGrade() async {
+        guard let place else { return }
+        isLoadingGrade = true
+        defer { isLoadingGrade = false }
+        let response = try? await AccessibilityService.shared.enrich(
+            lat: place.coordinate.latitude,
+            lng: place.coordinate.longitude,
+            name: place.name
+        )
+        liveGrade = response?.grade ?? []
     }
 
     private func circularActionButton(icon: String) -> some View {

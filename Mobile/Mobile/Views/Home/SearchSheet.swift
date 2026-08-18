@@ -220,7 +220,9 @@ struct SearchSheet: View {
     var body: some View {
         Group {
             if let selectedPlace {
-                PlaceDetailView(place: selectedPlace, onBack: { self.selectedPlace = nil })
+                // The designed Place Details screen from main, fed the real
+                // place (its accessibility badge comes from the backend).
+                MockPlaceDetailView(place: selectedPlace, onBack: { self.selectedPlace = nil })
             } else {
                 searchContent
             }
