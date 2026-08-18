@@ -1,14 +1,28 @@
+import CoreLocation
 import SwiftUI
 
 /// Demo "Place Details" screen matching the Figma mockup (Default / No
 /// Review Yet / Reviewed states). Mock data only (MockData), no backend
 /// calls — kept fully separate from the live, MapKit-backed
-/// `PlaceDetailView`. Reached via ContributeView's preview entry point.
+/// `PlaceDetailView`. Reached via SavedView's demo entry point.
 struct MockPlaceDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var demoState: PlaceDetailDemoState = .notYetReviewed
     @State private var isSaved = false
     @State private var heroPage = 0
+    @State private var showReviewWizard = false
+
+    /// Reused by both "Add New Review"/"Be the first reviewer" here and My
+    /// Review's "Update Review" — same throwaway-`Place` pattern as
+    /// `AnalysingView`'s standalone demo entry, since `ReviewWizardView`
+    /// needs a real `Place` and there's no backend place behind this mock.
+    private var wizardPlace: Place {
+        Place.fromSearchResult(
+            name: MockData.placeName,
+            category: "Mall",
+            coordinate: CLLocationCoordinate2D(latitude: 0, longitude: 0)
+        )
+    }
 
     /// Demo-only multi-photo hero carousel — duplicates the 2 real place
     /// PNGs we have out to 5 slides purely so paging/indicator behavior is
@@ -45,6 +59,15 @@ struct MockPlaceDetailView: View {
         .background(Color(.systemBackground))
         .ignoresSafeArea(edges: .top)
         .navigationBarHidden(true)
+        .fullScreenCover(isPresented: $showReviewWizard) {
+            ReviewWizardView(place: wizardPlace) {
+                showReviewWizard = false
+                // Mock-only stand-in for a real submit: reflect it in the
+                // demo state so "Add New Review" visibly connects to
+                // something instead of being a dead-end sheet.
+                demoState = .reviewedByMe
+            }
+        }
     }
 
     // MARK: Hero
@@ -279,8 +302,8 @@ struct MockPlaceDetailView: View {
     }
 
     private func addReviewButton(title: String) -> some View {
-        // Mockup only — no backend to submit a review against yet.
         Button {
+            showReviewWizard = true
         } label: {
             Text(title)
                 .font(.system(size: 17, weight: .semibold))
