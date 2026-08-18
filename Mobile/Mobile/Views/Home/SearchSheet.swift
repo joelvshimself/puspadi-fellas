@@ -1,378 +1,505 @@
 import MapKit
 import SwiftUI
 
-enum HomeTab: Hashable {
-    case explore
-    case saved
-    case contribute
-}
-
 enum HomeRoute: Hashable {
     case place(Place)
     case saved
     case contribute
 }
 
-/// Content of the persistent bottom sheet presented by HomeMapView via a
-/// real `.sheet(...) { }.presentationDetents(...)` — the same pattern
-/// snackbud uses for its own sheets. That gives the native drag-up-to-expand
-/// behavior and lets the map stay visible/interactive underneath at the
-/// peek height, matching Google/Apple Maps rather than a hand-rolled
-/// full-screen takeover.
+// MARK: - Design tokens
+
+enum SheetPalette {
+    /// #0099FF — the focused field's border.
+    static let brandBlue = Color(red: 0, green: 0.6, blue: 1)
+    /// #0088FF — leading glyphs on list rows.
+    static let accentBlue = Color(red: 0, green: 0.533, blue: 1)
+    /// Ellipse 8 #389CFF — the blurred blob behind the sheet that gives the
+    /// glass its blue cast.
+    static let glow = Color(red: 0.220, green: 0.612, blue: 1)
+    /// The rgba(181,181,181,0.6) scrim over the map while searching.
+    static let searchScrim = Color(white: 181.0 / 255.0)
+    /// The drag handle. White washed out against the light glass, so it takes a
+    /// neutral grey — swap this for `brandBlue` if you want it tinted.
+    static let grabber = Color(white: 0.55)
+    /// Hairline rim shared by the circular buttons and the search pill.
+    static let rimGradient = LinearGradient(
+        colors: [.black.opacity(0.06), .black.opacity(0.16)],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+}
+
+enum SheetMetrics {
+    // Peek — Homepage 285:1323
+    static let grabberWidth: CGFloat = 48
+    static let grabberHeight: CGFloat = 6
+    static let grabberTopPadding: CGFloat = 8
+    static let grabberBlockHeight: CGFloat = 16
+
+    /// These two must still sum with the grabber and field to 102pt — that is
+    /// the detent floor below which iOS squeezes the sheet's contents. To
+    /// tighten the gap under the pill, move points from bottom to top.
+    static let rowTopPadding: CGFloat = 20
+    static let rowBottomPadding: CGFloat = 10
+    static let horizontalPadding: CGFloat = 16
+
+    static let fieldHeight: CGFloat = 56
+    static let fieldSpacing: CGFloat = 8
+    static let fieldFillOpacity: CGFloat = 0.8
+    static let fieldBorderWidth: CGFloat = 2
+
+    static let textSize: CGFloat = 17
+    static let textTracking: CGFloat = -0.43
+    static let textOpacity: CGFloat = 0.8
+    static let placeholderOpacity: CGFloat = 0.3
+
+    /// 102pt is a hard floor for the detent: below it iOS squeezes the sheet's
+    /// contents to fit (at 92 the 6pt grabber renders 2pt and vanishes).
+    static let peekHeight: CGFloat =
+        grabberBlockHeight + rowTopPadding + fieldHeight + rowBottomPadding
+
+    // List rows — List/Location 285:2069
+    static let rowCornerRadius: CGFloat = 16
+    static let rowSpacing: CGFloat = 8
+    static let rowIconWidth: CGFloat = 22
+    static let rowTitleSize: CGFloat = 15
+    static let rowSubtitleSize: CGFloat = 13
+    static let sectionHeaderSize: CGFloat = 18
+
+    // Circular buttons — ButtonsTop 285:1346
+    static let buttonDiameter: CGFloat = 48
+    static let buttonShadowRadius: CGFloat = 2.967
+    static let buttonShadowY: CGFloat = 3.68
+    static let buttonShadowOpacity: CGFloat = 0.25
+
+    // Blue glow — Ellipse 8
+    static let glowWidth: CGFloat = 737
+    static let glowHeight: CGFloat = 256
+    static let glowOffsetY: CGFloat = 203
+    static let glowOpacity: CGFloat = 0.28
+    static let glowBlur: CGFloat = 50
+}
+
+// MARK: - Glass
+
+extension View {
+    /// Apple's real Liquid Glass on iOS 26 — the same material the sheet draws
+    /// itself with, so the buttons and the sheet match by construction.
+    @ViewBuilder
+    func homeGlass(in shape: some InsettableShape, tint: Color = .clear) -> some View {
+        if #available(iOS 26.0, *) {
+            glassEffect(.regular.interactive(), in: shape)
+        } else {
+            background { GlassSurface(shape: shape, tint: tint) }
+        }
+    }
+}
+
+/// Fallback for systems without Liquid Glass.
+struct GlassSurface<S: InsettableShape>: View {
+    let shape: S
+    var tint: Color = .clear
+
+    var body: some View {
+        shape
+            .fill(.regularMaterial)
+            .overlay { shape.fill(tint) }
+            .overlay { shape.strokeBorder(SheetPalette.rimGradient, lineWidth: 1) }
+    }
+}
+
+/// The circular buttons in the design (filter, profile, recenter, ✕).
+///
+/// The surface matters: over the map they are real Liquid Glass with the
+/// design's drop shadow, but the same treatment *on* the sheet renders muddy
+/// grey — glass inside glass cancels out, exactly as it did for the search
+/// pill. On the sheet they take the pill's fill and rim instead, and no shadow
+/// (the design gives the in-sheet ✕ none either).
+struct GlassCircleButton<Label: View>: View {
+    var surface: CircleButtonSurface = .overMap
+    var diameter: CGFloat = SheetMetrics.buttonDiameter
+    let action: () -> Void
+    @ViewBuilder var label: Label
+
+    var body: some View {
+        Button(action: action) {
+            label
+                .frame(width: diameter, height: diameter)
+                .modifier(CircleSurface(surface: surface))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Where a circular button is drawn — glass behaves differently on each.
+enum CircleButtonSurface { case overMap, onSheet }
+
+private struct CircleSurface: ViewModifier {
+    let surface: CircleButtonSurface
+
+    func body(content: Content) -> some View {
+        switch surface {
+        case .overMap:
+            content
+                .homeGlass(in: Circle(), tint: .white.opacity(0.30))
+                .shadow(
+                    color: .black.opacity(SheetMetrics.buttonShadowOpacity),
+                    radius: SheetMetrics.buttonShadowRadius,
+                    y: SheetMetrics.buttonShadowY
+                )
+        case .onSheet:
+            content
+                .background(Circle().fill(Color.white))
+                .overlay(Circle().strokeBorder(SheetPalette.rimGradient, lineWidth: 1))
+        }
+    }
+}
+
+// MARK: - Categories
+
+/// The Apple-Maps-style shortcuts shown before anything is typed.
+enum SearchCategory: String, CaseIterable, Identifiable {
+    case malls, restaurants, cafes, parks, hotels, transit
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .malls: "Malls"
+        case .restaurants: "Restaurants"
+        case .cafes: "Cafes"
+        case .parks: "Parks"
+        case .hotels: "Hotels"
+        case .transit: "Transit"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .malls: "bag.fill"
+        case .restaurants: "fork.knife"
+        case .cafes: "cup.and.saucer.fill"
+        case .parks: "tree.fill"
+        case .hotels: "bed.double.fill"
+        case .transit: "tram.fill"
+        }
+    }
+}
+
+// MARK: - Search sheet
+
+/// Content of the bottom sheet: a search field that expands the sheet when it
+/// takes focus, category shortcuts before anything is typed, and live
+/// MKLocalSearch results once it is.
 struct SearchSheet: View {
-    @Binding var detent: PresentationDetent
+    /// Explicit state, never derived from the sheet's height — iOS resizes the
+    /// sheet around the keyboard, and inferring intent from the detent made the
+    /// content flip back mid-edit.
+    @Binding var isExpanded: Bool
     @Binding var searchText: String
-    @Binding var selectedTab: HomeTab
-    var isSearchFocused: FocusState<Bool>.Binding
-    /// Biases MKLocalSearch toward what's currently on screen.
+    /// Owned here, next to the TextField. It used to live in HomeMapView and be
+    /// passed across the `.sheet` boundary — but @FocusState is scoped to the
+    /// hierarchy that declares it, and a sheet is a separate presentation host,
+    /// so focus changes were unreliable in both directions.
+    @FocusState private var isFieldFocused: Bool
     let searchRegion: MKCoordinateRegion
-    /// When set, the sheet shows this place's accessibility detail in place of
-    /// the search UI (same-sheet method, no separate pushed page).
-    @Binding var selectedPlace: Place?
     let onSelectPlace: (Place) -> Void
     let onCancelSearch: () -> Void
-    let onSelectTab: (HomeTab) -> Void
 
-    private var isSearching: Bool { detent == expandedDetent }
-
-    /// Real on-device search results (MKLocalSearch) — replaces the old
-    /// local substring filter over mock `places`. See §4.1 in
-    /// docs/specs.md: MapKit resolves the query for free, on-device; only
-    /// the resolved coordinate is ever sent to the backend, and only once
-    /// the user taps a result (see PlaceDetailView).
-    @State private var liveResults: [Place] = []
+    @State private var results: [Place] = []
+    @State private var isLoading = false
+    @State private var errorMessage: String?
     @State private var searchTask: Task<Void, Never>?
-    @State private var isSearchingLive = false
-    @State private var searchErrorMessage: String?
 
-    private let categories: [(symbol: String, label: String, query: String?)] = [
-        ("fork.knife", "Food", "Restaurant"),
-        ("building.2.fill", "Stay", "Hotel"),
-        ("tree.fill", "Parks", "Park"),
-        ("cup.and.saucer.fill", "Cafe", "Restaurant"),
-        ("plus", "More", nil)
-    ]
-
-    private var results: [Place] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return liveResults
+    private var query: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     var body: some View {
         Group {
-            if let selectedPlace {
-                // Accessibility detail lives in the same sheet — tapping a
-                // result swaps the sheet's content instead of pushing a page.
-                PlaceDetailView(place: selectedPlace, onBack: { self.selectedPlace = nil })
-            } else {
-                searchContent
-            }
+            searchContent
         }
         .frame(maxWidth: .infinity, alignment: .top)
-        .onChange(of: searchText) { _, newValue in
-            scheduleSearch(for: newValue)
+        .onChange(of: searchText) { _, value in scheduleSearch(for: value) }
+        .onChange(of: isFieldFocused) { _, focused in
+            // Taking focus is what opens the sheet.
+            if focused, !isExpanded {
+                withAnimation(.easeInOut(duration: 0.25)) { isExpanded = true }
+            }
+        }
+        .onChange(of: isExpanded) { _, expanded in
+            // Collapsing (✕, or a drag down) gives up the keyboard.
+            if !expanded { isFieldFocused = false }
         }
     }
+
+    // MARK: Layout
 
     private var searchContent: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
+            grabber
+
+            // The search row's structure never changes between states — only
+            // values do. An `if` around this subtree would give it a new
+            // identity, tearing down the TextField and dropping keystrokes.
+            HStack(spacing: SheetMetrics.fieldSpacing) {
                 searchField
 
-                if isSearching {
-                    Button("Cancel") {
-                        onCancelSearch()
-                    }
-                    .font(.body)
-                    .transition(.opacity.combined(with: .move(edge: .trailing)))
+                GlassCircleButton(surface: .onSheet, action: onCancelSearch) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(.primary)
                 }
+                .frame(width: isExpanded ? SheetMetrics.buttonDiameter : 0)
+                .opacity(isExpanded ? 1 : 0)
+                .clipped()
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
+            .padding(.horizontal, SheetMetrics.horizontalPadding)
+            .padding(.top, SheetMetrics.rowTopPadding)
+            .padding(.bottom, SheetMetrics.rowBottomPadding)
 
-            if isSearching {
-                resultsList
-                    .padding(.top, 8)
-                    .transition(.opacity)
-            } else {
-                categoryRow
-                    .padding(.top, 14)
-                    .padding(.bottom, 4)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-
-                sheetTabBar
-                    .padding(.top, 8)
-                    .padding(.bottom, 10)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-            }
+            // Always present, height-gated. Gating it behind an `if` inserted
+            // the content *after* the sheet had begun growing, so the sheet
+            // expanded empty and the list popped in a beat later — two moves
+            // instead of one. Collapsed it simply has no height.
+            sheetBody
+                .frame(maxHeight: isExpanded ? .infinity : 0)
+                .opacity(isExpanded ? 1 : 0)
+                .clipped()
         }
         .frame(maxWidth: .infinity, alignment: .top)
     }
 
-    private func scheduleSearch(for query: String) {
+    private var grabber: some View {
+        Capsule()
+            .fill(SheetPalette.grabber.opacity(isExpanded ? 0.5 : 0.65))
+            .frame(width: SheetMetrics.grabberWidth, height: SheetMetrics.grabberHeight)
+            .padding(.top, SheetMetrics.grabberTopPadding)
+            .frame(maxWidth: .infinity, minHeight: SheetMetrics.grabberBlockHeight, alignment: .top)
+    }
+
+    private var searchField: some View {
+        HStack(spacing: SheetMetrics.fieldSpacing) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.primary.opacity(SheetMetrics.textOpacity))
+
+            TextField("Search a place", text: $searchText)
+                .font(.system(size: SheetMetrics.textSize))
+                .tracking(SheetMetrics.textTracking)
+                .foregroundStyle(.primary.opacity(SheetMetrics.textOpacity))
+                .tint(SheetPalette.brandBlue)
+                .focused($isFieldFocused)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+
+            // The design names this microphone.fill, which is the SF Symbols
+            // 2024 rename and needs iOS 18; mic.fill is the same glyph and works
+            // on the project's iOS 17 deployment target.
+            Image(systemName: "mic.fill")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: SheetMetrics.rowIconWidth)
+                .accessibilityHidden(true)
+        }
+        .padding(.horizontal, 12)
+        .frame(height: SheetMetrics.fieldHeight)
+        .background {
+            Capsule().fill(Color.white.opacity(isExpanded ? 1 : SheetMetrics.fieldFillOpacity))
+        }
+        .overlay {
+            Capsule().strokeBorder(
+                isExpanded ? AnyShapeStyle(SheetPalette.brandBlue) : AnyShapeStyle(SheetPalette.rimGradient),
+                lineWidth: isExpanded ? SheetMetrics.fieldBorderWidth : 1
+            )
+        }
+    }
+
+    /// Categories before anything is typed, results after.
+    @ViewBuilder
+    private var sheetBody: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: SheetMetrics.rowSpacing) {
+                if query.isEmpty {
+                    sectionHeader("Find nearby accessible spots")
+                    ForEach(SearchCategory.allCases) { category in
+                        categoryRow(category)
+                    }
+                } else if isLoading {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 24)
+                } else if let errorMessage {
+                    message(errorMessage)
+                } else if results.isEmpty {
+                    message("No places found for \"\(query)\" near here.")
+                } else {
+                    ForEach(results) { place in
+                        resultRow(place)
+                    }
+                }
+            }
+            .padding(.horizontal, SheetMetrics.horizontalPadding)
+            .padding(.bottom, 24)
+        }
+        .scrollDismissesKeyboard(.interactively)
+    }
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: SheetMetrics.sectionHeaderSize))
+            .foregroundStyle(.primary.opacity(0.7))
+            .padding(.bottom, SheetMetrics.rowSpacing)
+    }
+
+    private func categoryRow(_ category: SearchCategory) -> some View {
+        Button {
+            searchText = category.label
+        } label: {
+            HStack(spacing: 16) {
+                Image(systemName: category.icon)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(SheetPalette.accentBlue)
+                    .frame(width: SheetMetrics.rowIconWidth)
+
+                Text(category.label)
+                    .font(.system(size: SheetMetrics.rowTitleSize, weight: .semibold))
+                    .foregroundStyle(.primary)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(card)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func resultRow(_ place: Place) -> some View {
+        Button {
+            onSelectPlace(place)
+        } label: {
+            HStack(spacing: 16) {
+                Image(systemName: "mappin.circle.fill")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(SheetPalette.accentBlue)
+                    .frame(width: SheetMetrics.rowIconWidth)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(place.name)
+                        .font(.system(size: SheetMetrics.rowTitleSize, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+
+                    if let subtitle = subtitle(for: place) {
+                        Text(subtitle)
+                            .font(.system(size: SheetMetrics.rowSubtitleSize))
+                            .foregroundStyle(.primary.opacity(0.7))
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(card)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var card: some View {
+        RoundedRectangle(cornerRadius: SheetMetrics.rowCornerRadius, style: .continuous)
+            .fill(Color.white.opacity(SheetMetrics.fieldFillOpacity))
+    }
+
+    private func message(_ text: String) -> some View {
+        Text(text)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity)
+            .multilineTextAlignment(.center)
+            .padding(.vertical, 24)
+    }
+
+    private func subtitle(for place: Place) -> String? {
+        let parts = [place.distance, place.address].filter { !$0.isEmpty }
+        return parts.isEmpty ? (place.category.isEmpty ? nil : place.category)
+                             : parts.joined(separator: " • ")
+    }
+
+    // MARK: Search
+
+    private func scheduleSearch(for text: String) {
         searchTask?.cancel()
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
         guard !trimmed.isEmpty else {
-            liveResults = []
-            isSearchingLive = false
-            searchErrorMessage = nil
+            results = []
+            isLoading = false
+            errorMessage = nil
             return
         }
-        // Expand so results are actually visible. Driven by the text change
-        // rather than field focus, because FocusState doesn't propagate
-        // reliably across the sheet boundary (that's why results previously
-        // only appeared after manually dragging the sheet up).
-        if detent != expandedDetent {
-            detent = expandedDetent
-        }
-        isSearchingLive = true
-        searchErrorMessage = nil
+
+        if !isExpanded { isExpanded = true }
+        isLoading = true
+        errorMessage = nil
+
         searchTask = Task {
-            try? await Task.sleep(nanoseconds: 300_000_000)
+            try? await Task.sleep(nanoseconds: 250_000_000)
             guard !Task.isCancelled else { return }
             await performSearch(trimmed)
         }
     }
 
-    private func performSearch(_ query: String) async {
+    private func performSearch(_ text: String) async {
         let request = MKLocalSearch.Request()
-        request.naturalLanguageQuery = query
+        request.naturalLanguageQuery = text
         request.region = searchRegion
-        let search = MKLocalSearch(request: request)
+
         do {
-            let response = try await search.start()
+            let response = try await MKLocalSearch(request: request).start()
             guard !Task.isCancelled else { return }
-            liveResults = response.mapItems.map { item in
+            results = response.mapItems.map { item in
                 Place.fromSearchResult(
-                    name: item.name ?? query,
-                    category: item.pointOfInterestCategory.map(categoryLabel) ?? "Place",
-                    coordinate: item.placemark.coordinate
+                    name: item.name ?? text,
+                    category: item.pointOfInterestCategory?.rawValue
+                        .replacingOccurrences(of: "MKPOICategory", with: "") ?? "Place",
+                    coordinate: item.placemark.coordinate,
+                    address: shortAddress(item.placemark),
+                    distance: distance(to: item.placemark.coordinate)
                 )
             }
-            isSearchingLive = false
+            isLoading = false
         } catch {
             guard !Task.isCancelled else { return }
-            // Surface this instead of silently showing an empty list — a
-            // blank "Recent" list with no feedback reads as broken. Common
-            // cause here is MKErrorDomain code 4 (placemark not found /
-            // region has no matches), which is a normal "no results", not a
-            // crash — but the user still needs to see *something* changed.
-            liveResults = []
-            isSearchingLive = false
-            searchErrorMessage = (error as NSError).localizedDescription
+            // MKErrorDomain code 4 is a normal "no matches here", not a crash,
+            // but the user still needs to see that something changed.
+            results = []
+            isLoading = false
+            errorMessage = (error as NSError).localizedDescription
         }
     }
 
-    private func categoryLabel(for category: MKPointOfInterestCategory) -> String {
-        category.rawValue.replacingOccurrences(of: "MKPOICategory", with: "")
+    private func shortAddress(_ placemark: MKPlacemark) -> String {
+        let street = [placemark.subThoroughfare, placemark.thoroughfare]
+            .compactMap { $0 }
+            .joined(separator: " ")
+        return [street, placemark.locality ?? ""]
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
     }
 
-    private var searchField: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(.secondary)
-
-            TextField("Find a place", text: $searchText)
-                .focused(isSearchFocused)
-                .textInputAutocapitalization(.never)
-                .submitLabel(.search)
-
-            Image(systemName: "mic.fill")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(
-            Capsule()
-                .fill(Color.primary.opacity(0.06))
-        )
+    private func distance(to coordinate: CLLocationCoordinate2D) -> String {
+        let from = CLLocation(latitude: searchRegion.center.latitude,
+                              longitude: searchRegion.center.longitude)
+        let to = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let metres = from.distance(from: to)
+        return metres < 1000 ? "\(Int(metres)) m"
+                             : String(format: "%.1f km", metres / 1000)
     }
-
-    private var categoryRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(categories, id: \.label) { item in
-                    Button {
-                        if let query = item.query {
-                            searchText = query
-                        }
-                        beginSearch()
-                    } label: {
-                        Image(systemName: item.symbol)
-                            .font(.system(size: 22, weight: .medium))
-                            .foregroundStyle(.primary)
-                            .frame(width: 64, height: 64)
-                            .background(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .fill(Color.primary.opacity(0.06))
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(item.label)
-                }
-            }
-            .padding(.horizontal, 16)
-        }
-    }
-
-    private var sheetTabBar: some View {
-        VStack(spacing: 0) {
-            Divider()
-                .padding(.horizontal, 8)
-
-            HStack(spacing: 0) {
-                tabItem(.explore, title: "Explore", systemName: "map.fill")
-                tabItem(.saved, title: "Saved", systemName: "bookmark.fill")
-                tabItem(.contribute, title: "Contribute", systemName: "plus.circle.fill")
-            }
-            .padding(.top, 10)
-            .padding(.bottom, 4)
-        }
-    }
-
-    private func tabItem(_ tab: HomeTab, title: String, systemName: String) -> some View {
-        Button {
-            onSelectTab(tab)
-        } label: {
-            VStack(spacing: 4) {
-                Image(systemName: systemName)
-                    .font(.system(size: 20, weight: .semibold))
-                Text(title)
-                    .font(.caption2.weight(.medium))
-            }
-            .foregroundStyle(selectedTab == tab ? Color.accentColor : .primary)
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var isLiveQuery: Bool {
-        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    private var resultsList: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                Text(isLiveQuery ? "Results" : "Recent")
-                    .font(.headline)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-
-                Divider()
-                    .padding(.horizontal, 16)
-
-                if isLiveQuery, isSearchingLive {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.vertical, 24)
-                } else if isLiveQuery, let searchErrorMessage {
-                    statusMessage(searchErrorMessage)
-                } else if isLiveQuery, results.isEmpty {
-                    statusMessage("No places found for \"\(searchText)\" near here.")
-                } else {
-                    ForEach(results) { place in
-                        Button {
-                            onSelectPlace(place)
-                        } label: {
-                            resultRow(place)
-                        }
-                        .buttonStyle(.plain)
-
-                        Divider()
-                            .padding(.leading, 72)
-                    }
-                }
-            }
-            .padding(.bottom, 24)
-        }
-    }
-
-    private func statusMessage(_ text: String) -> some View {
-        Text(text)
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 24)
-            .multilineTextAlignment(.center)
-    }
-
-    private func resultRow(_ place: Place) -> some View {
-        HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(place.accentColor.opacity(0.85))
-                .frame(width: 52, height: 52)
-                .overlay {
-                    Image(systemName: place.gallerySymbols.first ?? "mappin")
-                        .foregroundStyle(.white)
-                        .font(.title3)
-                }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(place.name)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.primary)
-                Text(place.distance.isEmpty ? place.category : "\(place.category) • \(place.distance)")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer(minLength: 0)
-
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .contentShape(Rectangle())
-    }
-
-    private func beginSearch() {
-        detent = expandedDetent
-        isSearchFocused.wrappedValue = true
-    }
-}
-
-#Preview {
-    struct PreviewHost: View {
-        @State private var detent: PresentationDetent = .height(230)
-        @State private var searchText = ""
-        @State private var selectedTab: HomeTab = .explore
-        @State private var selectedPlace: Place?
-        @FocusState private var focused: Bool
-
-        var body: some View {
-            Color.gray.opacity(0.35).ignoresSafeArea()
-                .sheet(isPresented: .constant(true)) {
-                    SearchSheet(
-                        detent: $detent,
-                        searchText: $searchText,
-                        selectedTab: $selectedTab,
-                        isSearchFocused: $focused,
-                        searchRegion: MKCoordinateRegion(
-                            center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
-                            span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
-                        ),
-                        selectedPlace: $selectedPlace,
-                        onSelectPlace: { _ in },
-                        onCancelSearch: {
-                            focused = false
-                            searchText = ""
-                            detent = .height(230)
-                        },
-                        onSelectTab: { selectedTab = $0 }
-                    )
-                    .presentationDetents([peekDetent, expandedDetent], selection: $detent)
-                    .presentationBackgroundInteraction(.enabled)
-                    .presentationDragIndicator(.visible)
-                    .interactiveDismissDisabled()
-                }
-        }
-    }
-
-    return PreviewHost()
 }

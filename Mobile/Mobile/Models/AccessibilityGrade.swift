@@ -67,7 +67,7 @@ struct PlaceAccessibilityResponse: Codable {
 /// client-side from the per-feature rows as a placeholder — see
 /// PlaceDetailView.overallGrade. Replace with a real backend-computed field
 /// once available.
-enum OverallAccessibility {
+enum OverallAccessibility: String, CaseIterable, Identifiable, Hashable {
     case accessible
     case partiallyAccessible
     case notAccessible
@@ -77,6 +77,8 @@ enum OverallAccessibility {
     /// ever has the first 3, since it hides itself entirely when `grade`
     /// is empty — see PlaceDetailView.accessibilityGradeSection).
     case noData
+
+    var id: String { rawValue }
 
     var label: String {
         switch self {
@@ -92,7 +94,7 @@ enum OverallAccessibility {
     var color: Color {
         switch self {
         case .accessible: .green
-        case .partiallyAccessible: .yellow
+        case .partiallyAccessible: .orange
         case .notAccessible: .red
         case .noData: Color(.systemGray)
         }
