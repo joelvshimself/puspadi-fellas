@@ -8,6 +8,7 @@ struct PlaceDetailView: View {
     var onBack: () -> Void = {}
     @State private var selectedTab: DetailTab = .facilities
     @State private var showReviewWizard = false
+    @State private var showPhotos = false
 
     /// Live-fetched from place-accessibility — only meaningful for a real
     /// MKLocalSearch result (place.isLiveResult), never for the mock
@@ -41,10 +42,12 @@ struct PlaceDetailView: View {
                         resolved: enrichResolved
                     )
 
+                    photosButton
                     liveReviewsSection
                 } else {
                     // Mock sample places keep the original rating/summary card.
                     heroCard
+                    photosButton
                     tabBar
                     tabContent
                 }
@@ -64,6 +67,9 @@ struct PlaceDetailView: View {
             Task { await loadGrade() }
         }) {
             ReviewWizardView(place: place) { showReviewWizard = false }
+        }
+        .fullScreenCover(isPresented: $showPhotos) {
+            FacilityPhotosView(facilityName: place.name) { showPhotos = false }
         }
     }
 
@@ -222,6 +228,26 @@ struct PlaceDetailView: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Color(.separator), lineWidth: 1)
         )
+    }
+
+    /// Entry point into the photos flow (Views/Photos/). Styled as the
+    /// mockup's own "Add Photos" pill so the two screens read as one flow.
+    private var photosButton: some View {
+        Button {
+            showPhotos = true
+        } label: {
+            HStack(spacing: PhotoMetrics.addPhotosSpacing) {
+                Image(systemName: "photo.badge.plus.fill")
+                    .font(.system(size: 20))
+                Text("Photos")
+                    .font(.system(size: PhotoMetrics.addPhotosLabelSize, weight: .semibold))
+            }
+            .foregroundStyle(PhotoPalette.brandBlue)
+            .frame(maxWidth: .infinity)
+            .frame(height: PhotoMetrics.addPhotosHeight)
+            .background(Capsule().fill(PhotoPalette.background1))
+        }
+        .buttonStyle(.plain)
     }
 
     private var directionsButton: some View {
