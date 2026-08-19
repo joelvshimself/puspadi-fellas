@@ -9,6 +9,9 @@ struct FacilityPhotoImage: View {
     /// Mosaic tiles cover the square; the lightbox fits the whole photo.
     var fillsFrame: Bool = true
 
+    @State private var remoteImage: UIImage?
+    @State private var finishedLoadingRemote = false
+
     var body: some View {
         Color.clear
             .overlay { content }
@@ -27,19 +30,29 @@ struct FacilityPhotoImage: View {
                 .resizable()
                 .aspectRatio(contentMode: fillsFrame ? .fill : .fit)
         case let .remote(url):
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case let .success(image):
-                    image
+            Group {
+                if let remoteImage {
+                    Image(uiImage: remoteImage)
                         .resizable()
                         .aspectRatio(contentMode: fillsFrame ? .fill : .fit)
-                case .failure:
-                    placeholder(symbol: "photo")
-                default:
+                } else if !finishedLoadingRemote {
                     placeholder(symbol: nil)
+                } else {
+                    placeholder(symbol: "photo")
                 }
             }
+            .task(id: url) {
+                await loadRemote(from: url)
+            }
         }
+    }
+
+    private func loadRemote(from url: URL) async {
+        finishedLoadingRemote = false
+        remoteImage = nil
+        defer { finishedLoadingRemote = true }
+        guard let data = try? await NetworkRetry.download(from: url) else { return }
+        remoteImage = UIImage(data: data)
     }
 
     private func placeholder(symbol: String?) -> some View {
@@ -54,4 +67,10 @@ struct FacilityPhotoImage: View {
             }
         }
     }
+}
+
+#Preview {
+    FacilityPhotoImage(photo: FacilityPhoto.samples.first ?? FacilityPhoto(source: .asset("SamplePlacePhoto")))
+        .frame(width: 120, height: 120)
+        .padding()
 }

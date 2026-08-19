@@ -48,11 +48,13 @@ struct FacilitySegmentedControl: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: PhotoMetrics.segmentedItemHeight)
                 .background {
-                    if isSelected {
-                        Capsule()
-                            .fill(.white)
-                            .matchedGeometryEffect(id: "selectedSegment", in: indicator)
-                    }
+                    Capsule()
+                        .fill(isSelected ? .white : .clear)
+                        .matchedGeometryEffect(
+                            id: "selectedSegment",
+                            in: indicator,
+                            isSource: isSelected
+                        )
                 }
                 .contentShape(Capsule())
         }

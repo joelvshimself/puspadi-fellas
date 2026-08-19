@@ -13,35 +13,47 @@ struct ReviewAddNoteStepView: View {
     @Binding var note: ReviewNoteDraft
 
     @State private var photoPickerItems: [PhotosPickerItem] = []
+    @FocusState private var notesFocused: Bool
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Add a note".localized)
-                        .font(.title2.bold())
-                    Text("\("Optional".localized) — \(context.localized). \("Add photos or a note to help other users.".localized)")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Add a note".localized)
+                            .font(.title2.bold())
+                        Text("\("Optional".localized) — \(context.localized). \("Add photos or a note to help other users.".localized)")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    photoSection
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("\("Notes about".localized) \(title.localized)")
+                            .font(.headline)
+                        TextField("What should other users know?".localized, text: $note.text, axis: .vertical)
+                            .lineLimit(4...8)
+                            .focused($notesFocused)
+                            .padding(14)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(Color(.secondarySystemBackground))
+                            )
+                    }
+                    .id("notesSection")
                 }
-
-                photoSection
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("\("Notes about".localized) \(title.localized)")
-                        .font(.headline)
-                    TextField("What should other users know?".localized, text: $note.text, axis: .vertical)
-                        .lineLimit(4...8)
-                        .padding(14)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(Color(.secondarySystemBackground))
-                        )
+                .padding(20)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .onChange(of: notesFocused) { _, focused in
+                if focused {
+                    withAnimation {
+                        proxy.scrollTo("notesSection", anchor: .bottom)
+                    }
                 }
             }
-            .padding(20)
         }
-        .scrollDismissesKeyboard(.interactively)
         .contentShape(Rectangle())
         .onTapGesture {
             UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)

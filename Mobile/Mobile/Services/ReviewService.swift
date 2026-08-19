@@ -59,14 +59,51 @@ final class ReviewService {
         )
     }
 
+    /// Uploads gallery photos for one facility and persists via submit-accessibility-review.
+    func submitGalleryPhotos(place: Place, facility: FacilityKind, localPhotos: [FacilityPhoto]) async throws {
+        let jpegPhotos: [ReviewPhotoDraft] = localPhotos.compactMap { photo in
+            guard case .local(let image) = photo.source,
+                  let data = image.jpegData(compressionQuality: ReviewNoteDraft.jpegQuality)
+            else { return nil }
+            return ReviewPhotoDraft(image: image, jpegData: data)
+        }
+        guard !jpegPhotos.isEmpty else { return }
+
+        let draft = ReviewDraft(appleMapsId: place.id.uuidString, coordinate: place.coordinate)
+        var urlMap = ReviewPhotoURLMap()
+
+        switch facility {
+        case .entrance:
+            draft.lobby.review.photos = jpegPhotos
+            urlMap.lobby = try await uploadPhotos(jpegPhotos, appleMapsId: draft.appleMapsId, facility: "lobby")
+        case .elevator:
+            draft.elevator.exists = true
+            draft.elevator.review.photos = jpegPhotos
+            urlMap.elevator = try await uploadPhotos(jpegPhotos, appleMapsId: draft.appleMapsId, facility: "elevator")
+        case .toilet:
+            draft.toilet.hasDisabledToilet = true
+            draft.toilet.review.photos = jpegPhotos
+            urlMap.toilet = try await uploadPhotos(jpegPhotos, appleMapsId: draft.appleMapsId, facility: "toilet")
+        }
+
+        let payload = draft.buildSubmissionPayload(photoUrls: urlMap)
+        let _: SubmitResponse = try await client.functions.invoke(
+            "submit-accessibility-review",
+            options: FunctionInvokeOptions(body: payload),
+            decoder: decoder
+        )
+    }
+
     /// Loads community review photos for the canonical place key derived from
     /// lat/lng (same `loc_{lat5}_{lng5}` as submit / place-accessibility).
     func fetchReviewPhotos(lat: Double, lng: Double) async throws -> PlaceReviewPhotosResponse {
-        try await client.functions.invoke(
-            "place-review-photos",
-            options: FunctionInvokeOptions(body: ReviewPhotosRequestBody(lat: lat, lng: lng)),
-            decoder: decoder
-        )
+        try await NetworkRetry.run {
+            try await client.functions.invoke(
+                "place-review-photos",
+                options: FunctionInvokeOptions(body: ReviewPhotosRequestBody(lat: lat, lng: lng)),
+                decoder: decoder
+            )
+        }
     }
 
     /// Subscribes to new `reviews` rows for `placeId`. Yields on each insert so
@@ -75,7 +112,10 @@ final class ReviewService {
     func watchReviewInserts(placeId: String) -> AsyncStream<Void> {
         AsyncStream { continuation in
             let task = Task {
-                let channel = client.channel("place-reviews-\(placeId)")
+                // Unique suffix prevents Supabase from reusing a previously-subscribed
+                // channel with the same topic name, which causes a "Cannot add
+                // postgres_changes callbacks after subscribe()" error.
+                let channel = client.channel("place-reviews-\(placeId)-\(UUID().uuidString)")
                 defer {
                     Task { await client.removeChannel(channel) }
                 }
@@ -195,5 +235,158 @@ final class ReviewService {
             .order("created_at", ascending: false)
             .execute()
             .value
+    }
+
+    // MARK: - Place facility reviews
+
+    struct DBReviewEntranceRow: Decodable {
+        let location: String
+        let hasDropoffRamp: Bool?
+        let hasRails: Bool?
+        let doorType: String?
+        let isWideEnough: Bool?
+        let reviewText: String?
+        let photoUrls: [String]?
+    }
+
+    struct DBPlaceReviewRow: Decodable {
+        let id: UUID
+        let createdAt: String
+        let notes: String?
+        let elevatorExists: Bool?
+        let elevatorWheelchairAccessible: Bool?
+        let elevatorBlockers: [String]?
+        let elevatorReviewText: String?
+        let elevatorPhotoUrls: [String]?
+        let hasDisabledToilet: Bool?
+        let toiletReviewText: String?
+        let toiletPhotoUrls: [String]?
+        let reviewEntrances: [DBReviewEntranceRow]?
+    }
+
+    /// Loads flattened review rows + entrance children for one canonical place.
+    func fetchPlaceReviews(lat: Double, lng: Double) async throws -> [PlaceFacilityReview] {
+        let placeId = Place.canonicalPlaceId(lat: lat, lng: lng)
+        let rows: [DBPlaceReviewRow] = try await client.from("reviews")
+            .select("""
+                id, created_at, notes,
+                elevator_exists, elevator_wheelchair_accessible, elevator_blockers,
+                elevator_review_text, elevator_photo_urls,
+                has_disabled_toilet, toilet_review_text, toilet_photo_urls,
+                review_entrances(location, has_dropoff_ramp, has_rails, door_type, is_wide_enough, review_text, photo_urls)
+            """)
+            .eq("place_id", value: placeId)
+            .order("created_at", ascending: false)
+            .execute()
+            .value
+
+        return Self.mapReviews(rows)
+    }
+
+    private static let isoFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoFormatterFallback: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    static func mapReviews(_ rows: [DBPlaceReviewRow]) -> [PlaceFacilityReview] {
+        var results: [PlaceFacilityReview] = []
+        for row in rows {
+            let date = parseDate(row.createdAt)
+            if let entrances = row.reviewEntrances {
+                for entrance in entrances {
+                    let body = entrance.reviewText?.trimmingCharacters(in: .whitespacesAndNewlines)
+                        ?? row.notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+                        ?? ""
+                    guard !body.isEmpty || !(entrance.photoUrls ?? []).isEmpty || entrance.hasDropoffRamp != nil else { continue }
+                    results.append(PlaceFacilityReview(
+                        id: UUID(),
+                        reviewId: row.id,
+                        kind: .entrance,
+                        createdAt: date,
+                        bodyText: body.isEmpty ? "Community review" : body,
+                        providedTags: entranceTags(from: entrance),
+                        photoURLs: entrance.photoUrls ?? []
+                    ))
+                }
+            }
+            if row.elevatorExists != nil || row.elevatorWheelchairAccessible != nil
+                || !(row.elevatorReviewText ?? "").isEmpty
+                || !(row.elevatorPhotoUrls ?? []).isEmpty {
+                let body = row.elevatorReviewText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                results.append(PlaceFacilityReview(
+                    id: UUID(),
+                    reviewId: row.id,
+                    kind: .elevator,
+                    createdAt: date,
+                    bodyText: body.isEmpty ? "Community review" : body,
+                    providedTags: elevatorTags(from: row),
+                    photoURLs: row.elevatorPhotoUrls ?? []
+                ))
+            }
+            if row.hasDisabledToilet == false {
+                results.append(PlaceFacilityReview(
+                    id: UUID(),
+                    reviewId: row.id,
+                    kind: .toilet,
+                    createdAt: date,
+                    bodyText: row.toiletReviewText ?? "No accessible toilet reported",
+                    providedTags: ["NOT AVAILABLE"],
+                    photoURLs: row.toiletPhotoUrls ?? []
+                ))
+            } else if row.hasDisabledToilet == true
+                        || !(row.toiletReviewText ?? "").isEmpty
+                        || !(row.toiletPhotoUrls ?? []).isEmpty {
+                let body = row.toiletReviewText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                results.append(PlaceFacilityReview(
+                    id: UUID(),
+                    reviewId: row.id,
+                    kind: .toilet,
+                    createdAt: date,
+                    bodyText: body.isEmpty ? "Community review" : body,
+                    providedTags: toiletTags(from: row),
+                    photoURLs: row.toiletPhotoUrls ?? []
+                ))
+            }
+        }
+        return results
+    }
+
+    private static func parseDate(_ value: String) -> Date {
+        isoFormatter.date(from: value) ?? isoFormatterFallback.date(from: value) ?? Date()
+    }
+
+    private static func entranceTags(from row: DBReviewEntranceRow) -> [String] {
+        var tags: [String] = []
+        if row.hasDropoffRamp == true { tags.append("RAMP") }
+        if row.hasRails == true { tags.append("HANDRAIL") }
+        if row.doorType == "automatic" { tags.append("AUTOMATIC DOORS") }
+        if row.doorType == "manual" { tags.append("MANUAL DOORS") }
+        if row.isWideEnough == true { tags.append("WIDE ENTRANCE") }
+        return tags
+    }
+
+    private static func elevatorTags(from row: DBPlaceReviewRow) -> [String] {
+        if row.elevatorExists == false { return ["NOT AVAILABLE"] }
+        var tags: [String] = []
+        if row.elevatorWheelchairAccessible == true { tags.append("WHEELCHAIR ACCESSIBLE") }
+        if row.elevatorWheelchairAccessible == false { tags.append("LIMITED ACCESS") }
+        if let blockers = row.elevatorBlockers {
+            if blockers.contains("no_ramp") { tags.append("NO RAMP") }
+            if blockers.contains("too_small") { tags.append("TOO SMALL") }
+        }
+        if tags.isEmpty, row.elevatorExists == true { tags.append("ELEVATOR") }
+        return tags
+    }
+
+    private static func toiletTags(from row: DBPlaceReviewRow) -> [String] {
+        if row.hasDisabledToilet == true { return ["ACCESSIBLE TOILET"] }
+        return []
     }
 }

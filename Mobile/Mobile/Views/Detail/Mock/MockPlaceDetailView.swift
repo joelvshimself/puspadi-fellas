@@ -1,65 +1,32 @@
 import CoreLocation
 import SwiftUI
 
-/// Demo "Place Details" screen matching the Figma mockup (Default / No
-/// Review Yet / Reviewed states). Mock data only (MockData), no backend
-/// calls — kept fully separate from the live, MapKit-backed
-/// `PlaceDetailView`. Reached via SavedView's demo entry point.
+/// Primary place details screen — live grades, reviews, and facility cards.
 struct MockPlaceDetailView: View {
-    /// A real place when this screen is opened from search; nil for
-    /// SavedView's demo entry point, which keeps the MockData fixtures.
-    var place: Place? = nil
-    /// Set when presented inside the home sheet, where `dismiss()` would
-    /// close the whole sheet rather than go back to the results.
-    var onBack: (() -> Void)? = nil
+    let place: Place
 
-    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var languageManager: LanguageManager
-    @State private var demoState: PlaceDetailDemoState = .notYetReviewed
-    /// Live accessibility grade for `place`, from `place-accessibility`.
-    @State private var liveGrade: [AccessibilityFeatureGrade] = []
-    @State private var isLoadingGrade = false
-    /// Hero carousel sources for a real place: the cached Mapillary street
-    /// photo first, then community review photos from `place-review-photos`.
-    @State private var heroURLs: [URL] = []
-    @State private var heroAttribution: String?
-    @State private var streetImageURL: URL?
-    @State private var reviewPhotosList: [ReviewPhoto] = []
-    @State private var enrichResolved = false
+    @StateObject private var store: PlaceReviewStore
+
     @State private var isSaved = false
     @State private var heroPage: Int? = 0
     @State private var showReviewWizard = false
+    @State private var resumeScreenIndex = 0
+    @State private var facilityDestination: FacilityKind?
 
-    /// Reused by both "Add New Review"/"Be the first reviewer" here and My
-    /// Review's "Update Review" — same throwaway-`Place` pattern as
-    /// `AnalysingView`'s standalone demo entry, since `ContributeReviewFlowView`
-    /// needs a real `Place` and there's no backend place behind this mock.
-    private var wizardPlace: Place {
-        if let place { return place }
-        return Place.fromSearchResult(
-            name: MockData.placeName,
-            category: "Mall",
-            coordinate: CLLocationCoordinate2D(latitude: 0, longitude: 0)
-        )
-    }
-
-    /// Demo-only multi-photo hero carousel — duplicates the 2 real place
-    /// PNGs we have out to 5 slides purely so paging/indicator behavior is
-    /// testable (no real multi-photo backend yet).
     private let heroHeight: CGFloat = 253
 
-    private var totalHeroCount: Int {
-        max(10, 1 + heroURLs.count)
+    init(place: Place) {
+        self.place = place
+        _store = StateObject(wrappedValue: PlaceReviewStore(place: place))
     }
 
-    private func offsetCoordinate(_ base: CLLocationCoordinate2D, index: Int) -> CLLocationCoordinate2D {
-        let latOffsets: [Double] = [0.0, 0.0003, -0.0003, 0.0004, -0.0002, 0.0005, -0.0005, 0.0, 0.0, 0.0002]
-        let lngOffsets: [Double] = [0.0, 0.0003, -0.0003, -0.0002, 0.0004, 0.0, 0.0, 0.0005, -0.0005, 0.0002]
-        let idx = index % latOffsets.count
-        return CLLocationCoordinate2D(
-            latitude: base.latitude + latOffsets[idx],
-            longitude: base.longitude + lngOffsets[idx]
-        )
+    private var heroURLs: [URL] {
+        store.reviewPhotos.compactMap(\.imageURL)
+    }
+
+    private var totalHeroCount: Int {
+        max(1, (store.streetImageURL != nil ? 1 : 0) + heroURLs.count)
     }
 
     var body: some View {
@@ -78,21 +45,29 @@ struct MockPlaceDetailView: View {
         .background(Color(.systemBackground))
         .ignoresSafeArea(edges: .top)
         .onAppear {
-            let targetKey = place?.name ?? MockData.placeName
-            isSaved = SavedPlacesService.shared.isSaved(placeId: targetKey)
+            let saveId = Place.canonicalPlaceId(from: place.coordinate)
+            isSaved = SavedPlacesService.shared.isSaved(placeId: saveId)
         }
-        .task(id: place?.id) { await loadLiveGrade() }
-        .task(id: place?.id) { await watchReviews() }
-        .navigationBarHidden(true)
+        .task {
+            await store.load()
+            store.startWatching()
+        }
+        .navigationDestination(item: $facilityDestination) { kind in
+            NotReviewView(kind: kind, store: store, place: place)
+                .enableSwipeBack()
+        }
+        .toolbarBackground(.hidden, for: .navigationBar)
         .fullScreenCover(isPresented: $showReviewWizard) {
-            ContributeReviewFlowView(place: wizardPlace) {
+            ContributeReviewFlowView(
+                place: place,
+                initialScreenIndex: resumeScreenIndex
+            ) {
                 showReviewWizard = false
-                demoState = .reviewedByMe
+                UnfinishedReviewStore.clear(for: place)
+                Task { await store.load() }
             }
         }
     }
-
-    // MARK: Hero
 
     private var heroSection: some View {
         GeometryReader { geo in
@@ -103,53 +78,8 @@ struct MockPlaceDetailView: View {
             ZStack(alignment: .top) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 0) {
-                        let activeCoord = place?.coordinate ?? CLLocationCoordinate2D(latitude: -8.7169, longitude: 115.1694)
-
                         ForEach(0..<totalHeroCount, id: \.self) { index in
-                            if index == 0 {
-                                PlaceImageView(
-                                    coordinate: activeCoord,
-                                    remoteImageURL: streetImageURL,
-                                    attribution: heroAttribution,
-                                    resolved: enrichResolved,
-                                    height: height,
-                                    cornerRadius: 0
-                                )
-                                .frame(width: geo.size.width, height: height)
-                                .clipped()
-                                .id(0)
-                            } else if index - 1 < heroURLs.count {
-                                AsyncImage(url: heroURLs[index - 1]) { phase in
-                                    switch phase {
-                                    case .success(let image):
-                                        image.resizable().aspectRatio(contentMode: .fill)
-                                    default:
-                                        PlaceImageView(
-                                            coordinate: offsetCoordinate(activeCoord, index: index),
-                                            remoteImageURL: nil,
-                                            attribution: heroAttribution,
-                                            resolved: true,
-                                            height: height,
-                                            cornerRadius: 0
-                                        )
-                                    }
-                                }
-                                .frame(width: geo.size.width, height: height)
-                                .clipped()
-                                .id(index)
-                            } else {
-                                PlaceImageView(
-                                    coordinate: offsetCoordinate(activeCoord, index: index),
-                                    remoteImageURL: nil,
-                                    attribution: heroAttribution,
-                                    resolved: true,
-                                    height: height,
-                                    cornerRadius: 0
-                                )
-                                .frame(width: geo.size.width, height: height)
-                                .clipped()
-                                .id(index)
-                            }
+                            heroSlide(index: index, width: geo.size.width, height: height)
                         }
                     }
                     .scrollTargetLayout()
@@ -178,38 +108,69 @@ struct MockPlaceDetailView: View {
         .frame(height: heroHeight)
     }
 
+    @ViewBuilder
+    private func heroSlide(index: Int, width: CGFloat, height: CGFloat) -> some View {
+        if index == 0, let street = store.streetImageURL {
+            AsyncImage(url: street) { phase in
+                if case .success(let image) = phase {
+                    image.resizable().aspectRatio(contentMode: .fill)
+                } else {
+                    PlaceImageView(
+                        coordinate: place.coordinate,
+                        remoteImageURL: street,
+                        attribution: store.imageAttribution,
+                        resolved: store.enrichResolved,
+                        height: height,
+                        cornerRadius: 0
+                    )
+                }
+            }
+            .frame(width: width, height: height)
+            .clipped()
+        } else {
+            let photoIndex = store.streetImageURL != nil ? index - 1 : index
+            if photoIndex >= 0, photoIndex < heroURLs.count {
+                AsyncImage(url: heroURLs[photoIndex]) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    default:
+                        Color(.secondarySystemBackground)
+                    }
+                }
+                .frame(width: width, height: height)
+                .clipped()
+            } else {
+                PlaceImageView(
+                    coordinate: place.coordinate,
+                    remoteImageURL: nil,
+                    attribution: store.imageAttribution,
+                    resolved: store.enrichResolved,
+                    height: height,
+                    cornerRadius: 0
+                )
+                .frame(width: width, height: height)
+                .clipped()
+            }
+        }
+    }
+
     private var topControls: some View {
         HStack {
-            Button {
-                if let onBack { onBack() } else { dismiss() }
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(.black)
-                    .frame(width: 44, height: 44)
-                    .background {
-                        Circle().fill(Color.white.opacity(0.55))
-                        Circle().fill(.ultraThinMaterial)
-                    }
-            }
-            .buttonStyle(.plain)
-
             Spacer()
 
             HStack(spacing: 22) {
-                Button {
-                    sharePlace()
-                } label: {
+                Button { sharePlace() } label: {
                     Image(systemName: "square.and.arrow.up.fill")
                         .font(.system(size: 20, weight: .medium))
                 }
                 .buttonStyle(.plain)
 
                 Button {
-                    let targetKey = place?.name ?? MockData.placeName
+                    let saveId = Place.canonicalPlaceId(from: place.coordinate)
                     Task {
-                        await SavedPlacesService.shared.toggleSave(placeId: targetKey)
-                        isSaved = SavedPlacesService.shared.isSaved(placeId: targetKey)
+                        await SavedPlacesService.shared.toggleSave(placeId: saveId, place: place)
+                        isSaved = SavedPlacesService.shared.isSaved(placeId: saveId)
                     }
                 } label: {
                     Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
@@ -232,24 +193,26 @@ struct MockPlaceDetailView: View {
     private var bottomOverlay: some View {
         let activePage = heroPage ?? 0
         return HStack {
-            HStack(spacing: 4) {
-                ForEach(0..<totalHeroCount, id: \.self) { index in
-                    if index == activePage {
-                        Capsule().fill(.white).frame(width: 27, height: 4)
-                    } else {
-                        Circle().fill(.white.opacity(0.5)).frame(width: 4, height: 4)
+            if totalHeroCount > 1 {
+                HStack(spacing: 4) {
+                    ForEach(0..<totalHeroCount, id: \.self) { index in
+                        if index == activePage {
+                            Capsule().fill(.white).frame(width: 27, height: 4)
+                        } else {
+                            Circle().fill(.white.opacity(0.5)).frame(width: 4, height: 4)
+                        }
                     }
                 }
+                .animation(.snappy(duration: 0.2), value: activePage)
             }
-            .animation(.snappy(duration: 0.2), value: activePage)
 
             Spacer()
 
             NavigationLink {
                 MockGalleryView(
-                    streetImageURL: streetImageURL,
-                    reviewPhotos: reviewPhotosList,
-                    placeName: place?.name
+                    streetImageURL: store.streetImageURL,
+                    reviewPhotos: store.reviewPhotos,
+                    place: place
                 )
             } label: {
                 HStack(spacing: 6) {
@@ -272,76 +235,58 @@ struct MockPlaceDetailView: View {
         .padding(.bottom, 14)
     }
 
-    // MARK: Content
-
     private var contentSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             placeInfoCard
                 .padding(.horizontal, 22)
                 .padding(.top, 16)
 
-            Divider()
-                .padding(.top, 16)
+            Divider().padding(.top, 16)
 
             facilitiesHeader
                 .padding(.horizontal, 22)
                 .padding(.top, 16)
 
-            // Tapping a card opens the real facility-detail screen from
-            // main (Views/Facilities Details/NotReview.swift) — FacilityKind
-            // matches MockFacility.key 1:1 ("entrance"/"elevator"/"toilet").
-            VStack(spacing: 12) {
-                ForEach(MockData.facilities) { facility in
-                    if let kind = FacilityKind(rawValue: facility.key) {
-                        NavigationLink {
-                            NotReviewView(kind: kind, state: facilityOverviewState, place: place)
-                                .enableSwipeBack()
-                        } label: {
+            let facilityCards = FacilityCardModel.cards(from: store)
+            let listHeight = facilityCards.reduce(0) { sum, f in
+                sum + FacilityCardHeight.height(for: f.state) + 12 // 12 = top(6) + bottom(6) insets
+            }
+            List {
+                ForEach(facilityCards) { facility in
+                    if let kind = facility.kind {
+                        Button { facilityDestination = kind } label: {
                             FacilityCard(facility: facility)
                         }
                         .buttonStyle(.plain)
-                    } else {
-                        FacilityCard(facility: facility)
                     }
                 }
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 6, leading: 22, bottom: 6, trailing: 22))
+                .listRowBackground(Color(.systemBackground))
             }
-            .padding(.horizontal, 22)
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .scrollDisabled(true)
+            .frame(height: listHeight)
             .padding(.top, 16)
             .padding(.bottom, 32)
         }
     }
 
-    /// Maps this mock screen's 3-state demo toggle onto the facility
-    /// screen's own state enum, so tapping a card lands on a facility
-    /// detail that's consistent with what Place Details is showing.
-    private var facilityOverviewState: FacilityOverviewState {
-        switch demoState {
-        case .noReview: .empty
-        case .notYetReviewed: .community
-        case .reviewedByMe: .reviewed
-        }
-    }
-
     private var placeInfoCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if let badgeGrade {
-                AccessibilityBadge(grade: badgeGrade)
+            if let grade = store.overallGrade {
+                AccessibilityBadge(grade: grade)
             }
 
             HStack {
-                Text(place?.name ?? MockData.placeName)
+                Text(place.name)
                     .font(.system(size: 24, weight: .bold))
                     .foregroundStyle(.primary)
-
                 Spacer()
-
                 HStack(spacing: 8) {
-                    circularActionButton(icon: "location.fill") {
-                        openMaps()
-                    }
-                    circularActionButton(icon: "phone.fill") {
-                        callWhatsApp()
-                    }
+                    circularActionButton(icon: "location.fill", action: openMaps)
+                    circularActionButton(icon: "phone.fill", action: callWhatsApp)
                 }
             }
 
@@ -349,61 +294,60 @@ struct MockPlaceDetailView: View {
         }
     }
 
-    /// Which of the 4 badge states this demo state shows — `nil` hides the
-    /// badge entirely (matches the "No Review Yet" mockup, which has no
-    /// badge at all rather than a "No Data Available" one).
-    private var badgeGrade: OverallAccessibility? {
-        if let place {
-            if !liveGrade.isEmpty {
-                if liveGrade.contains(where: { $0.bestValue == "no" }) { return .notAccessible }
-                if liveGrade.allSatisfy({ $0.bestValue == "yes" }) { return .accessible }
-                return .partiallyAccessible
+    @ViewBuilder
+    private var ctaRow: some View {
+        if UnfinishedReviewStore.hasUnfinished(for: place) {
+            addReviewButton(title: "Unfinished review")
+        } else if !store.hasAnyReviews() {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("No one review this place yet")
+                    .font(.system(size: 15))
+                    .foregroundStyle(.secondary)
+                addReviewButton(title: "Be the first reviewer")
             }
-            return place.grade ?? .noData
-        }
-        switch demoState {
-        case .noReview: return nil
-        case .notYetReviewed, .reviewedByMe: return .accessible
+        } else {
+            addReviewButton(title: "Add New Review")
         }
     }
 
-    private func loadLiveGrade() async {
-        guard let place else { return }
-        isLoadingGrade = true
-        defer { isLoadingGrade = false }
-
-        async let enriched = try? await AccessibilityService.shared.enrich(
-            lat: place.coordinate.latitude,
-            lng: place.coordinate.longitude,
-            name: place.name
-        )
-        async let reviewPhotos = try? await ReviewService.shared.fetchReviewPhotos(
-            lat: place.coordinate.latitude,
-            lng: place.coordinate.longitude
-        )
-        let (response, photos) = await (enriched, reviewPhotos)
-
-        liveGrade = response?.grade ?? []
-        heroAttribution = response?.place?.imageAttribution
-
-        streetImageURL = response?.place?.imageUrl.flatMap(URL.init(string:))
-        let fetchedReviewPhotos = photos?.photos ?? []
-        reviewPhotosList = fetchedReviewPhotos
-        heroURLs = fetchedReviewPhotos.compactMap(\.imageURL)
-        enrichResolved = true
+    private func addReviewButton(title: String) -> some View {
+        Button {
+            if let snap = UnfinishedReviewStore.snapshot(for: place) {
+                resumeScreenIndex = snap.screenIndex
+            } else {
+                resumeScreenIndex = 0
+            }
+            showReviewWizard = true
+        } label: {
+            Text(title.localized)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 48)
+                .background(Color.accentColor, in: Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
-    /// Realtime: a new review for this place recomputes the grade server-side
-    /// and may add photos, so refetch when one lands.
-    private func watchReviews() async {
-        guard let place else { return }
-        let key = PlaceCacheStore.key(
-            lat: place.coordinate.latitude,
-            lng: place.coordinate.longitude
-        )
-        for await _ in ReviewService.shared.watchReviewInserts(placeId: key) {
-            await PlaceCacheStore.shared.remove(key)
-            await loadLiveGrade()
+    private var facilitiesHeader: some View {
+        HStack {
+            Label {
+                Text("Facilities".localized)
+                    .font(.system(size: 18, weight: .semibold))
+            } icon: {
+                Image(systemName: "info.circle.fill")
+                    .font(.system(size: 15))
+            }
+            .foregroundStyle(.primary)
+            Spacer()
+            if store.hasAnyReviews() {
+                Text("\(store.facilityReviews.count) reviews")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Color.mockSecondaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color.mockSectionBackground, in: Capsule())
+            }
         }
     }
 
@@ -419,205 +363,46 @@ struct MockPlaceDetailView: View {
     }
 
     private func openMaps() {
-        let lat = place?.coordinate.latitude ?? -8.7400
-        let lng = place?.coordinate.longitude ?? 115.1800
-        let name = (place?.name ?? MockData.placeName).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "Place"
-        let urlString = "maps://?daddr=\(lat),\(lng)&q=\(name)"
-        if let url = URL(string: urlString), UIApplication.shared.canOpenURL(url) {
+        let lat = place.coordinate.latitude
+        let lng = place.coordinate.longitude
+        let name = place.name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "Place"
+        if let url = URL(string: "maps://?daddr=\(lat),\(lng)&q=\(name)"),
+           UIApplication.shared.canOpenURL(url) {
             UIApplication.shared.open(url)
-        } else if let webUrl = URL(string: "https://maps.apple.com/?daddr=\(lat),\(lng)") {
-            UIApplication.shared.open(webUrl)
         }
     }
 
     private func callWhatsApp() {
-        let targetName = place?.name ?? MockData.placeName
         let isIndo = languageManager.currentLanguage == .indonesia
         let message = isIndo
-            ? "Halo! Saya ingin bertanya mengenai aksesibilitas di \(targetName)."
-            : "Hello! I would like to inquire about accessibility facilities at \(targetName)."
-        let encodedMsg = message.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let waURLString = "https://wa.me/6281234567890?text=\(encodedMsg)"
-        if let url = URL(string: waURLString), UIApplication.shared.canOpenURL(url) {
+            ? "Halo! Saya ingin bertanya mengenai aksesibilitas di \(place.name)."
+            : "Hello! I would like to inquire about accessibility facilities at \(place.name)."
+        let encoded = message.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        if let url = URL(string: "https://wa.me/6281234567890?text=\(encoded)") {
             UIApplication.shared.open(url)
-        } else if let telUrl = URL(string: "tel://6281234567890") {
-            UIApplication.shared.open(telUrl)
         }
     }
 
     private func sharePlace() {
-        let name = place?.name ?? MockData.placeName
-        let gradeText = (badgeGrade ?? .accessible).label
-        let isIndo = languageManager.currentLanguage == .indonesia
-
-        let shareText: String
-        if isIndo {
-            shareText = """
-            Hai! Cek tempat ini *\(name)* — tempat ini *\(gradeText)*!
-
-            Fasilitas Aksesibilitas:
-            ♿️ Ramp
-            🤝 Pegangan Tangan (Rail)
-            🚪 Pintu Otomatis
-            🛗 Pintu Lift Lebar
-            🚽 Toilet Aksesibel
-
-            Temukan tempat aksesibel di sekitarmu di Puspadi Fellas!
-            """
-        } else {
-            shareText = """
-            Hey! Check out this place *\(name)* — it is *\(gradeText)*!
-
-            Accessibility Facilities:
-            ♿️ Ramp
-            🤝 Handrail
-            🚪 Automatic Doors
-            🛗 Wide Elevator Entrance
-            🚽 Accessible Restroom
-
-            Find accessible places near you on Puspadi Fellas!
-            """
-        }
-
+        let gradeText = (store.overallGrade ?? .noData).label
+        let shareText = "Check out \(place.name) — \(gradeText) on Puspadi Fellas!"
         let av = UIActivityViewController(activityItems: [shareText], applicationActivities: nil)
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let rootVC = windowScene.windows.first?.rootViewController {
-            rootVC.present(av, animated: true)
-        }
-    }
-
-    @ViewBuilder
-    private var ctaRow: some View {
-        switch demoState {
-        case .noReview:
-            VStack(alignment: .leading, spacing: 12) {
-                Text("No one review this place yet")
-                    .font(.system(size: 15))
-                    .foregroundStyle(.secondary)
-                addReviewButton(title: "Be the first reviewer")
-            }
-        case .notYetReviewed:
-            addReviewButton(title: "Add New Review")
-        case .reviewedByMe:
-            NavigationLink {
-                MockMyReviewView()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.bubble.fill")
-                        .foregroundStyle(Color.accentColor)
-                    Text("Thank you for the review!")
-                        .font(.system(size: 15))
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
-                .background(Color.mockSectionBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    private func addReviewButton(title: String) -> some View {
-        Button {
-            showReviewWizard = true
-        } label: {
-            Text(title.localized)
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 48)
-                .background(Color.accentColor, in: Capsule())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private let reviewerTints: [Color] = [.orange, .indigo, .pink]
-    // "+10" / "Google Maps +2" pills use the shared Figma token
-    // (Color.mockSectionBackground / .mockSecondaryText).
-    private let pillBackground = Color.mockSectionBackground
-    private let pillText = Color.mockSecondaryText
-
-    private var facilitiesHeader: some View {
-        HStack {
-            Label {
-                Text("Facilities".localized)
-                    .font(.system(size: 18, weight: .semibold))
-            } icon: {
-                Image(systemName: "info.circle.fill")
-                    .font(.system(size: 15))
-            }
-            .foregroundStyle(.primary)
-
-            Spacer()
-
-            if demoState != .noReview {
-                // Avatars + "+10" as one tight, connected unit (matches the
-                // design's single pill) rather than two elements separated
-                // by the outer HStack's default spacing.
-                HStack(spacing: 4) {
-                    HStack(spacing: -14) {
-                        // No real reviewer photo assets in the project yet —
-                        // filled person glyphs with distinct tints stand in
-                        // for the design's face photos so the cluster
-                        // doesn't read as flat/blank circles. Swap for real
-                        // avatar images (Image("...")) once those exist.
-                        ForEach(Array(reviewerTints.enumerated()), id: \.offset) { _, tint in
-                            Image(systemName: "person.crop.circle.fill")
-                                .resizable()
-                                .frame(width: 22, height: 22)
-                                .foregroundStyle(tint)
-                                .background(Color(.systemBackground), in: Circle())
-                                .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 1.5))
-                        }
-                    }
-                    Text("+10")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(pillText)
-                }
-                .padding(.leading, -30)
-                .padding(.trailing, 6)
-                .padding(.vertical, 0)
-                .background(pillBackground, in: Capsule())
-            }
-
-            Text("Google Maps +2")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(pillText)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(pillBackground, in: Capsule())
+        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let root = scene.windows.first?.rootViewController {
+            root.present(av, animated: true)
         }
     }
 }
 
-#Preview("No Review") {
+#Preview {
     NavigationStack {
-        MockPlaceDetailView(demoState: .noReview)
-            .environmentObject(LanguageManager.shared)
-    }
-}
-
-#Preview("Default") {
-    NavigationStack {
-        MockPlaceDetailView(demoState: .notYetReviewed)
-            .environmentObject(LanguageManager.shared)
-    }
-}
-
-#Preview("Reviewed") {
-    NavigationStack {
-        MockPlaceDetailView(demoState: .reviewedByMe)
-            .environmentObject(LanguageManager.shared)
-    }
-}
-
-private extension MockPlaceDetailView {
-    init(demoState: PlaceDetailDemoState) {
-        self.init()
-        _demoState = State(initialValue: demoState)
+        MockPlaceDetailView(
+            place: Place.fromSearchResult(
+                name: "Park 23 Mall",
+                category: "Shopping Mall",
+                coordinate: CLLocationCoordinate2D(latitude: -8.741, longitude: 115.178)
+            )
+        )
+        .environmentObject(LanguageManager.shared)
     }
 }

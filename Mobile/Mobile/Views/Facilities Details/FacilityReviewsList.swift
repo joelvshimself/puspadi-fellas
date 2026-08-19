@@ -1,10 +1,15 @@
 import SwiftUI
 
 struct FacilityReviewRow: View {
-    let bodyText: String
-    let providedList: String
-    var photos: [FacilityPhoto] = FacilityPhoto.reviewThumbnails
+    let review: PlaceFacilityReview
     var onSelectPhoto: (FacilityPhoto) -> Void = { _ in }
+
+    private var photos: [FacilityPhoto] {
+        review.photoURLs.compactMap { url in
+            guard let remote = URL(string: url) else { return nil }
+            return FacilityPhoto(source: .remote(remote), reviewId: review.reviewId)
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -12,38 +17,39 @@ struct FacilityReviewRow: View {
                 Image(systemName: "person.crop.circle.fill")
                     .font(.title2)
                     .foregroundStyle(.orange)
-                Text("Aarief M.")
+                Text("Community")
                     .font(.subheadline.weight(.semibold))
                 Spacer()
-                Text("Jan 2025")
+                Text(review.createdAt.formatted(date: .abbreviated, time: .omitted))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            Text(bodyText)
+            Text(review.bodyText)
                 .font(.subheadline)
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            (
-                Text("What Provided: ")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(.secondary)
-                + Text(providedList)
-                    .font(.subheadline)
-            )
+            if !review.providedList.isEmpty {
+                (
+                    Text("What Provided: ")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.secondary)
+                    + Text(review.providedList)
+                        .font(.subheadline)
+                )
+            }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(photos) { photo in
-                        Button {
-                            onSelectPhoto(photo)
-                        } label: {
-                            FacilityPhotoImage(photo: photo, cornerRadius: 10)
-                                .frame(width: 88, height: 88)
+            if !photos.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(photos) { photo in
+                            Button { onSelectPhoto(photo) } label: {
+                                FacilityPhotoImage(photo: photo, cornerRadius: 10)
+                                    .frame(width: 88, height: 88)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Review photo")
                     }
                 }
             }
@@ -54,8 +60,6 @@ struct FacilityReviewRow: View {
 private enum ReviewFilter: String, CaseIterable, Identifiable {
     case all
     case withPhotos
-    case hardToFind
-    case security
 
     var id: String { rawValue }
 
@@ -63,8 +67,6 @@ private enum ReviewFilter: String, CaseIterable, Identifiable {
         switch self {
         case .all: "ALL"
         case .withPhotos: "WITH PHOTOS"
-        case .hardToFind: "HARD TO FIND (10)"
-        case .security: "SECURITY"
         }
     }
 
@@ -72,10 +74,23 @@ private enum ReviewFilter: String, CaseIterable, Identifiable {
 }
 
 struct FacilityReviewsList: View {
-    let kind: FacilityKind
+    let reviews: [PlaceFacilityReview]
 
     @State private var selectedFilter: ReviewFilter = .all
-    @State private var selectedPhoto: FacilityPhoto?
+    @State private var lightbox: LightboxSelection?
+
+    private struct LightboxSelection: Identifiable {
+        let id = UUID()
+        let photos: [FacilityPhoto]
+        let initialID: UUID
+    }
+
+    private var filtered: [PlaceFacilityReview] {
+        switch selectedFilter {
+        case .all: reviews
+        case .withPhotos: reviews.filter { !$0.photoURLs.isEmpty }
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -87,34 +102,39 @@ struct FacilityReviewsList: View {
                 }
             }
 
-            VStack(spacing: 0) {
-                ForEach(0..<3, id: \.self) { index in
-                    if index > 0 {
-                        Divider()
+            if filtered.isEmpty {
+                Text("No reviews match this filter")
+                    .font(.subheadline)
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(filtered.enumerated()), id: \.element.id) { index, review in
+                        if index > 0 { Divider() }
+                        FacilityReviewRow(review: review) { photo in
+                            let siblings = review.photoURLs.compactMap { url -> FacilityPhoto? in
+                                guard let remote = URL(string: url) else { return nil }
+                                return FacilityPhoto(source: .remote(remote), reviewId: review.reviewId)
+                            }
+                            lightbox = LightboxSelection(photos: siblings, initialID: photo.id)
+                        }
+                        .padding(.vertical, 14)
                     }
-                    FacilityReviewRow(
-                        bodyText: kind.reviewBody,
-                        providedList: kind.reviewProvidedList,
-                        onSelectPhoto: { selectedPhoto = $0 }
-                    )
-                    .padding(.vertical, 14)
                 }
             }
         }
-        .fullScreenCover(item: $selectedPhoto) { photo in
-            FacilityPhotoDetailView(photo: photo)
+        .fullScreenCover(item: $lightbox) { selection in
+            FacilityPhotoDetailView(photos: selection.photos, initialID: selection.initialID)
         }
     }
 
     private func filterChip(_ filter: ReviewFilter) -> some View {
         let isSelected = selectedFilter == filter
-        return Button {
-            selectedFilter = filter
-        } label: {
+        return Button { selectedFilter = filter } label: {
             HStack(spacing: 6) {
                 if filter.showsCamera {
-                    Image(systemName: "camera")
-                        .font(.caption)
+                    Image(systemName: "camera").font(.caption)
                 }
                 Text(filter.title)
                     .font(.caption.weight(.semibold))
@@ -123,16 +143,14 @@ struct FacilityReviewsList: View {
             .foregroundStyle(isSelected ? Color.white : Color.secondary)
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .background(
-                Capsule().fill(isSelected ? Color.accentColor : Color(.systemGray5))
-            )
+            .background(Capsule().fill(isSelected ? Color.accentColor : Color(.systemGray5)))
         }
         .buttonStyle(.plain)
     }
 }
 
 #Preview {
-    FacilityReviewsList(kind: .entrance)
+    FacilityReviewsList(reviews: [])
         .padding()
         .background(Color.white)
 }

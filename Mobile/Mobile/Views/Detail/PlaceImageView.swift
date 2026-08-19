@@ -95,7 +95,7 @@ struct PlaceImageView: View {
     }
 
     private func downloadImage(_ url: URL) async -> UIImage? {
-        guard let (data, _) = try? await URLSession.shared.data(from: url) else { return nil }
+        guard let data = try? await NetworkRetry.download(from: url) else { return nil }
         return UIImage(data: data)
     }
 
@@ -116,4 +116,12 @@ struct PlaceImageView: View {
         let snapshotter = MKMapSnapshotter(options: options)
         return try? await snapshotter.start().image
     }
+}
+
+#Preview {
+    PlaceImageView(
+        coordinate: CLLocationCoordinate2D(latitude: -8.72, longitude: 115.17),
+        height: 180
+    )
+    .padding()
 }

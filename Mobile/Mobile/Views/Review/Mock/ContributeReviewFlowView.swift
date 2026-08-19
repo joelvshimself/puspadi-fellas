@@ -1,46 +1,65 @@
 import SwiftUI
 
-/// New "Contribute a Review" flow matching the Figma mockup (facility
-/// picker → per-facility tag questions → photos/notes → submitted), built
-/// as fresh screens (Views/Review/Mock) rather than touching the existing
-/// `ReviewWizardView` flow. Despite being new UI, submission is real: this
-/// owns a genuine `ReviewDraft` and calls the real `ReviewService.submit()`
-/// — same backend pipeline `ReviewWizardView` uses, just populated via a
-/// best-effort mapping from this flow's tag-chip answers (see
-/// `applyEntranceMapping`/etc.) since the mockup's tags don't line up 1:1
-/// with the backend's existing structured fields. Confirmed with the user:
-/// keep the mockup's exact tags, map what maps, drop what doesn't (e.g.
-/// "Security Assistance" has no backend field).
+/// New "Contribute a Review" flow — real Supabase submit with draft persistence.
 struct ContributeReviewFlowView: View {
     let place: Place
-    /// When set (reached from one specific facility's "Add Review"
-    /// button), the category picker is skipped entirely and only that
-    /// facility is walked.
     let startingFacility: FacilityKind?
+    let initialScreenIndex: Int
     let onFinished: () -> Void
 
     @StateObject private var draft: ReviewDraft
 
     @State private var selectedFacilities: Set<FacilityKind>
-    @State private var screenIndex = 0
+    @State private var screenIndex: Int
     @State private var entranceLocation: EntranceLocation?
     @State private var entranceTags: Set<ContributeTagOption> = []
     @State private var elevatorTags: Set<ContributeTagOption> = []
     @State private var toiletTags: Set<ContributeTagOption> = []
-    @State private var isSubmitting = false
     @State private var isSubmitted = false
     @State private var submitError: String?
+    @State private var showExitConfirmation = false
 
-    init(place: Place, startingFacility: FacilityKind? = nil, onFinished: @escaping () -> Void) {
+    init(
+        place: Place,
+        startingFacility: FacilityKind? = nil,
+        initialScreenIndex: Int = 0,
+        onFinished: @escaping () -> Void
+    ) {
         self.place = place
         self.startingFacility = startingFacility
+        self.initialScreenIndex = initialScreenIndex
         self.onFinished = onFinished
-        _draft = StateObject(wrappedValue: ReviewDraft(appleMapsId: place.id.uuidString, coordinate: place.coordinate))
-        _selectedFacilities = State(initialValue: startingFacility.map { [$0] } ?? [])
+
+        let draft = ReviewDraft(appleMapsId: place.id.uuidString, coordinate: place.coordinate)
+        var startIndex = initialScreenIndex
+        var facilities = startingFacility.map { Set([$0]) } ?? Set<FacilityKind>()
+        var entranceLoc: EntranceLocation?
+        var entTags = Set<ContributeTagOption>()
+        var elevTags = Set<ContributeTagOption>()
+        var toiletTagsInit = Set<ContributeTagOption>()
+
+        if let snap = UnfinishedReviewStore.snapshot(for: place) {
+            startIndex = snap.screenIndex
+            facilities = Set(snap.selectedFacilities.compactMap(FacilityKind.init(rawValue:)))
+            entranceLoc = snap.entranceLocation.flatMap(EntranceLocation.init(rawValue:))
+            entTags = UnfinishedReviewStore.restoreTags(snap.entranceTags, for: .entrance)
+            elevTags = UnfinishedReviewStore.restoreTags(snap.elevatorTags, for: .elevator)
+            toiletTagsInit = UnfinishedReviewStore.restoreTags(snap.toiletTags, for: .toilet)
+            draft.lobby.review.text = snap.lobbyNote
+            draft.basement.review.text = snap.basementNote
+            draft.elevator.review.text = snap.elevatorNote
+            draft.toilet.review.text = snap.toiletNote
+        }
+
+        _draft = StateObject(wrappedValue: draft)
+        _selectedFacilities = State(initialValue: facilities)
+        _screenIndex = State(initialValue: startIndex)
+        _entranceLocation = State(initialValue: entranceLoc)
+        _entranceTags = State(initialValue: entTags)
+        _elevatorTags = State(initialValue: elevTags)
+        _toiletTags = State(initialValue: toiletTagsInit)
     }
 
-    /// Fixed Entrance → Elevator → Toilet order, filtered to what's
-    /// actually selected (or the single `startingFacility`).
     private var orderedFacilities: [FacilityKind] {
         [.entrance, .elevator, .toilet].filter { selectedFacilities.contains($0) }
     }
@@ -63,8 +82,6 @@ struct ContributeReviewFlowView: View {
         return list
     }
 
-    /// Progress bar only covers facility screens — the mockup's category
-    /// picker has no progress bar at all.
     private var progressScreens: [FlowScreen] {
         screens.filter { $0 != .category }
     }
@@ -73,14 +90,25 @@ struct ContributeReviewFlowView: View {
         (progressScreens.firstIndex(of: screen) ?? 0, max(progressScreens.count, 1))
     }
 
+    private var hasProgress: Bool {
+        screenIndex > 0
+            || !entranceTags.isEmpty || !elevatorTags.isEmpty || !toiletTags.isEmpty
+            || !draft.lobby.review.text.isEmpty || !draft.basement.review.text.isEmpty
+            || !draft.elevator.review.text.isEmpty || !draft.toilet.review.text.isEmpty
+            || !draft.lobby.review.photos.isEmpty || !draft.basement.review.photos.isEmpty
+            || !draft.elevator.review.photos.isEmpty || !draft.toilet.review.photos.isEmpty
+    }
+
     var body: some View {
         Group {
             if isSubmitted {
-                ContributeSubmittedView(onDone: onFinished)
+                ContributeSubmittedView(onDone: {
+                    UnfinishedReviewStore.clear(for: place)
+                    onFinished()
+                })
             } else if let screen = screens[safe: screenIndex] {
                 screenView(screen)
             } else {
-                // Walked past the last screen — submitting.
                 Color(.systemBackground)
                     .overlay { ProgressView() }
                     .task { await submit() }
@@ -91,10 +119,22 @@ struct ContributeReviewFlowView: View {
             isPresented: Binding(get: { submitError != nil }, set: { if !$0 { submitError = nil } }),
             presenting: submitError
         ) { _ in
-            Button("OK") { submitError = nil; goBack() }
+            Button("OK") { submitError = nil; goBackOneStep() }
         } message: { message in
             Text(message)
         }
+        .confirmationDialog(
+            "You haven't finished this review. Go back?",
+            isPresented: $showExitConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Discard", role: .destructive) {
+                UnfinishedReviewStore.clear(for: place)
+                onFinished()
+            }
+            Button("Resume", role: .cancel) {}
+        }
+        .onChange(of: screenIndex) { _, _ in persistIfNeeded() }
     }
 
     @ViewBuilder
@@ -104,7 +144,7 @@ struct ContributeReviewFlowView: View {
             ContributeCategoryStepView(
                 placeName: place.name,
                 selection: $selectedFacilities,
-                onBack: goBack,
+                onBack: requestExit,
                 onContinue: goNext
             )
         case .entranceLocation:
@@ -112,7 +152,7 @@ struct ContributeReviewFlowView: View {
                 facilityName: place.name,
                 progress: progress(for: screen),
                 selection: $entranceLocation,
-                onBack: goBack,
+                onBack: goBackOneStep,
                 onContinue: goNext
             )
         case .facilityQuestion(let kind):
@@ -122,41 +162,61 @@ struct ContributeReviewFlowView: View {
                 questionTitle: questionTitle(for: kind),
                 progress: progress(for: screen),
                 selection: tagBinding(for: kind),
-                onBack: goBack,
+                onBack: goBackOneStep,
                 onContinue: {
                     applyMapping(for: kind)
                     goNext()
                 }
             )
         case .facilityPhotos(let kind):
-            let isLast = (screen == screens.last)
             ContributePhotosNotesStepView(
                 facilityName: kind.title,
                 navTitle: navTitle(for: kind),
                 progress: progress(for: screen),
                 note: noteBinding(for: kind),
-                isLastStep: isLast,
-                onBack: goBack,
+                isLastStep: screen == screens.last,
+                onBack: goBackOneStep,
                 onContinue: goNext
             )
         }
     }
 
-    // MARK: Navigation
-
     private func goNext() {
+        persistIfNeeded()
         screenIndex += 1
     }
 
-    private func goBack() {
+    private func goBackOneStep() {
         if screenIndex == 0 {
-            onFinished()
+            requestExit()
         } else {
             screenIndex -= 1
+            persistIfNeeded()
         }
     }
 
-    // MARK: Per-facility copy
+    private func requestExit() {
+        if hasProgress {
+            showExitConfirmation = true
+        } else {
+            onFinished()
+        }
+    }
+
+    private func persistIfNeeded() {
+        guard hasProgress else { return }
+        UnfinishedReviewStore.save(
+            place: place,
+            startingFacility: startingFacility,
+            screenIndex: screenIndex,
+            selectedFacilities: selectedFacilities,
+            entranceLocation: entranceLocation,
+            entranceTags: entranceTags,
+            elevatorTags: elevatorTags,
+            toiletTags: toiletTags,
+            draft: draft
+        )
+    }
 
     private func navTitle(for kind: FacilityKind) -> String {
         switch kind {
@@ -173,8 +233,6 @@ struct ContributeReviewFlowView: View {
         case .toilet: "What does the toilet have?"
         }
     }
-
-    // MARK: Bindings into the real ReviewDraft
 
     private func tagBinding(for kind: FacilityKind) -> Binding<Set<ContributeTagOption>> {
         switch kind {
@@ -204,8 +262,6 @@ struct ContributeReviewFlowView: View {
         }
     }
 
-    // MARK: Best-effort field mapping (mockup tags → real ReviewDraft fields)
-
     private func applyMapping(for kind: FacilityKind) {
         switch kind {
         case .entrance: applyEntranceMapping()
@@ -221,7 +277,6 @@ struct ContributeReviewFlowView: View {
             if entranceTags.contains(where: { $0.label == "AUTOMATIC DOORS" }) { .automatic }
             else if entranceTags.contains(where: { $0.label == "MANUAL DOORS" }) { .manual }
             else { nil }
-        // SECURITY ASSISTANCE has no matching field on EntranceDraft — dropped.
         switch entranceLocation {
         case .basement:
             draft.basement.hasDropoffRamp = hasRamp ? true : nil
@@ -235,27 +290,18 @@ struct ContributeReviewFlowView: View {
     }
 
     private func applyElevatorMapping() {
-        // Reaching this screen means the user is describing a real
-        // elevator — WIDE ENTRANCE/REACHABLE BUTTONS are both positive
-        // accessibility signals with no dedicated backend field, so their
-        // presence best-effort implies wheelchairAccessible.
         draft.elevator.exists = true
         draft.elevator.wheelchairAccessible = elevatorTags.isEmpty ? nil : true
     }
 
     private func applyToiletMapping() {
-        // GRAB BARS/EMERGENCY BUTTONS/AUTOMATIC DOORS have no matching
-        // ToiletDraft field — only presence is sent.
         draft.toilet.hasDisabledToilet = true
     }
 
-    // MARK: Submit
-
     private func submit() async {
-        isSubmitting = true
-        defer { isSubmitting = false }
         do {
             try await ReviewService.shared.submit(draft)
+            UnfinishedReviewStore.clear(for: place)
             isSubmitted = true
         } catch {
             submitError = "Check your connection and try again."

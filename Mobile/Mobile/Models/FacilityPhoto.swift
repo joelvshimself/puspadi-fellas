@@ -18,14 +18,17 @@ struct FacilityPhoto: Identifiable {
 
     let id: UUID
     let source: Source
+    /// Groups photos from the same review for lightbox paging.
+    var reviewId: UUID?
 
-    init(id: UUID = UUID(), source: Source) {
+    init(id: UUID = UUID(), source: Source, reviewId: UUID? = nil) {
         self.id = id
         self.source = source
+        self.reviewId = reviewId
     }
 
-    init(id: UUID = UUID(), image: UIImage) {
-        self.init(id: id, source: .local(image))
+    init(id: UUID = UUID(), image: UIImage, reviewId: UUID? = nil) {
+        self.init(id: id, source: .local(image), reviewId: reviewId)
     }
 }
 
@@ -54,7 +57,7 @@ extension FacilityPhoto {
 final class FacilityPhotoStore: ObservableObject {
     @Published private(set) var photos: [FacilityPhoto]
 
-    init(photos: [FacilityPhoto] = FacilityPhoto.samples) {
+    init(photos: [FacilityPhoto] = []) {
         self.photos = photos
     }
 

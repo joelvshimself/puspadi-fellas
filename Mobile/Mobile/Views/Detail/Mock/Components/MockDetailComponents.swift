@@ -47,8 +47,18 @@ struct PillTag: View {
         case onWhiteCard
     }
 
-    let tag: MockTag
+    let label: String
     var surface: Surface = .onGrayCard
+
+    init(tag: MockTag, surface: Surface = .onGrayCard) {
+        self.label = tag.label
+        self.surface = surface
+    }
+
+    init(label: String, surface: Surface = .onGrayCard) {
+        self.label = label
+        self.surface = surface
+    }
 
     private var fill: Color {
         switch surface {
@@ -61,7 +71,7 @@ struct PillTag: View {
         HStack(spacing: 4) {
             Image(systemName: "door.right.hand.open")
                 .font(.system(size: 10, weight: .semibold))
-            Text(tag.label.localized)
+            Text(label.localized)
                 .font(.system(size: 10, weight: .semibold))
         }
         .foregroundStyle(.primary)
@@ -71,14 +81,30 @@ struct PillTag: View {
     }
 }
 
-/// One row in the Facilities section: icon box, title, wrapped tags (or an
-/// empty-state description), trailing chevron. Display-only — no detail
-/// screen behind it, tap does nothing.
+/// Fixed card heights matching the Figma spec:
+/// - 112 pt: single subtitle line (not reviewed / unavailable)
+/// - 129 pt: reviewed state with tag pills (potentially two rows)
+enum FacilityCardHeight {
+    static let compact: CGFloat = 112
+    static let expanded: CGFloat = 129
+
+    static func height(for state: FacilityCardState) -> CGFloat {
+        switch state {
+        case .reviewed(let tags) where !tags.isEmpty: return expanded
+        default: return compact
+        }
+    }
+}
+
+/// One row in the Facilities section: icon, title, and a state-driven
+/// subtitle (not reviewed / tags from community reviews / unavailable).
+/// Used as the label of a NavigationLink inside a List — the native
+/// disclosure chevron is provided by the list row, not drawn here.
 struct FacilityCard: View {
-    let facility: MockFacility
+    let facility: FacilityCardModel
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
             Image(facility.iconAssetName)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
@@ -89,33 +115,42 @@ struct FacilityCard: View {
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.primary)
 
-                if let emptyStateText = facility.emptyStateText {
-                    Text(emptyStateText.localized)
+                switch facility.state {
+                case .notReviewed:
+                    Text("Not reviewed yet")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                case .reviewed(let tags):
+                    if tags.isEmpty {
+                        Text("No community reviews yet")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    } else {
+                        FlowRow(spacing: 6) {
+                            ForEach(tags, id: \.self) { tag in
+                                PillTag(label: tag)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                case .unavailable:
+                    Text("Not available at this place")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    FlowRow(spacing: 6) {
-                        ForEach(facility.tags) { tag in
-                            PillTag(tag: tag)
-                        }
-                        if facility.key == "entrance", MockData.entranceExtraCount > 0 {
-                            PillTag(tag: MockTag(label: "+\(MockData.entranceExtraCount)"))
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             .layoutPriority(1)
 
+            Spacer()
+
             Image(systemName: "chevron.right")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)
-                .padding(.top, 4)
         }
         .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: FacilityCardHeight.height(for: facility.state),
+               alignment: .leading)
         .background(Color.mockSectionBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
@@ -158,6 +193,21 @@ struct FilterSegmentedControl<Option: Hashable>: View {
         style == .nativeToggle ? PhotoPalette.segmentedTrack : Color.mockSectionBackground
     }
 
+    @ViewBuilder
+    private func segmentIndicator(isSelected: Bool) -> some View {
+        if style == .nativeToggle {
+            ZStack {
+                Capsule()
+                    .fill(.ultraThinMaterial)
+                    .opacity(isSelected ? 1 : 0)
+                Capsule()
+                    .fill(Color.white.opacity(isSelected ? 0.35 : 0))
+            }
+        } else {
+            Capsule().fill(isSelected ? .white : .clear)
+        }
+    }
+
     private func segment(for option: Option) -> some View {
         let isSelected = selection == option
         return Button {
@@ -173,26 +223,16 @@ struct FilterSegmentedControl<Option: Hashable>: View {
                 .frame(height: style == .nativeToggle ? PhotoMetrics.segmentedItemHeight : nil)
                 .padding(.vertical, style == .nativeToggle ? 0 : 8)
                 .background {
-                    if isSelected {
-                        Group {
-                            if style == .nativeToggle {
-                                // Real frosted-glass material (matches the
-                                // app's other Liquid-Glass surfaces, e.g.
-                                // MockPlaceDetailView's top controls) — a
-                                // flat `.fill(.white)` reads as a solid
-                                // chip, not glass.
-                                Capsule().fill(.ultraThinMaterial)
-                                Capsule().fill(Color.white.opacity(0.35))
-                            } else {
-                                Capsule().fill(.white)
-                            }
-                        }
-                        .matchedGeometryEffect(id: "selectedSegment", in: indicator)
+                    segmentIndicator(isSelected: isSelected)
+                        .matchedGeometryEffect(
+                            id: "selectedSegment",
+                            in: indicator,
+                            isSource: isSelected
+                        )
                         .shadow(
-                            color: .black.opacity(style == .grayTrack ? 0.12 : 0),
+                            color: .black.opacity(style == .grayTrack && isSelected ? 0.12 : 0),
                             radius: 3, x: 0, y: 1
                         )
-                    }
                 }
                 .contentShape(Capsule())
         }
@@ -226,9 +266,10 @@ struct MockPhotoTile: View {
 
 #Preview {
     VStack(alignment: .leading, spacing: 20) {
-        ForEach(MockData.facilities) { facility in
-            FacilityCard(facility: facility)
-        }
+        FacilityCard(facility: FacilityCardModel(
+            id: "entrance", key: "entrance", title: "Entrance",
+            iconAssetName: "Entrance Asset", state: .reviewed(["RAMP", "HANDRAIL"])
+        ))
         FilterSegmentedControl(
             options: ["All", "Entrance", "Elevator", "Toilet"],
             label: { $0 },
