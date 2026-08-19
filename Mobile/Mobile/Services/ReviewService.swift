@@ -50,13 +50,21 @@ final class ReviewService {
 
     @discardableResult
     func submit(_ draft: ReviewDraft) async throws -> SubmitResponse {
+        print("[ReviewService] Submitting review for place \(draft.appleMapsId)…")
         let photoUrls = try await uploadAllPhotos(for: draft)
         let payload = draft.buildSubmissionPayload(photoUrls: photoUrls)
-        return try await client.functions.invoke(
-            "submit-accessibility-review",
-            options: FunctionInvokeOptions(body: payload),
-            decoder: decoder
-        )
+        do {
+            let response: SubmitResponse = try await client.functions.invoke(
+                "submit-accessibility-review",
+                options: FunctionInvokeOptions(body: payload),
+                decoder: decoder
+            )
+            print("[ReviewService] Review submitted successfully — reviewId: \(response.reviewId), placeId: \(response.placeId)")
+            return response
+        } catch {
+            print("[ReviewService] Review submission FAILED: \(error)")
+            throw error
+        }
     }
 
     /// Uploads gallery photos for one facility and persists via submit-accessibility-review.
@@ -247,6 +255,16 @@ final class ReviewService {
         let isWideEnough: Bool?
         let reviewText: String?
         let photoUrls: [String]?
+
+        enum CodingKeys: String, CodingKey {
+            case location
+            case hasDropoffRamp = "has_dropoff_ramp"
+            case hasRails = "has_rails"
+            case doorType = "door_type"
+            case isWideEnough = "is_wide_enough"
+            case reviewText = "review_text"
+            case photoUrls = "photo_urls"
+        }
     }
 
     struct DBPlaceReviewRow: Decodable {
@@ -262,6 +280,21 @@ final class ReviewService {
         let toiletReviewText: String?
         let toiletPhotoUrls: [String]?
         let reviewEntrances: [DBReviewEntranceRow]?
+
+        enum CodingKeys: String, CodingKey {
+            case id
+            case createdAt = "created_at"
+            case notes
+            case elevatorExists = "elevator_exists"
+            case elevatorWheelchairAccessible = "elevator_wheelchair_accessible"
+            case elevatorBlockers = "elevator_blockers"
+            case elevatorReviewText = "elevator_review_text"
+            case elevatorPhotoUrls = "elevator_photo_urls"
+            case hasDisabledToilet = "has_disabled_toilet"
+            case toiletReviewText = "toilet_review_text"
+            case toiletPhotoUrls = "toilet_photo_urls"
+            case reviewEntrances = "review_entrances"
+        }
     }
 
     /// Loads flattened review rows + entrance children for one canonical place.
@@ -304,7 +337,14 @@ final class ReviewService {
                     let body = entrance.reviewText?.trimmingCharacters(in: .whitespacesAndNewlines)
                         ?? row.notes?.trimmingCharacters(in: .whitespacesAndNewlines)
                         ?? ""
-                    guard !body.isEmpty || !(entrance.photoUrls ?? []).isEmpty || entrance.hasDropoffRamp != nil else { continue }
+                    let hasFacilityData =
+                        entrance.hasDropoffRamp != nil
+                        || entrance.hasRails != nil
+                        || entrance.doorType != nil
+                        || entrance.isWideEnough != nil
+                    guard !body.isEmpty || !(entrance.photoUrls ?? []).isEmpty || hasFacilityData else {
+                        continue
+                    }
                     results.append(PlaceFacilityReview(
                         id: UUID(),
                         reviewId: row.id,

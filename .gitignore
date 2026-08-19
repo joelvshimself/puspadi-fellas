@@ -24,6 +24,9 @@ DerivedData/
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
 
+# Xcode resolved source packages (checked out by xcodebuild, not committed)
+Mobile/SourcePackages/
+
 # CocoaPods
 Pods/
 

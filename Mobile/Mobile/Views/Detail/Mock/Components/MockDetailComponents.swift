@@ -122,7 +122,7 @@ struct FacilityCard: View {
                         .foregroundStyle(.secondary)
                 case .reviewed(let tags):
                     if tags.isEmpty {
-                        Text("No community reviews yet")
+                        Text("Reviewed")
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                     } else {

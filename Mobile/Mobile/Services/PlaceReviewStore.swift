@@ -17,6 +17,7 @@ final class PlaceReviewStore: ObservableObject {
     let placeId: String
 
     private var watchTask: Task<Void, Never>?
+    private var loadGeneration = 0
 
     init(place: Place) {
         self.place = place
@@ -28,11 +29,15 @@ final class PlaceReviewStore: ObservableObject {
     }
 
     func load() async {
+        loadGeneration += 1
+        let generation = loadGeneration
         isLoading = true
         reviewPhotosLoadFailed = false
         defer {
-            isLoading = false
-            enrichResolved = true
+            if generation == loadGeneration {
+                isLoading = false
+                enrichResolved = true
+            }
         }
 
         async let enriched = try? AccessibilityService.shared.enrich(
@@ -40,10 +45,7 @@ final class PlaceReviewStore: ObservableObject {
             lng: place.coordinate.longitude,
             name: place.name
         )
-        async let reviews = try? ReviewService.shared.fetchPlaceReviews(
-            lat: place.coordinate.latitude,
-            lng: place.coordinate.longitude
-        )
+        async let reviews = loadFacilityReviews()
 
         let (enrichResponse, reviewRows, photoResponse) = await (
             enriched,
@@ -51,13 +53,33 @@ final class PlaceReviewStore: ObservableObject {
             loadReviewPhotos()
         )
 
+        guard generation == loadGeneration else {
+            print("[PlaceReviewStore] Discarding stale refresh for \(placeId)")
+            return
+        }
+
         featureGrades = enrichResponse?.grade ?? []
         imageAttribution = enrichResponse?.place?.imageAttribution
         streetImageURL = enrichResponse?.place?.imageUrl.flatMap(URL.init(string:))
         if let photoResponse {
             reviewPhotos = photoResponse.photos
         }
-        facilityReviews = reviewRows ?? []
+        if let reviewRows {
+            facilityReviews = reviewRows
+            print("[PlaceReviewStore] Loaded \(reviewRows.count) facility review(s) for \(placeId)")
+        }
+    }
+
+    private func loadFacilityReviews() async -> [PlaceFacilityReview]? {
+        do {
+            return try await ReviewService.shared.fetchPlaceReviews(
+                lat: place.coordinate.latitude,
+                lng: place.coordinate.longitude
+            )
+        } catch {
+            print("[PlaceReviewStore] Facility review fetch FAILED for \(placeId): \(error)")
+            return nil
+        }
     }
 
     @discardableResult
@@ -79,6 +101,10 @@ final class PlaceReviewStore: ObservableObject {
         watchTask?.cancel()
         watchTask = Task {
             for await _ in ReviewService.shared.watchReviewInserts(placeId: placeId) {
+                // The reviews-table insert arrives before its review_entrances
+                // child rows are committed by the Edge Function.
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled else { break }
                 await PlaceCacheStore.shared.remove(placeId)
                 await load()
             }

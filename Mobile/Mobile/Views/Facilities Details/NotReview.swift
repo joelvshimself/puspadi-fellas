@@ -244,7 +244,10 @@ struct NotReviewView: View {
         .fullScreenCover(isPresented: $showContributeFlow) {
             ContributeReviewFlowView(place: place, startingFacility: kind) {
                 showContributeFlow = false
-                Task { await store.load() }
+                Task {
+                    await PlaceCacheStore.shared.remove(store.placeId)
+                    await store.load()
+                }
             }
         }
     }
