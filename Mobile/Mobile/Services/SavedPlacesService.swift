@@ -39,9 +39,10 @@ final class SavedPlacesService: ObservableObject {
     }
 
     @MainActor
-    func toggleSave(placeId: String) async {
+    func toggleSave(placeId: String, place: Place? = nil) async {
         if savedPlaceIds.contains(placeId) {
             savedPlaceIds.remove(placeId)
+            SavedPlaceSnapshotStore.remove(placeId: placeId)
             do {
                 try await client.from("saved_places")
                     .delete()
@@ -52,6 +53,9 @@ final class SavedPlacesService: ObservableObject {
             }
         } else {
             savedPlaceIds.insert(placeId)
+            if let place {
+                SavedPlaceSnapshotStore.save(place, placeId: placeId)
+            }
             do {
                 let body = ["place_id": placeId]
                 try await client.from("saved_places")

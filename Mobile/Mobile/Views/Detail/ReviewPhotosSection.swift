@@ -6,6 +6,8 @@ import SwiftUI
 struct ReviewPhotosSection: View {
     let photos: [ReviewPhoto]
     var isLoading: Bool = false
+    var loadFailed: Bool = false
+    var onRetry: (() -> Void)?
 
     @State private var selectedCluster: ReviewPhotoCluster?
 
@@ -22,6 +24,16 @@ struct ReviewPhotosSection: View {
                 ProgressView()
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 8)
+            } else if loadFailed && photos.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Couldn't load review photos right now.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    if let onRetry {
+                        Button("Retry", action: onRetry)
+                            .font(.subheadline.weight(.semibold))
+                    }
+                }
             } else if photos.isEmpty {
                 Text("No review photos yet for this place.")
                     .font(.subheadline)
@@ -194,9 +206,15 @@ struct ReviewRemoteThumbnail: View {
 
     private func load() async {
         finishedLoading = false
+        image = nil
         defer { finishedLoading = true }
         guard let url = URL(string: urlString) else { return }
-        guard let (data, _) = try? await URLSession.shared.data(from: url) else { return }
+        guard let data = try? await NetworkRetry.download(from: url) else { return }
         image = UIImage(data: data)
     }
+}
+
+#Preview {
+    ReviewPhotosSection(photos: [], isLoading: false)
+        .padding()
 }

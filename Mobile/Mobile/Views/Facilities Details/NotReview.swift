@@ -182,25 +182,15 @@ enum FacilityOverviewState {
 
 struct NotReviewView: View {
     let kind: FacilityKind
-    var state: FacilityOverviewState = .empty
-    /// The real place this facility belongs to, when the screen was reached
-    /// from a live search result. Reviews started here submit against these
-    /// coordinates; nil falls back to the MockData fixture for the
-    /// demo/preview entry points.
-    var place: Place? = nil
+    @ObservedObject var store: PlaceReviewStore
+    var place: Place
 
     @State private var selectedTab: FacilityDetailTab = .overview
     @State private var isComposingPhotos = false
     @State private var showContributeFlow = false
 
-    private var contributePlace: Place {
-        if let place { return place }
-        return Place.fromSearchResult(
-            name: MockData.placeName,
-            category: "Mall",
-            coordinate: CLLocationCoordinate2D(latitude: 0, longitude: 0)
-        )
-    }
+    private var state: FacilityOverviewState { store.overviewState(for: kind) }
+    private var reviews: [PlaceFacilityReview] { store.reviews(for: kind) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -219,10 +209,14 @@ struct NotReviewView: View {
             if selectedTab == .photos {
                 FacilityPhotosView(
                     facilityName: kind.title,
+                    photos: store.facilityPhotos(for: kind),
+                    place: place,
+                    facilityKind: kind,
                     selectedTab: $selectedTab,
                     showsChrome: false,
                     onBack: { selectedTab = .overview },
-                    onComposingChanged: { isComposingPhotos = $0 }
+                    onComposingChanged: { isComposingPhotos = $0 },
+                    onPhotosChanged: { Task { await store.load() } }
                 )
             } else {
                 overviewAndReviews
@@ -248,8 +242,12 @@ struct NotReviewView: View {
             }
         }
         .fullScreenCover(isPresented: $showContributeFlow) {
-            ContributeReviewFlowView(place: contributePlace, startingFacility: kind) {
+            ContributeReviewFlowView(place: place, startingFacility: kind) {
                 showContributeFlow = false
+                Task {
+                    await PlaceCacheStore.shared.remove(store.placeId)
+                    await store.load()
+                }
             }
         }
     }
@@ -273,10 +271,10 @@ struct NotReviewView: View {
                         case .overview:
                             overviewLower
                         case .reviews:
-                            if state == .reviewed {
-                                FacilityReviewsList(kind: kind)
-                            } else {
+                            if reviews.isEmpty {
                                 emptyCard(message: "No one review this place yet")
+                            } else {
+                                FacilityReviewsList(reviews: reviews)
                             }
                         case .photos:
                             EmptyView()
@@ -337,9 +335,23 @@ struct NotReviewView: View {
         case .unavailable:
             unavailableLower
         case .community:
-            FacilityReviewedOverview(kind: kind, showsUserReview: false, place: place)
+            FacilityReviewedOverview(
+                kind: kind,
+                store: store,
+                showsUserReview: false,
+                place: place,
+                onOpenReviews: { selectedTab = .reviews },
+                onBeFirstReviewer: { showContributeFlow = true }
+            )
         case .reviewed:
-            FacilityReviewedOverview(kind: kind, showsUserReview: true, place: place)
+            FacilityReviewedOverview(
+                kind: kind,
+                store: store,
+                showsUserReview: true,
+                place: place,
+                onOpenReviews: { selectedTab = .reviews },
+                onBeFirstReviewer: { showContributeFlow = true }
+            )
         }
     }
 
@@ -362,27 +374,11 @@ struct NotReviewView: View {
                 }
             }
 
-            section(title: "Notes from reviews") {
-                VStack(spacing: 16) {
-                    Text("No one review this place yet")
-                        .font(.subheadline)
-                        .foregroundStyle(.tertiary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 8)
-
-                    Button {
-                        showContributeFlow = true
-                    } label: {
-                        Text("Be the first reviewer")
-                            .font(.subheadline.weight(.semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(Color.accentColor, in: Capsule())
-                            .foregroundStyle(.white)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
+            NotesFromReviewsSection(
+                snippets: [],
+                onBeFirstReviewer: { showContributeFlow = true },
+                onOpenReviews: { selectedTab = .reviews }
+            )
         }
     }
 
@@ -436,61 +432,31 @@ struct NotReviewView: View {
 
 #Preview("Elevator") {
     NavigationStack {
-        NotReviewView(kind: .elevator)
+        NotReviewView(
+            kind: .elevator,
+            store: PlaceReviewStore(place: Place.fromSearchResult(name: "Preview", category: "Mall", coordinate: .init(latitude: 0, longitude: 0))),
+            place: Place.fromSearchResult(name: "Preview", category: "Mall", coordinate: .init(latitude: 0, longitude: 0))
+        )
     }
 }
 
 #Preview("Toilet") {
     NavigationStack {
-        NotReviewView(kind: .toilet)
+        NotReviewView(
+            kind: .toilet,
+            store: PlaceReviewStore(place: Place.fromSearchResult(name: "Preview", category: "Mall", coordinate: .init(latitude: 0, longitude: 0))),
+            place: Place.fromSearchResult(name: "Preview", category: "Mall", coordinate: .init(latitude: 0, longitude: 0))
+        )
     }
 }
 
 #Preview("Entrance") {
     NavigationStack {
-        NotReviewView(kind: .entrance)
-    }
-}
-
-#Preview("Elevator unavailable") {
-    NavigationStack {
-        NotReviewView(kind: .elevator, state: .unavailable)
-    }
-}
-
-#Preview("Toilet unavailable") {
-    NavigationStack {
-        NotReviewView(kind: .toilet, state: .unavailable)
-    }
-}
-
-#Preview("Entrance unavailable") {
-    NavigationStack {
-        NotReviewView(kind: .entrance, state: .unavailable)
-    }
-}
-
-#Preview("Elevator reviewed") {
-    NavigationStack {
-        NotReviewView(kind: .elevator, state: .reviewed)
-    }
-}
-
-#Preview("Toilet reviewed") {
-    NavigationStack {
-        NotReviewView(kind: .toilet, state: .reviewed)
-    }
-}
-
-#Preview("Entrance reviewed") {
-    NavigationStack {
-        NotReviewView(kind: .entrance, state: .reviewed)
-    }
-}
-
-#Preview("Entrance default") {
-    NavigationStack {
-        NotReviewView(kind: .entrance, state: .community)
+        NotReviewView(
+            kind: .entrance,
+            store: PlaceReviewStore(place: Place.fromSearchResult(name: "Preview", category: "Mall", coordinate: .init(latitude: 0, longitude: 0))),
+            place: Place.fromSearchResult(name: "Preview", category: "Mall", coordinate: .init(latitude: 0, longitude: 0))
+        )
     }
 }
 

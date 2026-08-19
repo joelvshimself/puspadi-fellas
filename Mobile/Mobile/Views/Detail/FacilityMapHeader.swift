@@ -32,3 +32,11 @@ struct FacilityMapHeader: View {
         .allowsHitTesting(false)
     }
 }
+
+#Preview {
+    FacilityMapHeader(
+        coordinate: CLLocationCoordinate2D(latitude: -8.72, longitude: 115.17),
+        name: "Preview Mall"
+    )
+    .padding()
+}

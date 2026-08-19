@@ -48,6 +48,9 @@ struct HomeMapView: View {
     /// (no filter). See the filter panel opened from the top-left button.
     @State private var selectedGrades: Set<OverallAccessibility> = []
     @State private var showFilter = false
+    @State private var nearbyPlaces: [Place] = []
+    @State private var placeGrades: [UUID: OverallAccessibility] = [:]
+    @State private var nearbyLoadTask: Task<Void, Never>?
     /// Top and bottom safe-area insets captured before map ignores safe area.
     @State private var topSafeInset: CGFloat = 54
     @State private var bottomSafeInset: CGFloat = 34
@@ -133,7 +136,6 @@ struct HomeMapView: View {
                         case .place(let place):
                             // Place Details is a full page, not sheet content.
                             MockPlaceDetailView(place: place)
-                                .navigationBarBackButtonHidden()
                                 .enableSwipeBack()
                         case .saved:
                             SavedView()
@@ -196,16 +198,47 @@ struct HomeMapView: View {
                     }
                     .task {
                         locationManager.requestLocation()
+                        await loadNearbyPlaces()
+                    }
+                    .onDisappear {
+                        nearbyLoadTask?.cancel()
                     }
             }
         }
     }
 
     private var displayedMalls: [Place] {
-        if selectedGrades.isEmpty {
-            return Place.baliMalls
+        let base = nearbyPlaces.map { place in
+            var copy = place
+            copy.grade = placeGrades[place.id] ?? place.grade
+            return copy
         }
-        return Place.baliMalls.filter { selectedGrades.contains($0.grade ?? .noData) }
+        if selectedGrades.isEmpty { return base }
+        return base.filter { selectedGrades.contains($0.grade ?? .noData) }
+    }
+
+    @MainActor
+    private func loadNearbyPlaces() async {
+        let places = await NearbyPlacesService.search(in: visibleRegion)
+        nearbyPlaces = places
+        for place in places {
+            if placeGrades[place.id] != nil { continue }
+            if let response = try? await AccessibilityService.shared.enrich(
+                lat: place.coordinate.latitude,
+                lng: place.coordinate.longitude,
+                name: place.name
+            ), let grades = response.grade, !grades.isEmpty {
+                if grades.contains(where: { $0.bestValue == "no" }) {
+                    placeGrades[place.id] = .notAccessible
+                } else if grades.allSatisfy({ $0.bestValue == "yes" }) {
+                    placeGrades[place.id] = .accessible
+                } else {
+                    placeGrades[place.id] = .partiallyAccessible
+                }
+            } else {
+                placeGrades[place.id] = .noData
+            }
+        }
     }
 
     private var mapLayer: some View {
@@ -228,6 +261,7 @@ struct HomeMapView: View {
         }
         .onMapCameraChange { context in
             visibleRegion = context.region
+            scheduleNearbyPlacesLoad()
         }
         .mapStyle(.standard(elevation: .realistic))
     }
@@ -338,6 +372,16 @@ struct HomeMapView: View {
             cameraPosition = .region(region)
         }
         visibleRegion = region
+        scheduleNearbyPlacesLoad()
+    }
+
+    private func scheduleNearbyPlacesLoad() {
+        nearbyLoadTask?.cancel()
+        nearbyLoadTask = Task {
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled else { return }
+            await loadNearbyPlaces()
+        }
     }
 
     /// ✕ / cancel: clear what was typed and collapse back to the peek. The

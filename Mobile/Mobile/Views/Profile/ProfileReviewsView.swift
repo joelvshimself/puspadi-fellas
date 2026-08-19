@@ -102,8 +102,13 @@ struct ProfileReviewsView: View {
                 .presentationDragIndicator(.visible)
         }
         .fullScreenCover(item: $reviewToUpdate) { review in
-            let matchedPlace = Place.baliMalls.first(where: { $0.name.lowercased() == review.placeName.lowercased() }) ?? Place.baliMalls[0]
-            ContributeReviewFlowView(place: matchedPlace) {
+            let place = SavedPlaceSnapshotStore.place(for: review.placeName)
+                ?? Place.fromSearchResult(
+                    name: review.placeName,
+                    category: "Place",
+                    coordinate: .init(latitude: 0, longitude: 0)
+                )
+            ContributeReviewFlowView(place: place) {
                 reviewToUpdate = nil
             }
         }
@@ -114,7 +119,7 @@ struct ProfileReviewsView: View {
             let dbRows = try await ReviewService.shared.fetchAllReviews()
             var items: [ProfileReviewItem] = []
             for row in dbRows {
-                let placeName = Place.baliMalls.first(where: { $0.id.uuidString == row.placeId || $0.name.lowercased() == row.placeId.lowercased() })?.name ?? row.placeId
+                let placeName = SavedPlaceSnapshotStore.place(for: row.placeId)?.name ?? row.placeId
                 var urls: [URL] = []
                 if let elevator = row.elevatorPhotoUrls {
                     urls.append(contentsOf: elevator.compactMap { URL(string: $0) })

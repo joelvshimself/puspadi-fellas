@@ -25,6 +25,7 @@ struct PlaceDetailView: View {
     /// Community review photos from `place-review-photos` (facility-labeled).
     @State private var reviewPhotos: [ReviewPhoto] = []
     @State private var isLoadingReviewPhotos = false
+    @State private var reviewPhotosLoadFailed = false
 
     var body: some View {
         ScrollView {
@@ -97,6 +98,7 @@ struct PlaceDetailView: View {
     private func loadReviewPhotos() async {
         guard place.isLiveResult else { return }
         isLoadingReviewPhotos = true
+        reviewPhotosLoadFailed = false
         defer { isLoadingReviewPhotos = false }
         do {
             let response = try await ReviewService.shared.fetchReviewPhotos(
@@ -105,7 +107,7 @@ struct PlaceDetailView: View {
             )
             reviewPhotos = response.photos
         } catch {
-            // Leave existing photos on failure; first load stays empty.
+            reviewPhotosLoadFailed = true
         }
     }
 
@@ -440,7 +442,11 @@ struct PlaceDetailView: View {
             // Community photos from `place-review-photos` (added on main).
             ReviewPhotosSection(
                 photos: reviewPhotos,
-                isLoading: isLoadingReviewPhotos
+                isLoading: isLoadingReviewPhotos,
+                loadFailed: reviewPhotosLoadFailed,
+                onRetry: {
+                    Task { await loadReviewPhotos() }
+                }
             )
         }
     }
@@ -572,6 +578,16 @@ private enum DetailTab: String, CaseIterable, Identifiable {
         case .review: "Review"
         }
     }
+}
+
+#Preview {
+    PlaceDetailView(
+        place: Place.fromSearchResult(
+            name: "Preview Place",
+            category: "Mall",
+            coordinate: CLLocationCoordinate2D(latitude: -8.72, longitude: 115.17)
+        )
+    )
 }
 
 

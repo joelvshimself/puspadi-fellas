@@ -52,3 +52,8 @@ struct CameraPicker: UIViewControllerRepresentable {
         }
     }
 }
+
+#Preview {
+    Text("Camera available: \(CameraPicker.isAvailable ? "Yes" : "No")")
+        .padding()
+}

@@ -4,7 +4,7 @@ struct SavedView: View {
     @StateObject private var savedPlacesService = SavedPlacesService.shared
 
     private var savedPlaces: [Place] {
-        Place.baliMalls.filter { savedPlacesService.isSaved(placeId: $0.name) || savedPlacesService.isSaved(placeId: $0.id.uuidString) }
+        SavedPlaceSnapshotStore.savedPlaces(from: savedPlacesService.savedPlaceIds)
     }
 
     var body: some View {

@@ -1,96 +1,81 @@
-import CoreLocation
 import SwiftUI
 
 struct FacilityReviewedOverview: View {
     let kind: FacilityKind
+    @ObservedObject var store: PlaceReviewStore
     var showsUserReview: Bool = true
-    /// The real place, when reached from a live search result — reviews
-    /// started here submit against its coordinates. nil falls back to the
-    /// MockData fixture for the demo/preview entry points.
-    var place: Place? = nil
+    var place: Place
+    var onOpenReviews: () -> Void
+    var onBeFirstReviewer: () -> Void
 
-    @State private var selectedPhoto: FacilityPhoto?
+    @State private var lightbox: LightboxSelection?
     @State private var showContributeFlow = false
 
-    private var contributePlace: Place {
-        if let place { return place }
-        return Place.fromSearchResult(
-            name: MockData.placeName,
-            category: "Mall",
-            coordinate: CLLocationCoordinate2D(latitude: 0, longitude: 0)
-        )
+    private struct LightboxSelection: Identifiable {
+        let id = UUID()
+        let photos: [FacilityPhoto]
+        let initialID: UUID
     }
+
+    private var reviews: [PlaceFacilityReview] { store.reviews(for: kind) }
+    private var latestTags: [String] { reviews.first?.providedTags ?? [] }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             section(title: "What provided") {
-                FlowRow(spacing: 10) {
-                    ForEach(kind.reviewedProvidedItems, id: \.label) { item in
-                        HStack(spacing: 6) {
-                            Image(systemName: item.symbol)
-                                .font(.caption)
-                            Text(item.label)
-                                .font(.caption.weight(.semibold))
-                        }
+                if latestTags.isEmpty {
+                    Text("No structured tags yet")
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Color(.systemGray5), in: Capsule())
-                    }
-                }
-            }
-
-            section(title: "Notes from reviews", contentInsets: 0) {
-                VStack(spacing: 0) {
-                    ForEach(Array(kind.reviewNotes.enumerated()), id: \.offset) { index, note in
-                        if index > 0 {
-                            Divider()
-                        }
-                        HStack {
-                            Text(note)
-                                .font(.subheadline)
-                            Spacer()
-                            Image(systemName: "chevron.right")
+                } else {
+                    FlowRow(spacing: 10) {
+                        ForEach(latestTags, id: \.self) { tag in
+                            Text(tag)
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Color(.systemGray5), in: Capsule())
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
                     }
                 }
             }
 
-            if showsUserReview {
+            NotesFromReviewsSection(
+                snippets: store.noteSnippets(for: kind),
+                onBeFirstReviewer: onBeFirstReviewer,
+                onOpenReviews: onOpenReviews
+            )
+
+            if showsUserReview, let latest = reviews.first {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text("Your Review")
+                        Text("Latest Review")
                             .font(.headline)
                         Spacer()
-                        Button("Update Review") { showContributeFlow = true }
+                        Button("Add New Review") { showContributeFlow = true }
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(Color.accentColor)
                     }
 
-                    FacilityReviewRow(
-                        bodyText: kind.reviewBody,
-                        providedList: kind.reviewProvidedList,
-                        onSelectPhoto: { selectedPhoto = $0 }
-                    )
+                    FacilityReviewRow(review: latest) { photo in
+                        let siblings = latest.photoURLs.compactMap { url -> FacilityPhoto? in
+                            guard let remote = URL(string: url) else { return nil }
+                            return FacilityPhoto(source: .remote(remote), reviewId: latest.reviewId)
+                        }
+                        lightbox = LightboxSelection(photos: siblings, initialID: photo.id)
+                    }
                     .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
                             .fill(Color(uiColor: .secondarySystemGroupedBackground))
                     )
                 }
-            } else {
+            } else if !showsUserReview {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Find something different?")
                         .font(.title3.bold())
-
-                    Button {
-                        showContributeFlow = true
-                    } label: {
+                    Button { showContributeFlow = true } label: {
                         Text("Add New Review")
                             .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity)
@@ -102,12 +87,13 @@ struct FacilityReviewedOverview: View {
                 }
             }
         }
-        .fullScreenCover(item: $selectedPhoto) { photo in
-            FacilityPhotoDetailView(photo: photo)
+        .fullScreenCover(item: $lightbox) { selection in
+            FacilityPhotoDetailView(photos: selection.photos, initialID: selection.initialID)
         }
         .fullScreenCover(isPresented: $showContributeFlow) {
-            ContributeReviewFlowView(place: contributePlace, startingFacility: kind) {
+            ContributeReviewFlowView(place: place, startingFacility: kind) {
                 showContributeFlow = false
+                Task { await store.load() }
             }
         }
     }
@@ -118,8 +104,7 @@ struct FacilityReviewedOverview: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.headline)
+            Text(title).font(.headline)
             content()
                 .padding(contentInsets)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -133,8 +118,20 @@ struct FacilityReviewedOverview: View {
 
 #Preview {
     ScrollView {
-        FacilityReviewedOverview(kind: .entrance)
-            .padding()
+        FacilityReviewedOverview(
+            kind: .entrance,
+            store: PlaceReviewStore(
+                place: Place.fromSearchResult(
+                    name: "Preview",
+                    category: "Mall",
+                    coordinate: .init(latitude: 0, longitude: 0)
+                )
+            ),
+            place: Place.fromSearchResult(name: "Preview", category: "Mall", coordinate: .init(latitude: 0, longitude: 0)),
+            onOpenReviews: {},
+            onBeFirstReviewer: {}
+        )
+        .padding()
     }
     .background(Color(.systemGroupedBackground))
 }

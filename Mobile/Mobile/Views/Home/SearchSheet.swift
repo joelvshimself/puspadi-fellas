@@ -183,6 +183,7 @@ struct SearchSheet: View {
     let onCancelSearch: () -> Void
 
     @StateObject private var speechRecognizer = SpeechRecognizer()
+    @State private var nearbyPlaces: [Place] = []
     @State private var results: [Place] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -212,6 +213,9 @@ struct SearchSheet: View {
         }
         .onDisappear {
             speechRecognizer.stopListening()
+        }
+        .task(id: searchRegion.center.latitude + searchRegion.center.longitude) {
+            nearbyPlaces = await NearbyPlacesService.search(in: searchRegion)
         }
     }
 
@@ -331,9 +335,15 @@ struct SearchSheet: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: SheetMetrics.rowSpacing) {
                 if query.isEmpty {
-                    sectionHeader("Malls of Bali".localized)
-                    ForEach(Place.baliMalls) { place in
-                        resultRow(place)
+                    sectionHeader("Nearby".localized)
+                    if nearbyPlaces.isEmpty {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 24)
+                    } else {
+                        ForEach(nearbyPlaces) { place in
+                            resultRow(place)
+                        }
                     }
                 } else if isLoading {
                     ProgressView()

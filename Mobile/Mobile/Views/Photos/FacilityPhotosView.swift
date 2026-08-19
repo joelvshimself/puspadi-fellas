@@ -1,31 +1,19 @@
 import PhotosUI
 import SwiftUI
 
-/// Photos tab of a facility's detail screen — the whole add-photos flow lives
-/// here (Figma nodes 518:16038 default, 572:6900 with the source menu open,
-/// 572:7071 after a successful submit).
-///
-/// The flow: **Add Photos** opens a menu (Choose Existing / Take New Photo);
-/// whichever source the user picks hands its images to `AddPhotosView`, and
-/// submitting there drops them into the gallery behind a green toast.
+/// Photos tab of a facility's detail screen — add photos via library or camera.
 struct FacilityPhotosView: View {
-    /// Names the facility this gallery belongs to ("Entrances" in the mockup).
     let facilityName: String
+    var place: Place?
+    var facilityKind: FacilityKind?
     var onBack: () -> Void
-    /// When false, the parent already shows a nav title and tab picker.
     var showsChrome: Bool
     var onComposingChanged: ((Bool) -> Void)?
+    var onPhotosChanged: (() -> Void)?
 
     @StateObject private var store: FacilityPhotoStore
 
-    /// Which page of the flow is on screen. The composer is swapped in here
-    /// rather than presented as a sheet over the gallery: it is pushed straight
-    /// after the photo picker dismisses, and stacking one presentation on
-    /// another mid-dismissal leaves the composer laid out under the status bar.
-    private enum Screen {
-        case gallery
-        case composer
-    }
+    private enum Screen { case gallery, composer }
 
     @State private var screen: Screen = .gallery
     @State private var internalTab: FacilityDetailTab = .photos
@@ -34,9 +22,16 @@ struct FacilityPhotosView: View {
     @State private var isCameraPresented = false
     @State private var librarySelection: [PhotosPickerItem] = []
     @State private var stagedPhotos: [FacilityPhoto] = []
-    @State private var selectedPhoto: FacilityPhoto?
+    @State private var lightbox: LightboxSelection?
     @State private var showsSuccessToast = false
     @State private var toastDismissTask: Task<Void, Never>?
+    @State private var isUploading = false
+
+    private struct LightboxSelection: Identifiable {
+        let id = UUID()
+        let photos: [FacilityPhoto]
+        let initialID: UUID
+    }
 
     private var selectedTab: Binding<FacilityDetailTab> {
         externalTab ?? $internalTab
@@ -44,49 +39,66 @@ struct FacilityPhotosView: View {
 
     init(
         facilityName: String,
-        photos: [FacilityPhoto] = FacilityPhoto.samples,
+        photos: [FacilityPhoto] = [],
+        place: Place? = nil,
+        facilityKind: FacilityKind? = nil,
         onBack: @escaping () -> Void = {}
     ) {
         self.init(
             facilityName: facilityName,
             photos: photos,
+            place: place,
+            facilityKind: facilityKind,
             selectedTab: nil,
             showsChrome: true,
             onBack: onBack,
-            onComposingChanged: nil
+            onComposingChanged: nil,
+            onPhotosChanged: nil
         )
     }
 
     init(
         facilityName: String,
-        photos: [FacilityPhoto] = FacilityPhoto.samples,
+        photos: [FacilityPhoto] = [],
+        place: Place? = nil,
+        facilityKind: FacilityKind? = nil,
         selectedTab: Binding<FacilityDetailTab>,
         showsChrome: Bool,
         onBack: @escaping () -> Void = {},
-        onComposingChanged: ((Bool) -> Void)? = nil
+        onComposingChanged: ((Bool) -> Void)? = nil,
+        onPhotosChanged: (() -> Void)? = nil
     ) {
         self.init(
             facilityName: facilityName,
             photos: photos,
+            place: place,
+            facilityKind: facilityKind,
             selectedTab: Optional(selectedTab),
             showsChrome: showsChrome,
             onBack: onBack,
-            onComposingChanged: onComposingChanged
+            onComposingChanged: onComposingChanged,
+            onPhotosChanged: onPhotosChanged
         )
     }
 
     private init(
         facilityName: String,
         photos: [FacilityPhoto],
+        place: Place?,
+        facilityKind: FacilityKind?,
         selectedTab: Binding<FacilityDetailTab>?,
         showsChrome: Bool,
         onBack: @escaping () -> Void,
-        onComposingChanged: ((Bool) -> Void)?
+        onComposingChanged: ((Bool) -> Void)?,
+        onPhotosChanged: (() -> Void)?
     ) {
         self.facilityName = facilityName
+        self.place = place
+        self.facilityKind = facilityKind
         self.onBack = onBack
         self.showsChrome = showsChrome
         self.onComposingChanged = onComposingChanged
+        self.onPhotosChanged = onPhotosChanged
         self.externalTab = selectedTab
         _store = StateObject(wrappedValue: FacilityPhotoStore(photos: photos))
     }
@@ -95,15 +107,12 @@ struct FacilityPhotosView: View {
         ZStack {
             switch screen {
             case .gallery:
-                gallery
-                    .transition(.move(edge: .leading).combined(with: .opacity))
+                gallery.transition(.move(edge: .leading).combined(with: .opacity))
             case .composer:
                 AddPhotosView(
                     initialPhotos: stagedPhotos,
                     onSubmit: { submitted in
-                        store.add(submitted)
-                        goToGallery()
-                        showToast()
+                        Task { await submitPhotos(submitted) }
                     },
                     onBack: { goToGallery() }
                 )
@@ -135,8 +144,15 @@ struct FacilityPhotosView: View {
             .ignoresSafeArea()
         }
         .onDisappear { toastDismissTask?.cancel() }
-        .fullScreenCover(item: $selectedPhoto) { photo in
-            FacilityPhotoDetailView(photo: photo)
+        .fullScreenCover(item: $lightbox) { selection in
+            FacilityPhotoDetailView(photos: selection.photos, initialID: selection.initialID)
+        }
+        .overlay {
+            if isUploading {
+                ProgressView("Uploading…")
+                    .padding()
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+            }
         }
     }
 
@@ -145,9 +161,6 @@ struct FacilityPhotosView: View {
             VStack(spacing: 0) {
                 if showsChrome {
                     PhotoFlowHeader(title: facilityName, onBack: onBack)
-
-                    // The tab switcher is pinned: only the Add Photos pill and the
-                    // gallery below it scroll, so changing tabs is always reachable.
                     FacilitySegmentedControl(selection: selectedTab)
                         .padding(.horizontal, PhotoMetrics.gutter)
                         .background(Color(.systemBackground))
@@ -162,35 +175,22 @@ struct FacilityPhotosView: View {
                     }
                 }
             }
-            // The toast covers the top of the content block, not the toolbar
-            // (top-[114px] against content at top-[116px]).
             .overlay(alignment: .top) {
                 if showsSuccessToast {
-                    PhotoSuccessToast(message: "Your photos successfully added!") {
-                        hideToast()
-                    }
-                    .padding(.horizontal, PhotoMetrics.composerHorizontalPadding)
-                    .offset(
-                        y: (showsChrome ? PhotoMetrics.toolbarHeight : 0)
-                            + PhotoMetrics.toastTopOffset
-                    )
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    PhotoSuccessToast(message: "Your photos successfully added!") { hideToast() }
+                        .padding(.horizontal, PhotoMetrics.composerHorizontalPadding)
+                        .offset(y: (showsChrome ? PhotoMetrics.toolbarHeight : 0) + PhotoMetrics.toastTopOffset)
+                        .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
         }
     }
 
-    // MARK: Tabs
-
     @ViewBuilder
     private func tabContent(contentWidth: CGFloat) -> some View {
         switch selectedTab.wrappedValue {
-        case .photos:
-            photosTab(contentWidth: contentWidth)
-        case .overview, .reviews:
-            // TODO(design): only the Photos tab has been designed so far —
-            // these two get a plain holding state rather than an invented one.
-            unavailableTab
+        case .photos: photosTab(contentWidth: contentWidth)
+        case .overview, .reviews: unavailableTab
         }
     }
 
@@ -200,52 +200,55 @@ struct FacilityPhotosView: View {
                 .padding(.horizontal, PhotoMetrics.gutter)
                 .padding(.top, PhotoMetrics.addPhotosTopPadding)
 
-            PhotoMosaicGrid(
-                photos: store.photos,
-                width: max(contentWidth - PhotoMetrics.gutter * 2, 0),
-                onSelect: { selectedPhoto = $0 }
-            )
-            .padding(PhotoMetrics.gutter)
+            if store.photos.isEmpty {
+                Text("No photos yet")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 40)
+            } else {
+                PhotoMosaicGrid(
+                    photos: store.photos,
+                    width: max(contentWidth - PhotoMetrics.gutter * 2, 0),
+                    onSelect: { photo in openLightbox(for: photo) }
+                )
+                .padding(PhotoMetrics.gutter)
+            }
         }
+    }
+
+    private func openLightbox(for photo: FacilityPhoto) {
+        let siblings: [FacilityPhoto]
+        if let reviewId = photo.reviewId {
+            siblings = store.photos.filter { $0.reviewId == reviewId }
+        } else {
+            siblings = [photo]
+        }
+        lightbox = LightboxSelection(photos: siblings, initialID: photo.id)
     }
 
     private var unavailableTab: some View {
         VStack(spacing: 8) {
-            Image(systemName: "square.dashed")
-                .font(.largeTitle)
-                .foregroundStyle(.tertiary)
+            Image(systemName: "square.dashed").font(.largeTitle).foregroundStyle(.tertiary)
             Text("\(selectedTab.wrappedValue.title) isn't available yet.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(.subheadline).foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 80)
+        .frame(maxWidth: .infinity).padding(.top, 80)
     }
-
-    // MARK: Add Photos
 
     private var addPhotosButton: some View {
         Menu {
-            Button {
-                isLibraryPresented = true
-            } label: {
+            Button { isLibraryPresented = true } label: {
                 Label("Choose Existing", systemImage: "photo.on.rectangle")
             }
-
-            Button {
-                isCameraPresented = true
-            } label: {
+            Button { isCameraPresented = true } label: {
                 Label("Take New Photo", systemImage: "camera")
             }
-            // Greyed out in the Simulator and on camera-less devices, which is
-            // the Disabled state the mockup shows for this item.
             .disabled(!CameraPicker.isAvailable)
         } label: {
             HStack(spacing: PhotoMetrics.addPhotosSpacing) {
-                Image(systemName: "photo.badge.plus.fill")
-                    .font(.system(size: 20))
-                Text("Add Photos")
-                    .font(.system(size: PhotoMetrics.addPhotosLabelSize, weight: .semibold))
+                Image(systemName: "photo.badge.plus.fill").font(.system(size: 20))
+                Text("Add Photos").font(.system(size: PhotoMetrics.addPhotosLabelSize, weight: .semibold))
             }
             .foregroundStyle(PhotoPalette.brandBlue)
             .frame(maxWidth: .infinity)
@@ -253,10 +256,7 @@ struct FacilityPhotosView: View {
             .background(Capsule().fill(PhotoPalette.background1))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Add photos")
     }
-
-    // MARK: Staging
 
     @MainActor
     private func stagePickedPhotos(_ items: [PhotosPickerItem]) async {
@@ -283,7 +283,31 @@ struct FacilityPhotosView: View {
         onComposingChanged?(false)
     }
 
-    // MARK: Toast
+    @MainActor
+    private func submitPhotos(_ submitted: [FacilityPhoto]) async {
+        guard let place, let facilityKind else {
+            store.add(submitted)
+            goToGallery()
+            showToast()
+            return
+        }
+        isUploading = true
+        defer { isUploading = false }
+        do {
+            try await ReviewService.shared.submitGalleryPhotos(
+                place: place,
+                facility: facilityKind,
+                localPhotos: submitted
+            )
+            goToGallery()
+            showToast()
+            onPhotosChanged?()
+        } catch {
+            store.add(submitted)
+            goToGallery()
+            showToast()
+        }
+    }
 
     private func showToast() {
         toastDismissTask?.cancel()

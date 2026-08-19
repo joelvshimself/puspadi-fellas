@@ -19,6 +19,7 @@ struct ContributePhotosNotesStepView: View {
     @State private var showSourceDialog = false
     @State private var showPhotosPicker = false
     @State private var showCamera = false
+    @FocusState private var notesFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -27,21 +28,32 @@ struct ContributePhotosNotesStepView: View {
                 .padding(.horizontal, PhotoMetrics.toolbarHorizontalPadding)
                 .padding(.top, 4)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    photosSection
-                    notesSection
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        photosSection
+                        notesSection
+                            .id("notesSection")
+                    }
+                    .padding(20)
+                    .padding(.bottom, 8)
                 }
-                .padding(20)
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: notesFocused) { _, focused in
+                    if focused {
+                        withAnimation {
+                            proxy.scrollTo("notesSection", anchor: .bottom)
+                        }
+                    }
+                }
             }
-            .scrollDismissesKeyboard(.interactively)
 
-            // Always enabled — explicit tap on this button submits/continues
             ContributeContinueButton(
                 title: isLastStep ? "Submit Review" : "Continue",
                 isEnabled: true,
                 action: onContinue
             )
+            .padding(.bottom, 8)
         }
         .background(Color(.systemBackground))
         .contentShape(Rectangle())
@@ -170,6 +182,7 @@ struct ContributePhotosNotesStepView: View {
             TextField("Tell us more about your experience …".localized, text: $note.text, axis: .vertical)
                 .font(.subheadline)
                 .lineLimit(4...8)
+                .focused($notesFocused)
                 .padding(14)
                 .background(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)

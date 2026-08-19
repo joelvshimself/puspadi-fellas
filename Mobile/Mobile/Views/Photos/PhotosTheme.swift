@@ -97,3 +97,12 @@ extension Color {
         )
     }
 }
+
+#Preview("Photo palette") {
+    HStack(spacing: 8) {
+        Circle().fill(PhotoPalette.brandBlue).frame(width: 24, height: 24)
+        Circle().fill(PhotoPalette.background1).frame(width: 24, height: 24)
+        Circle().fill(PhotoPalette.toastBackground).frame(width: 24, height: 24)
+    }
+    .padding()
+}

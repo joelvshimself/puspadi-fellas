@@ -7,6 +7,9 @@ import Supabase
 enum SupabaseClientProvider {
     static let shared = SupabaseClient(
         supabaseURL: SupabaseConfig.url,
-        supabaseKey: SupabaseConfig.anonKey
+        supabaseKey: SupabaseConfig.anonKey,
+        options: SupabaseClientOptions(
+            auth: .init(emitLocalSessionAsInitialSession: true)
+        )
     )
 }
