@@ -53,6 +53,10 @@ struct HomeMapView: View {
     @State private var isSearchingForGrade = false
     @State private var showFilter = false
     @State private var nearbyPlaces: [Place] = []
+    /// Places the user has opened. The nearby sweep only queries for shopping
+    /// malls, so anything else they tap — a hotel from Apple's own POI layer,
+    /// say — would otherwise never get a pin, and so never show its grade.
+    @State private var visitedPlaces: [Place] = []
     /// Grades keyed by rounded coordinate, NOT by `place.id`:
     /// `Place.fromSearchResult` mints a new UUID on every search, so an
     /// id-keyed cache never hit and each probe re-fetched every place.
@@ -203,6 +207,7 @@ struct HomeMapView: View {
                             isSearchActive = false
                             sheetDetent = peekDetent
                             isSheetPresented = true
+                            Task { await refreshStaleGrades() }
                         } else {
                             isSheetPresented = false
                         }
@@ -224,7 +229,9 @@ struct HomeMapView: View {
     }
 
     private var displayedMalls: [Place] {
-        let base = nearbyPlaces.map { place in
+        var seen = Set<String>()
+        let combined = (nearbyPlaces + visitedPlaces).filter { seen.insert(Self.gradeKey(for: $0)).inserted }
+        let base = combined.map { place in
             var copy = place
             copy.grade = placeGrades[Self.gradeKey(for: place)] ?? place.grade
             return copy
@@ -287,6 +294,30 @@ struct HomeMapView: View {
         if grades.contains(where: { $0.bestValue == "no" }) { return .notAccessible }
         if grades.allSatisfy({ $0.bestValue == "yes" }) { return .accessible }
         return .partiallyAccessible
+    }
+
+    /// Fills in grades that are still unknown, without re-running the nearby
+    /// search. Called on returning to the map, so a grade the detail page just
+    /// resolved shows up on the pin instead of waiting for the next pan.
+    @MainActor
+    private func refreshStaleGrades() async {
+        let stale = (nearbyPlaces + visitedPlaces).filter {
+            let known = placeGrades[Self.gradeKey(for: $0)]
+            return known == nil || known == .noData
+        }
+        guard !stale.isEmpty else { return }
+
+        let resolved = await withTaskGroup(of: (String, OverallAccessibility).self) { group in
+            for place in stale {
+                group.addTask {
+                    (Self.gradeKey(for: place), await Self.resolveGrade(for: place))
+                }
+            }
+            var out: [String: OverallAccessibility] = [:]
+            for await (key, grade) in group { out[key] = grade }
+            return out
+        }
+        placeGrades.merge(resolved) { _, new in new }
     }
 
     @MainActor
@@ -528,6 +559,9 @@ struct HomeMapView: View {
         // Push the Place Details page. The sheet hides itself while the stack
         // is deeper than the root (see onChange(of: path.count)).
         isSearchActive = false
+        if !visitedPlaces.contains(where: { Self.gradeKey(for: $0) == Self.gradeKey(for: place) }) {
+            visitedPlaces.append(place)
+        }
         path.append(HomeRoute.place(place))
     }
 }
