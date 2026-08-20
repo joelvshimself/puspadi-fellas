@@ -61,6 +61,11 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         // Denied, no signal (common in Simulator without a simulated
         // location set), etc. — the map just keeps its current/default
-        // region rather than crashing.
+        // region rather than crashing. Keep the published status in step so
+        // the UI can offer a way out instead of leaving a dead button:
+        // kCLErrorDenied surfaces here as well as through the delegate above.
+        Task { @MainActor in
+            authorizationStatus = manager.authorizationStatus
+        }
     }
 }

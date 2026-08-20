@@ -34,6 +34,29 @@ struct AccessibilityBadge: View {
     }
 }
 
+/// Placeholder shown in the badge's place while the grade is still resolving.
+/// Without it the pill is simply absent and the card silently reflows when the
+/// answer arrives, which reads as the app having skipped a step.
+struct AccessibilityBadgePlaceholder: View {
+    @State private var shimmer = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ProgressView()
+                .controlSize(.mini)
+            Text("CHECKING ACCESSIBILITY")
+                .font(.system(size: 12, weight: .semibold))
+        }
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
+        .opacity(shimmer ? 0.55 : 1)
+        .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: shimmer)
+        .onAppear { shimmer = true }
+    }
+}
+
 /// Read-only icon+label capsule — display tag, not an interactive pill
 /// (unlike SelectionPills.swift's selectable pills). Always black icon +
 /// text; only the fill inverts depending on what it's sitting on, so it

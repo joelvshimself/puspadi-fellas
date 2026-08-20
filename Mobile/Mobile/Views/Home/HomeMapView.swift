@@ -1,4 +1,5 @@
 import MapKit
+import UIKit
 import SwiftUI
 
 /// A tall CUSTOM detent instead of .large: iOS gives the true .large detent an
@@ -54,10 +55,21 @@ struct HomeMapView: View {
     /// map tap, the expanded search list if it came from a result).
     /// Accessibility grades the user is filtering the map to. Empty = show all
     /// (no filter). See the filter panel opened from the top-left button.
-    @State private var selectedGrades: Set<OverallAccessibility> = []
+    /// One grade at a time — the filter is a choice, not a combination.
+    @State private var selectedGrade: OverallAccessibility?
+    /// Set while the map is widening to look for a match, so the button can
+    /// show it is working.
+    @State private var isSearchingForGrade = false
     @State private var showFilter = false
     @State private var nearbyPlaces: [Place] = []
-    @State private var placeGrades: [UUID: OverallAccessibility] = [:]
+    /// Places the user has opened. The nearby sweep only queries for shopping
+    /// malls, so anything else they tap — a hotel from Apple's own POI layer,
+    /// say — would otherwise never get a pin, and so never show its grade.
+    @State private var visitedPlaces: [Place] = []
+    /// Grades keyed by rounded coordinate, NOT by `place.id`:
+    /// `Place.fromSearchResult` mints a new UUID on every search, so an
+    /// id-keyed cache never hit and each probe re-fetched every place.
+    @State private var placeGrades: [String: OverallAccessibility] = [:]
     @State private var nearbyLoadTask: Task<Void, Never>?
     /// Top and bottom safe-area insets captured before map ignores safe area.
     @State private var topSafeInset: CGFloat = 54
@@ -134,7 +146,11 @@ struct HomeMapView: View {
                         if !isSearching && !showFilter {
                             locationButton
                                 .padding(.trailing, 16)
-                                .padding(.bottom, SheetMetrics.peekHeight + 12)
+                                // This overlay sits inside the safe area, so the
+                                // button already clears the home indicator; adding
+                                // the full peek height on top left a ~38pt gap.
+                                // Tuned to sit ~12pt above the sheet's top edge.
+                                .padding(.bottom, SheetMetrics.peekHeight - 14)
                                 .transition(.opacity)
                         }
                     }
@@ -191,7 +207,12 @@ struct HomeMapView: View {
                         )
                         .presentationBackgroundInteraction(.enabled(upThrough: expandedDetent))
                         .presentationContentInteraction(.scrolls)
-                        .presentationCornerRadius(28)
+                        // No presentationCornerRadius: it takes ONE value for all
+                        // four corners, and the design has 34pt top / 58pt bottom.
+                        // That asymmetry is what iOS 26 already draws — the bottom
+                        // edges pull in at small heights — so overriding it with a
+                        // single 28 flattened the corners and lost both values.
+
                         .presentationDragIndicator(.hidden)
                         .interactiveDismissDisabled()
                     }
@@ -213,6 +234,7 @@ struct HomeMapView: View {
                             isSearchActive = false
                             sheetDetent = peekDetent
                             isSheetPresented = true
+                            Task { await refreshStaleGrades() }
                         } else {
                             isSheetPresented = false
                         }
@@ -234,41 +256,132 @@ struct HomeMapView: View {
     }
 
     private var displayedMalls: [Place] {
-        let base = nearbyPlaces.map { place in
+        var seen = Set<String>()
+        let combined = (nearbyPlaces + visitedPlaces).filter { seen.insert(Self.gradeKey(for: $0)).inserted }
+        let base = combined.map { place in
             var copy = place
-            copy.grade = placeGrades[place.id] ?? place.grade
+            copy.grade = placeGrades[Self.gradeKey(for: place)] ?? place.grade
             return copy
         }
-        if selectedGrades.isEmpty { return base }
-        return base.filter { selectedGrades.contains($0.grade ?? .noData) }
+        guard let selectedGrade else { return base }
+        return base.filter { ($0.grade ?? .noData) == selectedGrade }
+    }
+
+    /// Searches a region and resolves grades WITHOUT touching `nearbyPlaces`
+    /// or `visibleRegion`. The filter uses this to look ahead silently — moving
+    /// the map at each step made the pins churn and the camera stutter.
+    @MainActor
+    private func probe(_ region: MKCoordinateRegion) async -> [Place] {
+        let places = await NearbyPlacesService.search(in: region)
+        // `.noData` means "the backend had no signal yet", not "this place has
+        // no accessibility". Enrichment now finishes AFTER the first response,
+        // so caching that answer permanently left map pins untagged while the
+        // detail page — asking later — showed a real grade. Retry those.
+        let missing = places.filter {
+            let known = placeGrades[Self.gradeKey(for: $0)]
+            return known == nil || known == .noData
+        }
+
+        // Bounded, and capped. This previously fired one enrich per un-graded
+        // place with no limit — up to 25 at once, on every camera change. That
+        // saturates a phone's connection (starving the map tiles competing for
+        // it) and, since a cold enrich hits Google Places, spends real money
+        // per pan. A few at a time, for the nearest handful, is plenty.
+        if !missing.isEmpty {
+            let batch = Array(missing.prefix(Self.maxGradesPerLoad))
+            let pairs = await mapWithLimit(batch, limit: Self.maxConcurrentGradeLookups) { place in
+                (Self.gradeKey(for: place), await Self.resolveGrade(for: place))
+            }
+            placeGrades.merge(Dictionary(uniqueKeysWithValues: pairs)) { _, new in new }
+        }
+
+        return places.map { place in
+            var copy = place
+            copy.grade = placeGrades[Self.gradeKey(for: place)] ?? place.grade
+            return copy
+        }
+    }
+
+    /// How many places get a grade lookup per load, and how many run at once.
+    /// A pan should not cost 25 paid Google calls or 25 parallel connections.
+    private static let maxGradesPerLoad = 8
+    private static let maxConcurrentGradeLookups = 3
+
+    /// Stable across searches, unlike `place.id`.
+    private static func gradeKey(for place: Place) -> String {
+        PlaceCacheStore.key(lat: place.coordinate.latitude, lng: place.coordinate.longitude)
+    }
+
+    private static func resolveGrade(for place: Place) async -> OverallAccessibility {
+        guard let response = try? await AccessibilityService.shared.enrich(
+            lat: place.coordinate.latitude,
+            lng: place.coordinate.longitude,
+            name: place.name
+        ), let grades = response.grade, !grades.isEmpty else { return .noData }
+
+        if grades.contains(where: { $0.bestValue == "no" }) { return .notAccessible }
+        if grades.allSatisfy({ $0.bestValue == "yes" }) { return .accessible }
+        return .partiallyAccessible
+    }
+
+    /// Fills in grades that are still unknown, without re-running the nearby
+    /// search. Called on returning to the map, so a grade the detail page just
+    /// resolved shows up on the pin instead of waiting for the next pan.
+    @MainActor
+    private func refreshStaleGrades() async {
+        let stale = (nearbyPlaces + visitedPlaces).filter {
+            let known = placeGrades[Self.gradeKey(for: $0)]
+            return known == nil || known == .noData
+        }
+        guard !stale.isEmpty else { return }
+
+        await resolveGrades(for: stale)
     }
 
     @MainActor
     private func loadNearbyPlaces() async {
+        // Pins first. `probe` waits for every grade before returning, so
+        // routing startup through it left the map empty until ~8 enrich calls
+        // finished — seconds of nothing, which is what made the app feel slow
+        // to load. Where the places are is known immediately; what grade they
+        // have is not, and should not hold them back.
         let places = await NearbyPlacesService.search(in: visibleRegion)
         nearbyPlaces = places
-        for place in places {
-            if placeGrades[place.id] != nil { continue }
-            if let response = try? await AccessibilityService.shared.enrich(
-                lat: place.coordinate.latitude,
-                lng: place.coordinate.longitude,
-                name: place.name
-            ), let grades = response.grade, !grades.isEmpty {
-                if grades.contains(where: { $0.bestValue == "no" }) {
-                    placeGrades[place.id] = .notAccessible
-                } else if grades.allSatisfy({ $0.bestValue == "yes" }) {
-                    placeGrades[place.id] = .accessible
-                } else {
-                    placeGrades[place.id] = .partiallyAccessible
+        await resolveGrades(for: places)
+    }
+
+    /// Resolves grades a few at a time, publishing each as it lands so pins
+    /// tag themselves progressively instead of all at the end.
+    @MainActor
+    private func resolveGrades(for places: [Place]) async {
+        let pending = places.filter {
+            let known = placeGrades[Self.gradeKey(for: $0)]
+            return known == nil || known == .noData
+        }.prefix(Self.maxGradesPerLoad)
+        guard !pending.isEmpty else { return }
+
+        var queue = Array(pending).makeIterator()
+
+        await withTaskGroup(of: (String, OverallAccessibility).self) { group in
+            var started = 0
+            while started < Self.maxConcurrentGradeLookups, let place = queue.next() {
+                group.addTask { (Self.gradeKey(for: place), await Self.resolveGrade(for: place)) }
+                started += 1
+            }
+
+            while let (key, grade) = await group.next() {
+                // Publish immediately: one pin tagging itself is better than
+                // every pin tagging at once, several seconds later.
+                placeGrades[key] = grade
+                if let place = queue.next() {
+                    group.addTask { (Self.gradeKey(for: place), await Self.resolveGrade(for: place)) }
                 }
-            } else {
-                placeGrades[place.id] = .noData
             }
         }
     }
 
     private var mapLayer: some View {
-        Map(position: $cameraPosition) {
+        Map(position: $cameraPosition, selection: $mapSelection) {
             UserAnnotation()
 
             ForEach(displayedMalls) { place in
@@ -287,7 +400,13 @@ struct HomeMapView: View {
         }
         .onMapCameraChange { context in
             visibleRegion = context.region
+            // The filter drives the camera itself and has already loaded the
+            // places for its destination; re-querying here would fight it.
+            guard !isSearchingForGrade else { return }
             scheduleNearbyPlacesLoad()
+        }
+        .onChange(of: mapSelection) { _, selection in
+            handleMapSelection(selection)
         }
         .mapStyle(.standard(elevation: .realistic))
     }
@@ -300,39 +419,49 @@ struct HomeMapView: View {
                 }
             }
             .overlay(alignment: .topTrailing) {
-                if !selectedGrades.isEmpty {
-                    Text("\(selectedGrades.count)")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.white)
-                        .frame(minWidth: 20, minHeight: 20)
-                        .background(Circle().fill(Color.accentColor))
+                if let selectedGrade {
+                    Circle()
+                        .fill(selectedGrade.badgeForeground)
+                        .frame(width: 14, height: 14)
                         .overlay(Circle().stroke(.background, lineWidth: 2))
-                        .offset(x: 6, y: -6)
+                        .offset(x: 4, y: -4)
                         .transition(.scale.combined(with: .opacity))
                 }
             }
 
             Spacer()
 
-            // Profile button opens Profile Menu (Sign in with Apple if needed)
-            circularButton(systemName: "person.fill") {
-                openProfile()
-            }
-            .simultaneousGesture(
-                LongPressGesture(minimumDuration: 0.5).onEnded { _ in
-                    homeCover = .analysing
+            // Saved places and profile share one glass capsule, matching the
+            // share/save pill on the place detail screen.
+            HStack(spacing: 22) {
+                Button {
+                    path.append(HomeRoute.saved)
+                } label: {
+                    pillIcon("bookmark.fill")
+                circularButton(systemName: "person.fill") {
+                    openProfile()
+                }   
                 }
+            
+            .padding(.horizontal, 16)
+            .frame(height: SheetMetrics.buttonDiameter)
+            .homeGlass(in: Capsule(), tint: .white.opacity(0.30))
+            .shadow(
+                color: .black.opacity(SheetMetrics.buttonShadowOpacity),
+                radius: SheetMetrics.buttonShadowRadius,
+                y: SheetMetrics.buttonShadowY
             )
-            .accessibilityHint("Long press to open Analysing demo")
         }
     }
 
     private var filterPanel: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ForEach(OverallAccessibility.allCases) { grade in
-                let isOn = selectedGrades.contains(grade)
+            // `.noData` is deliberately absent: it means "we have no signal",
+            // which is not something anyone wants to filter *for*.
+            ForEach(OverallAccessibility.allCases.filter { $0 != .noData }) { grade in
+                let isOn = selectedGrade == grade
                 Button {
-                    toggleGrade(grade)
+                    selectGrade(grade)
                 } label: {
                     HStack(spacing: 14) {
                         Image(systemName: grade.symbolName)
@@ -356,29 +485,101 @@ struct HomeMapView: View {
         }
     }
 
-    private func toggleGrade(_ grade: OverallAccessibility) {
+    /// Picking a grade replaces any previous one, closes the panel, and then
+    /// widens the map until at least one place with that grade is in view.
+    /// Tapping the active grade again clears the filter.
+    private func selectGrade(_ grade: OverallAccessibility) {
+        let isClearing = (selectedGrade == grade)
         withAnimation(.easeInOut(duration: 0.2)) {
-            if selectedGrades.contains(grade) {
-                selectedGrades.remove(grade)
-            } else {
-                selectedGrades.insert(grade)
-            }
+            selectedGrade = isClearing ? nil : grade
         }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            showFilter = false
+        }
+        guard !isClearing else { return }
+        nearbyLoadTask?.cancel()
+        nearbyLoadTask = Task { await zoomOutUntilMatch(for: grade) }
+    }
+
+    /// Widens the region step by step, re-querying at each step, until a place
+    /// with `grade` is in view. Gives up past `maxSpan` and leaves the map
+    /// where it started rather than stranding the user zoomed out to nothing.
+    @MainActor
+    private func zoomOutUntilMatch(for grade: OverallAccessibility) async {
+        let center = visibleRegion.center
+        let startRegion = visibleRegion
+        let maxSpan: Double = 2.0
+        var span = max(visibleRegion.span.latitudeDelta, defaultMapSpan)
+
+        isSearchingForGrade = true
+        defer { isSearchingForGrade = false }
+
+        while span <= maxSpan {
+            let region = MKCoordinateRegion(
+                center: center,
+                span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)
+            )
+            // Look ahead without moving the map: the camera should make one
+            // deliberate move at the end, not a step per doubling.
+            let found = await probe(region)
+            guard !Task.isCancelled else { return }
+
+            if found.contains(where: { ($0.grade ?? .noData) == grade }) {
+                nearbyPlaces = found
+                visibleRegion = region
+                withAnimation(.easeInOut(duration: 0.65)) {
+                    cameraPosition = .region(region)
+                }
+                // Let the animation finish before re-enabling camera-driven
+                // reloads, or it queries mid-flight and stutters again.
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                return
+            }
+            span *= 2
+        }
+
+        visibleRegion = startRegion
+        withAnimation(.easeInOut(duration: 0.65)) {
+            cameraPosition = .region(startRegion)
+        }
+        try? await Task.sleep(nanoseconds: 700_000_000)
+    }
+
+    private var isLocationDenied: Bool {
+        locationManager.authorizationStatus == .denied
+            || locationManager.authorizationStatus == .restricted
     }
 
     private var locationButton: some View {
         GlassCircleButton {
-            if let coordinate = locationManager.currentCoordinate {
+            // Denied was silently doing nothing: requestLocation() falls
+            // through to `default: break`, so the button was dead with no
+            // feedback at all. Send the user somewhere they can fix it.
+            if isLocationDenied {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            } else if let coordinate = locationManager.currentCoordinate {
                 recenter(on: coordinate.clLocation, span: defaultMapSpan)
             } else {
                 locationManager.requestLocation()
             }
         } label: {
-            Image(systemName: "location.fill")
+            Image(systemName: isLocationDenied ? "location.slash.fill" : "location.fill")
                 .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(.primary)
+                .foregroundStyle(isLocationDenied ? Color.secondary : Color.primary)
         }
-        .accessibilityLabel("My location")
+        .accessibilityLabel(isLocationDenied ? "Location access off — open Settings" : "My location")
+    }
+
+    /// Icon inside the saved/profile capsule — the capsule owns the glass, so
+    /// each icon only needs its own hit area.
+    private func pillIcon(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 16, weight: .medium))
+            .foregroundStyle(.primary)
+            .frame(width: 24, height: SheetMetrics.buttonDiameter)
+            .contentShape(Rectangle())
     }
 
     private func circularButton(systemName: String, action: @escaping () -> Void) -> some View {
@@ -419,6 +620,20 @@ struct HomeMapView: View {
         }
     }
 
+
+    /// A tapped MapKit POI carries a name and coordinate — exactly what the
+    /// accessibility lookup needs — so route it through the same openPlace()
+    /// path a search result or a mall pin uses.
+    private func handleMapSelection(_ feature: MapFeature?) {
+        guard let feature else { return }
+        mapSelection = nil
+        openPlace(
+            Place.fromSearchResult(
+                name: feature.title ?? "Selected place",
+                category: "Place",
+                coordinate: feature.coordinate
+            )
+        )
     private func openProfile(tab: ProfileTab = .reviews) {
         if auth.isSignedIn {
             path.append(HomeRoute.profile(tab))
@@ -432,6 +647,9 @@ struct HomeMapView: View {
         // Push the Place Details page. The sheet hides itself while the stack
         // is deeper than the root (see onChange(of: path.count)).
         isSearchActive = false
+        if !visitedPlaces.contains(where: { Self.gradeKey(for: $0) == Self.gradeKey(for: place) }) {
+            visitedPlaces.append(place)
+        }
         path.append(HomeRoute.place(place))
     }
 }

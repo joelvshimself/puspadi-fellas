@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SavedView: View {
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var savedPlacesService = SavedPlacesService.shared
 
     private var savedPlaces: [Place] {
@@ -51,10 +52,28 @@ struct SavedView: View {
                         .padding(.vertical, 4)
                     }
                 }
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
             }
         }
-        .navigationTitle("Saved")
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
+        .navigationTitle("Saved".localized)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.primary)
+                }
+            }
+        }
+        // The list renders from local snapshots, so it is already on screen
+        // before this runs — this only reconciles with the server.
         .task {
             await savedPlacesService.fetchSavedPlaceIds()
         }

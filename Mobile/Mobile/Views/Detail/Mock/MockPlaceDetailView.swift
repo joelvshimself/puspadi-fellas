@@ -25,6 +25,16 @@ struct MockPlaceDetailView: View {
         store.reviewPhotos.compactMap(\.imageURL)
     }
 
+    /// Downloads the carousel's images ahead of the swipe, a couple at a time
+    /// so it does not compete with the first slide the user is actually
+    /// looking at.
+    private func prefetchCarousel() async {
+        guard !heroURLs.isEmpty else { return }
+        _ = await mapWithLimit(heroURLs, limit: 2) { url in
+            _ = try? await NetworkRetry.download(from: url)
+        }
+    }
+
     private var totalHeroCount: Int {
         max(1, (store.streetImageURL != nil ? 1 : 0) + heroURLs.count)
     }
@@ -51,6 +61,14 @@ struct MockPlaceDetailView: View {
         .task {
             await store.load()
             store.startWatching()
+        }
+        // Warm the rest of the carousel while the first slide is being looked
+        // at. AsyncImage only fetches a page when it comes into view, so every
+        // swipe used to start its own download; downloading them up front
+        // through the same URLSession puts them in URLCache, and the swipe
+        // then resolves from cache instead of from the network.
+        .task(id: heroURLs) {
+            await prefetchCarousel()
         }
         .navigationDestination(item: $facilityDestination) { kind in
             NotReviewView(kind: kind, store: store, place: place)
@@ -275,7 +293,14 @@ struct MockPlaceDetailView: View {
 
     private var placeInfoCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if let grade = store.overallGrade {
+            // Resolution has to be checked FIRST. `overallGrade` falls back to
+            // `.noData` when there are no feature grades yet, so it is never
+            // nil — which made the placeholder below unreachable and showed a
+            // confident "NO DATA AVAILABLE" that then flipped to the real
+            // grade. Malls hid this because the map had already cached theirs.
+            if !store.enrichResolved {
+                AccessibilityBadgePlaceholder()
+            } else if let grade = store.overallGrade {
                 AccessibilityBadge(grade: grade)
             }
 

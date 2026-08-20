@@ -1,4 +1,5 @@
 import MapKit
+import UIKit
 import SwiftUI
 
 enum HomeRoute: Hashable {
@@ -35,17 +36,17 @@ enum SheetMetrics {
     // Peek — Homepage 285:1323
     static let grabberWidth: CGFloat = 48
     static let grabberHeight: CGFloat = 6
-    static let grabberTopPadding: CGFloat = 8
+    static let grabberTopPadding: CGFloat = 10
     static let grabberBlockHeight: CGFloat = 16
 
     /// These two must still sum with the grabber and field to 102pt — that is
     /// the detent floor below which iOS squeezes the sheet's contents. To
     /// tighten the gap under the pill, move points from bottom to top.
-    static let rowTopPadding: CGFloat = 20
-    static let rowBottomPadding: CGFloat = 10
+    static let rowTopPadding: CGFloat = 10
+    static let rowBottomPadding: CGFloat = 15
     static let horizontalPadding: CGFloat = 16
 
-    static let fieldHeight: CGFloat = 56
+    static let fieldHeight: CGFloat = 40
     static let fieldSpacing: CGFloat = 8
     static let fieldFillOpacity: CGFloat = 0.8
     static let fieldBorderWidth: CGFloat = 2
@@ -55,10 +56,34 @@ enum SheetMetrics {
     static let textOpacity: CGFloat = 0.8
     static let placeholderOpacity: CGFloat = 0.3
 
-    /// 102pt is a hard floor for the detent: below it iOS squeezes the sheet's
-    /// contents to fit (at 92 the 6pt grabber renders 2pt and vanishes).
+    // MARK: Collapsed sheet height (the detent)
+    //
+    // Must equal what the peek CONTENT actually renders. If the detent is
+    // smaller than the content, iOS squeezes the sheet instead of honouring it
+    // — the 6pt grabber is the first thing to disappear.
+    //
+    // The catch: the grabber block renders `grabberTopPadding + grabberHeight`
+    // (18 + 6 = 24), NOT `grabberBlockHeight` (16). `minHeight` is only a
+    // floor, so raising grabberTopPadding grows the block while the old
+    // formula kept counting 16 — leaving the detent 8pt short.
+    //
+    // Swap which line is commented to compare the two.
+
+    //  OLD — under-counts the grabber block by 8pt (gives 92):
+    //  static let peekHeight: CGFloat =
+    //      grabberBlockHeight + rowTopPadding + fieldHeight + rowBottomPadding
+
+    //  CURRENT — counts the block as it really lays out (gives 100):
     static let peekHeight: CGFloat =
-        grabberBlockHeight + rowTopPadding + fieldHeight + rowBottomPadding
+        max(grabberBlockHeight, grabberTopPadding + grabberHeight)
+            + rowTopPadding + fieldHeight + rowBottomPadding
+
+    //  Knobs, for reference — change these, not peekHeight:
+    //    grabberTopPadding   10   space above the grabber
+    //    rowTopPadding       10   grabber block -> pill
+    //    fieldHeight         40   the pill itself
+    //    rowBottomPadding    15   pill -> sheet bottom
+    //    horizontalPadding   16   pill left/right inset
 
     // List rows — List/Location 285:2069
     static let rowCornerRadius: CGFloat = 16
@@ -188,6 +213,8 @@ struct SearchSheet: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var searchTask: Task<Void, Never>?
+    /// Warms the detail page's caches for the visible results.
+    @State private var prefetchTask: Task<Void, Never>?
 
     private var query: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -206,8 +233,12 @@ struct SearchSheet: View {
             }
         }
         .onChange(of: isExpanded) { _, expanded in
-            isFieldFocused = expanded
+            // Only collapsing touches focus. Expanding deliberately does not:
+            // dragging the grabber up should reveal the list without summoning
+            // the keyboard, the way Apple Maps behaves. Tapping the field still
+            // focuses it directly, which is what expands the sheet.
             if !expanded {
+                isFieldFocused = false
                 speechRecognizer.stopListening()
             }
         }
@@ -319,7 +350,7 @@ struct SearchSheet: View {
         .padding(.horizontal, 12)
         .frame(height: SheetMetrics.fieldHeight)
         .background {
-            Capsule().fill(Color(uiColor: .secondarySystemGroupedBackground))
+            Capsule().fill(Color(.systemBackground).opacity(isExpanded ? 1 : SheetMetrics.fieldFillOpacity))
         }
         .overlay {
             Capsule().strokeBorder(
@@ -465,6 +496,7 @@ struct SearchSheet: View {
         do {
             let response = try await MKLocalSearch(request: request).start()
             guard !Task.isCancelled else { return }
+            defer { prefetchDetails(for: results) }
             results = response.mapItems.map { item in
                 Place.fromSearchResult(
                     name: item.name ?? text,
@@ -483,6 +515,51 @@ struct SearchSheet: View {
             results = []
             isLoading = false
             errorMessage = (error as NSError).localizedDescription
+        }
+    }
+
+    /// Warms everything the Place Details page waits on, while the user is
+    /// still reading the results list: the accessibility grade (cached to disk
+    /// by PlaceCacheStore) and the street and review photos (cached by
+    /// URLCache, since NetworkRetry downloads through URLSession.shared).
+    /// Opening a result should then be instant rather than a page of spinners.
+    private func prefetchDetails(for places: [Place]) {
+        prefetchTask?.cancel()
+        // Three, not six. Each target costs an enrich, an image download and a
+        // review-photos call, so six was up to ~30 requests fired on every
+        // search — enough to make the whole app feel slow on a phone.
+        let targets = Array(places.prefix(3))
+        guard !targets.isEmpty else { return }
+
+        prefetchTask = Task(priority: .utility) {
+            _ = await mapWithLimit(targets, limit: 2) { place in
+                let lat = place.coordinate.latitude
+                let lng = place.coordinate.longitude
+
+                // The grade is the slowest thing the detail page waits on.
+                let enriched = try? await AccessibilityService.shared.enrich(
+                    lat: lat, lng: lng, name: place.name
+                )
+                guard !Task.isCancelled else { return }
+
+                // Decoding the street photo here also writes the blurred
+                // thumbnail, so a place opened for the very first time has a
+                // stand-in to show rather than an empty box.
+                if let url = enriched?.place?.imageUrl.flatMap(URL.init(string:)),
+                   let data = try? await NetworkRetry.download(from: url),
+                   let image = UIImage(data: data) {
+                    await MainActor.run {
+                        ImageStore.shared.store(
+                            image,
+                            for: ImageStore.key(for: place.coordinate)
+                        )
+                    }
+                }
+
+                // Community photos are deliberately NOT prefetched: they were
+                // the bulk of the requests and the least likely to be looked
+                // at. The detail page still loads them on demand.
+            }
         }
     }
 
@@ -513,16 +590,14 @@ struct TypewriterPlaceholderView: View {
 
     private let englishPhrases: [String] = [
         "Search a place...",
-        "Search Malls in Bali...",
-        "Find Beachwalk, Level 21...",
+        "Search Malls in around you...",
         "Discover accessible spots...",
         "Search shopping centers..."
     ]
 
     private let indonesianPhrases: [String] = [
         "Cari tempat...",
-        "Cari Mall di Bali...",
-        "Temukan Beachwalk, Level 21...",
+        "Cari Mall di sekitar kamu...",
         "Cari tempat aksesibel...",
         "Cari pusat perbelanjaan..."
     ]

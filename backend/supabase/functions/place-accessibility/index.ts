@@ -77,6 +77,8 @@ Deno.serve(async (req: Request) => {
     // accessibility source; the result is cached for PLACE_CACHE_TTL_DAYS, so
     // a place is only ever fetched from Google once per cycle no matter how
     // many users look at it — that's what keeps the paid call count down.
+    // Kept inline because it is the signal the caller is actually asking for
+    // and it answers in a few hundred ms.
     if (GOOGLE_MAPS_API_KEY && name) {
       try {
         await tryEnrichFromGoogle(placeId, lat, lng, name);
@@ -87,26 +89,34 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Supplement/fallback: OpenStreetMap (free). Still queried so places
-    // Google has no accessibilityOptions for can be covered by community
-    // tags, and both feed the confidence-weighted grade. Costs nothing, so
-    // there's no reason to skip it even when Google returned data.
-    await tryEnrichFromOSM(placeId, lat, lng);
+    // Everything below used to run inline, which is why a first view of a
+    // place took so long: Overpass is slow and retries with backoff, and the
+    // Mapillary step downloads an image and re-uploads it to Storage. The
+    // caller does not need either to render a grade, so they now run after
+    // the response goes out. The next view picks up whatever they wrote.
+    backgroundTask(async () => {
+      // Supplement/fallback: OpenStreetMap (free). Still queried so places
+      // Google has no accessibilityOptions for can be covered by community
+      // tags, and both feed the confidence-weighted grade.
+      await tryEnrichFromOSM(placeId, lat, lng);
 
-    // Photo: Mapillary (open, CC BY-SA street-level imagery). Downloaded once
-    // and stored in Supabase Storage — its license permits caching the bytes,
-    // and its own thumbnail URLs expire, so we store our own permanent copy.
-    await tryCacheMapillaryImage(placeId, lat, lng);
+      // Photo: Mapillary (open, CC BY-SA street-level imagery). Downloaded
+      // once and stored in Supabase Storage — its license permits caching the
+      // bytes, and its own thumbnail URLs expire, so we keep our own copy.
+      await tryCacheMapillaryImage(placeId, lat, lng);
 
-    // Negative-cache marker. `needsRefresh` treats a row with null
-    // google_accessibility AND null osm_accessibility as "never fetched", so a
-    // place Google can't match and OSM has no tag for would otherwise re-run
-    // the (paid) Google call + Overpass + a Mapillary download on EVERY view.
-    // Stamp an empty object so freshness is governed purely by the TTL from here.
-    await supabase.from("place_cache")
-      .update({ google_accessibility: {} })
-      .eq("place_id", placeId)
-      .is("google_accessibility", null);
+      // Negative-cache marker. `needsRefresh` treats a row with null
+      // google_accessibility AND null osm_accessibility as "never fetched", so
+      // a place Google can't match and OSM has no tag for would otherwise
+      // re-run the (paid) Google call + Overpass + a Mapillary download on
+      // EVERY view. Stamp an empty object so freshness is governed purely by
+      // the TTL from here. Must stay at the END of this task, so a refresh
+      // that is still in flight is not mistaken for a completed one.
+      await supabase.from("place_cache")
+        .update({ google_accessibility: {} })
+        .eq("place_id", placeId)
+        .is("google_accessibility", null);
+    });
   }
 
   const { data: grade } = await supabase.rpc("accessibility_grade", { target_place_id: placeId });
@@ -114,6 +124,18 @@ Deno.serve(async (req: Request) => {
 
   return json({ status: "ok", place, grade });
 });
+
+/// Runs work after the response has been sent. Supabase's edge runtime keeps
+/// the worker alive for anything passed to `waitUntil`; without it the task
+/// would be killed as soon as the response is returned.
+function backgroundTask(work: () => Promise<void>) {
+  const promise = work().catch((err) =>
+    console.error("Background enrichment failed (non-fatal):", err)
+  );
+  const runtime = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } })
+    .EdgeRuntime;
+  runtime?.waitUntil?.(promise);
+}
 
 // --- identity ---------------------------------------------------------------
 

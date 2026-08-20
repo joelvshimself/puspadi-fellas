@@ -22,6 +22,9 @@ struct PlaceImageView: View {
     var cornerRadius: CGFloat = 16
 
     @State private var image: UIImage?
+    /// Low-quality stand-in shown, blurred, until the real image arrives.
+    @State private var placeholder: UIImage?
+    @State private var shimmerPhase: CGFloat = -1
     @State private var shownAttribution: String?
     @State private var finishedLoading = false
 
@@ -31,6 +34,7 @@ struct PlaceImageView: View {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
+                    .transition(.opacity)
                     .overlay(alignment: .bottomLeading) {
                         if let shownAttribution {
                             Text(shownAttribution)
@@ -43,9 +47,29 @@ struct PlaceImageView: View {
                         }
                     }
             } else if !finishedLoading {
+                // No spinner: an image should resolve into view, not sit behind
+                // a progress wheel. Blurred thumbnail if we have one, otherwise
+                // a soft neutral wash that the real photo fades over.
                 ZStack {
-                    Rectangle().fill(Color(.secondarySystemBackground))
-                    ProgressView()
+                    LinearGradient(
+                        colors: [
+                            Color(.secondarySystemBackground),
+                            Color(.tertiarySystemBackground),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    if let placeholder {
+                        Image(uiImage: placeholder)
+                            .resizable()
+                            .scaledToFill()
+                            .blur(radius: 12)
+                            .clipped()
+                    }
+                    // A still placeholder reads as "empty", not "loading". A
+                    // sweeping highlight says work is happening without putting
+                    // a progress wheel over a photo.
+                    shimmer
                 }
             } else {
                 ZStack {
@@ -58,12 +82,51 @@ struct PlaceImageView: View {
         }
         .frame(height: height)
         .frame(maxWidth: .infinity)
+        .animation(.easeOut(duration: 0.35), value: image != nil)
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         // Re-run when the enrich result resolves (so the Mapillary URL, if any,
         // is known before we decide on a fallback).
         .task(id: taskKey) {
             guard resolved else { return }
+            let key = ImageStore.key(for: coordinate)
+
+            // Already decoded: no network, and crucially no regenerating a
+            // Look Around or map snapshot, which is what made revisits slow.
+            if let cached = ImageStore.shared.image(for: key) {
+                image = cached
+                shownAttribution = attribution
+                finishedLoading = true
+                return
+            }
+
+            // Nothing full-size yet — show the low-quality thumbnail so there
+            // is something on screen while the real one arrives.
+            if image == nil {
+                placeholder = ImageStore.shared.thumbnail(for: key)
+            }
+
             await load()
+            if let image { ImageStore.shared.store(image, for: key) }
+        }
+    }
+
+    /// Skeleton sweep, the usual signal for media that is still loading.
+    private var shimmer: some View {
+        GeometryReader { geo in
+            LinearGradient(
+                colors: [.clear, Color.white.opacity(0.35), .clear],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: geo.size.width * 0.6)
+            .offset(x: shimmerPhase * geo.size.width * 1.6)
+            .blendMode(.plusLighter)
+        }
+        .allowsHitTesting(false)
+        .onAppear {
+            withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
+                shimmerPhase = 1
+            }
         }
     }
 
@@ -72,6 +135,8 @@ struct PlaceImageView: View {
     }
 
     private func load() async {
+        // Deliberately not clearing `image` here: it may already hold the
+        // thumbnail, and blanking it would put the spinner back.
         finishedLoading = false
 
         // 1. Mapillary (cached, real street-level photo).
