@@ -53,7 +53,10 @@ struct HomeMapView: View {
     @State private var isSearchingForGrade = false
     @State private var showFilter = false
     @State private var nearbyPlaces: [Place] = []
-    @State private var placeGrades: [UUID: OverallAccessibility] = [:]
+    /// Grades keyed by rounded coordinate, NOT by `place.id`:
+    /// `Place.fromSearchResult` mints a new UUID on every search, so an
+    /// id-keyed cache never hit and each probe re-fetched every place.
+    @State private var placeGrades: [String: OverallAccessibility] = [:]
     @State private var nearbyLoadTask: Task<Void, Never>?
     /// Top and bottom safe-area insets captured before map ignores safe area.
     @State private var topSafeInset: CGFloat = 54
@@ -223,7 +226,7 @@ struct HomeMapView: View {
     private var displayedMalls: [Place] {
         let base = nearbyPlaces.map { place in
             var copy = place
-            copy.grade = placeGrades[place.id] ?? place.grade
+            copy.grade = placeGrades[Self.gradeKey(for: place)] ?? place.grade
             return copy
         }
         guard let selectedGrade else { return base }
@@ -236,18 +239,38 @@ struct HomeMapView: View {
     @MainActor
     private func probe(_ region: MKCoordinateRegion) async -> [Place] {
         let places = await NearbyPlacesService.search(in: region)
-        for place in places where placeGrades[place.id] == nil {
-            placeGrades[place.id] = await resolveGrade(for: place)
+        let missing = places.filter { placeGrades[Self.gradeKey(for: $0)] == nil }
+
+        // Concurrently, not one after another: this used to be a sequential
+        // await per place, so a probe cost up to 25 round-trips end to end and
+        // a rarer grade multiplied that by every doubling.
+        if !missing.isEmpty {
+            let resolved = await withTaskGroup(of: (String, OverallAccessibility).self) { group in
+                for place in missing {
+                    group.addTask {
+                        (Self.gradeKey(for: place), await Self.resolveGrade(for: place))
+                    }
+                }
+                var out: [String: OverallAccessibility] = [:]
+                for await (key, grade) in group { out[key] = grade }
+                return out
+            }
+            placeGrades.merge(resolved) { _, new in new }
         }
+
         return places.map { place in
             var copy = place
-            copy.grade = placeGrades[place.id] ?? place.grade
+            copy.grade = placeGrades[Self.gradeKey(for: place)] ?? place.grade
             return copy
         }
     }
 
-    @MainActor
-    private func resolveGrade(for place: Place) async -> OverallAccessibility {
+    /// Stable across searches, unlike `place.id`.
+    private static func gradeKey(for place: Place) -> String {
+        PlaceCacheStore.key(lat: place.coordinate.latitude, lng: place.coordinate.longitude)
+    }
+
+    private static func resolveGrade(for place: Place) async -> OverallAccessibility {
         guard let response = try? await AccessibilityService.shared.enrich(
             lat: place.coordinate.latitude,
             lng: place.coordinate.longitude,
@@ -261,26 +284,7 @@ struct HomeMapView: View {
 
     @MainActor
     private func loadNearbyPlaces() async {
-        let places = await NearbyPlacesService.search(in: visibleRegion)
-        nearbyPlaces = places
-        for place in places {
-            if placeGrades[place.id] != nil { continue }
-            if let response = try? await AccessibilityService.shared.enrich(
-                lat: place.coordinate.latitude,
-                lng: place.coordinate.longitude,
-                name: place.name
-            ), let grades = response.grade, !grades.isEmpty {
-                if grades.contains(where: { $0.bestValue == "no" }) {
-                    placeGrades[place.id] = .notAccessible
-                } else if grades.allSatisfy({ $0.bestValue == "yes" }) {
-                    placeGrades[place.id] = .accessible
-                } else {
-                    placeGrades[place.id] = .partiallyAccessible
-                }
-            } else {
-                placeGrades[place.id] = .noData
-            }
-        }
+        nearbyPlaces = await probe(visibleRegion)
     }
 
     private var mapLayer: some View {
