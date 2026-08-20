@@ -165,7 +165,12 @@ struct HomeMapView: View {
                         )
                         .presentationBackgroundInteraction(.enabled(upThrough: expandedDetent))
                         .presentationContentInteraction(.scrolls)
-                        .presentationCornerRadius(28)
+                        // No presentationCornerRadius: it takes ONE value for all
+                        // four corners, and the design has 34pt top / 58pt bottom.
+                        // That asymmetry is what iOS 26 already draws — the bottom
+                        // edges pull in at small heights — so overriding it with a
+                        // single 28 flattened the corners and lost both values.
+
                         .presentationDragIndicator(.hidden)
                         .interactiveDismissDisabled()
                     }
