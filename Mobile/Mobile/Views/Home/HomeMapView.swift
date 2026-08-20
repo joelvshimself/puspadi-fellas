@@ -428,9 +428,9 @@ struct HomeMapView: View {
                         .transition(.scale.combined(with: .opacity))
                 }
             }
-
+            
             Spacer()
-
+            
             // Saved places and profile share one glass capsule, matching the
             // share/save pill on the place detail screen.
             HStack(spacing: 22) {
@@ -438,11 +438,13 @@ struct HomeMapView: View {
                     path.append(HomeRoute.saved)
                 } label: {
                     pillIcon("bookmark.fill")
-                circularButton(systemName: "person.fill") {
-                    openProfile()
-                }   
                 }
-            
+                Button {
+                    openProfile()
+                } label: {
+                    pillIcon("person.fill")
+                }
+            }
             .padding(.horizontal, 16)
             .frame(height: SheetMetrics.buttonDiameter)
             .homeGlass(in: Capsule(), tint: .white.opacity(0.30))
@@ -453,180 +455,180 @@ struct HomeMapView: View {
             )
         }
     }
-
-    private var filterPanel: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            // `.noData` is deliberately absent: it means "we have no signal",
-            // which is not something anyone wants to filter *for*.
-            ForEach(OverallAccessibility.allCases.filter { $0 != .noData }) { grade in
-                let isOn = selectedGrade == grade
-                Button {
-                    selectGrade(grade)
-                } label: {
-                    HStack(spacing: 14) {
-                        Image(systemName: grade.symbolName)
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(isOn ? grade.badgeForeground : .primary)
-                            .frame(width: 44, height: 44)
-                            .background {
-                                Circle().fill(isOn ? grade.badgeBackground : Color(uiColor: .secondarySystemGroupedBackground))
-                            }
-                            .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
-
-                        Text(grade.label)
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .shadow(color: .black.opacity(0.35), radius: 4, y: 1)
+        
+        private var filterPanel: some View {
+            VStack(alignment: .leading, spacing: 14) {
+                // `.noData` is deliberately absent: it means "we have no signal",
+                // which is not something anyone wants to filter *for*.
+                ForEach(OverallAccessibility.allCases.filter { $0 != .noData }) { grade in
+                    let isOn = selectedGrade == grade
+                    Button {
+                        selectGrade(grade)
+                    } label: {
+                        HStack(spacing: 14) {
+                            Image(systemName: grade.symbolName)
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(isOn ? grade.badgeForeground : .primary)
+                                .frame(width: 44, height: 44)
+                                .background {
+                                    Circle().fill(isOn ? grade.badgeBackground : Color(uiColor: .secondarySystemGroupedBackground))
+                                }
+                                .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
+                            
+                            Text(grade.label)
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .shadow(color: .black.opacity(0.35), radius: 4, y: 1)
+                        }
+                        .contentShape(Rectangle())
                     }
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
-    }
-
-    /// Picking a grade replaces any previous one, closes the panel, and then
-    /// widens the map until at least one place with that grade is in view.
-    /// Tapping the active grade again clears the filter.
-    private func selectGrade(_ grade: OverallAccessibility) {
-        let isClearing = (selectedGrade == grade)
-        withAnimation(.easeInOut(duration: 0.2)) {
-            selectedGrade = isClearing ? nil : grade
-        }
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            showFilter = false
-        }
-        guard !isClearing else { return }
-        nearbyLoadTask?.cancel()
-        nearbyLoadTask = Task { await zoomOutUntilMatch(for: grade) }
-    }
-
-    /// Widens the region step by step, re-querying at each step, until a place
-    /// with `grade` is in view. Gives up past `maxSpan` and leaves the map
-    /// where it started rather than stranding the user zoomed out to nothing.
-    @MainActor
-    private func zoomOutUntilMatch(for grade: OverallAccessibility) async {
-        let center = visibleRegion.center
-        let startRegion = visibleRegion
-        let maxSpan: Double = 2.0
-        var span = max(visibleRegion.span.latitudeDelta, defaultMapSpan)
-
-        isSearchingForGrade = true
-        defer { isSearchingForGrade = false }
-
-        while span <= maxSpan {
-            let region = MKCoordinateRegion(
-                center: center,
-                span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)
-            )
-            // Look ahead without moving the map: the camera should make one
-            // deliberate move at the end, not a step per doubling.
-            let found = await probe(region)
-            guard !Task.isCancelled else { return }
-
-            if found.contains(where: { ($0.grade ?? .noData) == grade }) {
-                nearbyPlaces = found
-                visibleRegion = region
-                withAnimation(.easeInOut(duration: 0.65)) {
-                    cameraPosition = .region(region)
-                }
-                // Let the animation finish before re-enabling camera-driven
-                // reloads, or it queries mid-flight and stutters again.
-                try? await Task.sleep(nanoseconds: 700_000_000)
-                return
+        
+        /// Picking a grade replaces any previous one, closes the panel, and then
+        /// widens the map until at least one place with that grade is in view.
+        /// Tapping the active grade again clears the filter.
+        private func selectGrade(_ grade: OverallAccessibility) {
+            let isClearing = (selectedGrade == grade)
+            withAnimation(.easeInOut(duration: 0.2)) {
+                selectedGrade = isClearing ? nil : grade
             }
-            span *= 2
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                showFilter = false
+            }
+            guard !isClearing else { return }
+            nearbyLoadTask?.cancel()
+            nearbyLoadTask = Task { await zoomOutUntilMatch(for: grade) }
         }
-
-        visibleRegion = startRegion
-        withAnimation(.easeInOut(duration: 0.65)) {
-            cameraPosition = .region(startRegion)
+        
+        /// Widens the region step by step, re-querying at each step, until a place
+        /// with `grade` is in view. Gives up past `maxSpan` and leaves the map
+        /// where it started rather than stranding the user zoomed out to nothing.
+        @MainActor
+        private func zoomOutUntilMatch(for grade: OverallAccessibility) async {
+            let center = visibleRegion.center
+            let startRegion = visibleRegion
+            let maxSpan: Double = 2.0
+            var span = max(visibleRegion.span.latitudeDelta, defaultMapSpan)
+            
+            isSearchingForGrade = true
+            defer { isSearchingForGrade = false }
+            
+            while span <= maxSpan {
+                let region = MKCoordinateRegion(
+                    center: center,
+                    span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)
+                )
+                // Look ahead without moving the map: the camera should make one
+                // deliberate move at the end, not a step per doubling.
+                let found = await probe(region)
+                guard !Task.isCancelled else { return }
+                
+                if found.contains(where: { ($0.grade ?? .noData) == grade }) {
+                    nearbyPlaces = found
+                    visibleRegion = region
+                    withAnimation(.easeInOut(duration: 0.65)) {
+                        cameraPosition = .region(region)
+                    }
+                    // Let the animation finish before re-enabling camera-driven
+                    // reloads, or it queries mid-flight and stutters again.
+                    try? await Task.sleep(nanoseconds: 700_000_000)
+                    return
+                }
+                span *= 2
+            }
+            
+            visibleRegion = startRegion
+            withAnimation(.easeInOut(duration: 0.65)) {
+                cameraPosition = .region(startRegion)
+            }
+            try? await Task.sleep(nanoseconds: 700_000_000)
         }
-        try? await Task.sleep(nanoseconds: 700_000_000)
-    }
-
-    private var isLocationDenied: Bool {
-        locationManager.authorizationStatus == .denied
+        
+        private var isLocationDenied: Bool {
+            locationManager.authorizationStatus == .denied
             || locationManager.authorizationStatus == .restricted
-    }
-
-    private var locationButton: some View {
-        GlassCircleButton {
-            // Denied was silently doing nothing: requestLocation() falls
-            // through to `default: break`, so the button was dead with no
-            // feedback at all. Send the user somewhere they can fix it.
-            if isLocationDenied {
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(url)
-                }
-            } else if let coordinate = locationManager.currentCoordinate {
-                recenter(on: coordinate.clLocation, span: defaultMapSpan)
-            } else {
-                locationManager.requestLocation()
-            }
-        } label: {
-            Image(systemName: isLocationDenied ? "location.slash.fill" : "location.fill")
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(isLocationDenied ? Color.secondary : Color.primary)
         }
-        .accessibilityLabel(isLocationDenied ? "Location access off — open Settings" : "My location")
-    }
-
-    /// Icon inside the saved/profile capsule — the capsule owns the glass, so
-    /// each icon only needs its own hit area.
-    private func pillIcon(_ systemName: String) -> some View {
-        Image(systemName: systemName)
-            .font(.system(size: 16, weight: .medium))
-            .foregroundStyle(.primary)
-            .frame(width: 24, height: SheetMetrics.buttonDiameter)
-            .contentShape(Rectangle())
-    }
-
-    private func circularButton(systemName: String, action: @escaping () -> Void) -> some View {
-        GlassCircleButton(action: action) {
+        
+        private var locationButton: some View {
+            GlassCircleButton {
+                // Denied was silently doing nothing: requestLocation() falls
+                // through to `default: break`, so the button was dead with no
+                // feedback at all. Send the user somewhere they can fix it.
+                if isLocationDenied {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                } else if let coordinate = locationManager.currentCoordinate {
+                    recenter(on: coordinate.clLocation, span: defaultMapSpan)
+                } else {
+                    locationManager.requestLocation()
+                }
+            } label: {
+                Image(systemName: isLocationDenied ? "location.slash.fill" : "location.fill")
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(isLocationDenied ? Color.secondary : Color.primary)
+            }
+            .accessibilityLabel(isLocationDenied ? "Location access off — open Settings" : "My location")
+        }
+        
+        /// Icon inside the saved/profile capsule — the capsule owns the glass, so
+        /// each icon only needs its own hit area.
+        private func pillIcon(_ systemName: String) -> some View {
             Image(systemName: systemName)
                 .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(.primary)
+                .frame(width: 24, height: SheetMetrics.buttonDiameter)
+                .contentShape(Rectangle())
         }
-    }
-
-    private func recenter(on coordinate: CLLocationCoordinate2D, span: Double = defaultMapSpan) {
-        let region = MKCoordinateRegion(
-            center: coordinate,
-            span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)
-        )
-        withAnimation {
-            cameraPosition = .region(region)
+        
+        private func circularButton(systemName: String, action: @escaping () -> Void) -> some View {
+            GlassCircleButton(action: action) {
+                Image(systemName: systemName)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(.primary)
+            }
         }
-        visibleRegion = region
-        scheduleNearbyPlacesLoad()
-    }
-
-    private func scheduleNearbyPlacesLoad() {
-        nearbyLoadTask?.cancel()
-        nearbyLoadTask = Task {
-            try? await Task.sleep(nanoseconds: 400_000_000)
-            guard !Task.isCancelled else { return }
-            await loadNearbyPlaces()
+        
+        private func recenter(on coordinate: CLLocationCoordinate2D, span: Double = defaultMapSpan) {
+            let region = MKCoordinateRegion(
+                center: coordinate,
+                span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)
+            )
+            withAnimation {
+                cameraPosition = .region(region)
+            }
+            visibleRegion = region
+            scheduleNearbyPlacesLoad()
         }
-    }
-
-    /// ✕ / cancel: clear what was typed and collapse back to the peek. The
-    /// sheet drops focus itself when `isSearchActive` goes false.
-    private func dismissSearch() {
-        searchText = ""
-        withAnimation(.easeInOut(duration: 0.25)) {
-            isSearchActive = false
+        
+        private func scheduleNearbyPlacesLoad() {
+            nearbyLoadTask?.cancel()
+            nearbyLoadTask = Task {
+                try? await Task.sleep(nanoseconds: 400_000_000)
+                guard !Task.isCancelled else { return }
+                await loadNearbyPlaces()
+            }
         }
-    }
-
-
-    /// A tapped MapKit POI carries a name and coordinate — exactly what the
-    /// accessibility lookup needs — so route it through the same openPlace()
-    /// path a search result or a mall pin uses.
-    private func handleMapSelection(_ feature: MapFeature?) {
-        guard let feature else { return }
-        mapSelection = nil
+        
+        /// ✕ / cancel: clear what was typed and collapse back to the peek. The
+        /// sheet drops focus itself when `isSearchActive` goes false.
+        private func dismissSearch() {
+            searchText = ""
+            withAnimation(.easeInOut(duration: 0.25)) {
+                isSearchActive = false
+            }
+        }
+        
+        
+        /// A tapped MapKit POI carries a name and coordinate — exactly what the
+        /// accessibility lookup needs — so route it through the same openPlace()
+        /// path a search result or a mall pin uses.
+        private func handleMapSelection(_ feature: MapFeature?) {
+            guard let feature else { return }
+            mapSelection = nil
         openPlace(
             Place.fromSearchResult(
                 name: feature.title ?? "Selected place",
@@ -634,105 +636,107 @@ struct HomeMapView: View {
                 coordinate: feature.coordinate
             )
         )
+    }
+
     private func openProfile(tab: ProfileTab = .reviews) {
-        if auth.isSignedIn {
-            path.append(HomeRoute.profile(tab))
-        } else {
-            pendingProfileTab = tab
-            homeCover = .auth
-        }
-    }
-
-    private func openPlace(_ place: Place) {
-        // Push the Place Details page. The sheet hides itself while the stack
-        // is deeper than the root (see onChange(of: path.count)).
-        isSearchActive = false
-        if !visitedPlaces.contains(where: { Self.gradeKey(for: $0) == Self.gradeKey(for: place) }) {
-            visitedPlaces.append(place)
-        }
-        path.append(HomeRoute.place(place))
-    }
-}
-
-// MARK: - Custom Pinpoint Marker View
-
-struct CustomPinpointMarkerView: View {
-    let name: String
-    var grade: OverallAccessibility = .accessible
-    var isSelected: Bool = false
-
-    var body: some View {
-        VStack(spacing: 4) {
-            ZStack(alignment: .center) {
-                // Teardrop colored pin body matching grade
-                TeardropPinShape()
-                    .fill(
-                        LinearGradient(
-                            colors: pinColors(for: grade),
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .shadow(color: .black.opacity(0.35), radius: 5, x: 0, y: 3)
-
-                // Accessibility symbol in center of pin head
-                Image(systemName: grade.symbolName)
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.white)
-                    .offset(y: -9)
+                if auth.isSignedIn {
+                    path.append(HomeRoute.profile(tab))
+                } else {
+                    pendingProfileTab = tab
+                    homeCover = .auth
+                }
             }
-            .frame(width: 32, height: 50)
-
-            // Pin label tag
-            Text(name)
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(.primary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
-                .shadow(color: .black.opacity(0.18), radius: 3, y: 2)
+            
+            private func openPlace(_ place: Place) {
+                // Push the Place Details page. The sheet hides itself while the stack
+                // is deeper than the root (see onChange(of: path.count)).
+                isSearchActive = false
+                if !visitedPlaces.contains(where: { Self.gradeKey(for: $0) == Self.gradeKey(for: place) }) {
+                    visitedPlaces.append(place)
+                }
+                path.append(HomeRoute.place(place))
+            }
         }
-    }
-
-    private func pinColors(for grade: OverallAccessibility) -> [Color] {
-        switch grade {
-        case .accessible:
-            [Color(red: 40 / 255, green: 180 / 255, blue: 70 / 255), Color(red: 25 / 255, green: 130 / 255, blue: 45 / 255)]
-        case .partiallyAccessible:
-            [Color(red: 255 / 255, green: 145 / 255, blue: 20 / 255), Color(red: 220 / 255, green: 90 / 255, blue: 0 / 255)]
-        case .notAccessible:
-            [Color(red: 235 / 255, green: 60 / 255, blue: 50 / 255), Color(red: 180 / 255, green: 30 / 255, blue: 20 / 255)]
-        case .noData:
-            [Color(red: 140 / 255, green: 140 / 255, blue: 145 / 255), Color(red: 100 / 255, green: 100 / 255, blue: 105 / 255)]
+        
+        // MARK: - Custom Pinpoint Marker View
+        
+        struct CustomPinpointMarkerView: View {
+            let name: String
+            var grade: OverallAccessibility = .accessible
+            var isSelected: Bool = false
+            
+            var body: some View {
+                VStack(spacing: 4) {
+                    ZStack(alignment: .center) {
+                        // Teardrop colored pin body matching grade
+                        TeardropPinShape()
+                            .fill(
+                                LinearGradient(
+                                    colors: pinColors(for: grade),
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                            .shadow(color: .black.opacity(0.35), radius: 5, x: 0, y: 3)
+                        
+                        // Accessibility symbol in center of pin head
+                        Image(systemName: grade.symbolName)
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                            .offset(y: -9)
+                    }
+                    .frame(width: 32, height: 50)
+                    
+                    // Pin label tag
+                    Text(name)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
+                        .shadow(color: .black.opacity(0.18), radius: 3, y: 2)
+                }
+            }
+            
+            private func pinColors(for grade: OverallAccessibility) -> [Color] {
+                switch grade {
+                case .accessible:
+                    [Color(red: 40 / 255, green: 180 / 255, blue: 70 / 255), Color(red: 25 / 255, green: 130 / 255, blue: 45 / 255)]
+                case .partiallyAccessible:
+                    [Color(red: 255 / 255, green: 145 / 255, blue: 20 / 255), Color(red: 220 / 255, green: 90 / 255, blue: 0 / 255)]
+                case .notAccessible:
+                    [Color(red: 235 / 255, green: 60 / 255, blue: 50 / 255), Color(red: 180 / 255, green: 30 / 255, blue: 20 / 255)]
+                case .noData:
+                    [Color(red: 140 / 255, green: 140 / 255, blue: 145 / 255), Color(red: 100 / 255, green: 100 / 255, blue: 105 / 255)]
+                }
+            }
         }
-    }
-}
-
-/// Teardrop pin geometry matching media_1787056690775.png
-struct TeardropPinShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let width = rect.width
-        let height = rect.height
-        let radius = width / 2
-
-        // Top circular head
-        path.addArc(
-            center: CGPoint(x: width / 2, y: radius),
-            radius: radius,
-            startAngle: .degrees(25),
-            endAngle: .degrees(155),
-            clockwise: true
-        )
-        // Stem tapering down to sharp point
-        path.addLine(to: CGPoint(x: width / 2, y: height))
-        path.closeSubpath()
-        return path
-    }
-}
-
-#Preview {
-    HomeMapView()
-        .environmentObject(LanguageManager.shared)
-        .environmentObject(AuthSessionStore())
-}
+        
+        /// Teardrop pin geometry matching media_1787056690775.png
+        struct TeardropPinShape: Shape {
+            func path(in rect: CGRect) -> Path {
+                var path = Path()
+                let width = rect.width
+                let height = rect.height
+                let radius = width / 2
+                
+                // Top circular head
+                path.addArc(
+                    center: CGPoint(x: width / 2, y: radius),
+                    radius: radius,
+                    startAngle: .degrees(25),
+                    endAngle: .degrees(155),
+                    clockwise: true
+                )
+                // Stem tapering down to sharp point
+                path.addLine(to: CGPoint(x: width / 2, y: height))
+                path.closeSubpath()
+                return path
+            }
+        }
+        
+        #Preview {
+            HomeMapView()
+                .environmentObject(LanguageManager.shared)
+                .environmentObject(AuthSessionStore())
+        }
