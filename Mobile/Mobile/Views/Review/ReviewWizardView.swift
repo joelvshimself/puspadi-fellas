@@ -14,6 +14,8 @@ struct ReviewWizardView: View {
     @State private var showDiscardConfirm = false
     @State private var isSubmitting = false
     @State private var submitError: String?
+    @EnvironmentObject private var auth: AuthSessionStore
+    @State private var showLogin = false
 
     init(place: Place, onFinished: @escaping () -> Void) {
         self.place = place
@@ -39,6 +41,18 @@ struct ReviewWizardView: View {
         }
         .background(Color(.systemBackground))
         .toolbar(.hidden, for: .navigationBar)
+        .onAppear {
+            if !auth.isSignedIn {
+                showLogin = true
+            }
+        }
+        .fullScreenCover(isPresented: $showLogin) {
+            LoginView(
+                onSuccess: { showLogin = false },
+                onCancel: { onFinished() }
+            )
+            .environmentObject(auth)
+        }
         .onChange(of: draftFingerprint) { _, _ in
             hasInteracted = true
         }

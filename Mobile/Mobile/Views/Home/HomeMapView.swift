@@ -20,7 +20,16 @@ let baliRegion = MKCoordinateRegion(
     span: MKCoordinateSpan(latitudeDelta: 0.22, longitudeDelta: 0.22)
 )
 
+private enum HomeFullScreenCover: String, Identifiable {
+    case analysing
+    case auth
+    var id: String { rawValue }
+}
+
 struct HomeMapView: View {
+    @EnvironmentObject private var auth: AuthSessionStore
+    @State private var homeCover: HomeFullScreenCover?
+    @State private var pendingProfileTab: ProfileTab?
     @State private var cameraPosition: MapCameraPosition = .region(baliRegion)
     @State private var visibleRegion = baliRegion
     @State private var selectedMall: Place? = nil
@@ -28,7 +37,6 @@ struct HomeMapView: View {
     @State private var sheetDetent: PresentationDetent = .height(SheetMetrics.peekHeight)
     @State private var isSearchActive = false
     @State private var searchText = ""
-    @State private var showAnalysing = false
     @State private var path = NavigationPath()
     @StateObject private var locationManager = LocationManager()
     /// So the very first real location fix recenters the map once, without
@@ -148,8 +156,26 @@ struct HomeMapView: View {
                                 .enableSwipeBack()
                         }
                     }
-                    .fullScreenCover(isPresented: $showAnalysing) {
-                        AnalysingView(onDismiss: { showAnalysing = false })
+                    .fullScreenCover(item: $homeCover) { cover in
+                        switch cover {
+                        case .analysing:
+                            AnalysingView(onDismiss: { homeCover = nil })
+                        case .auth:
+                            LoginView(
+                                onSuccess: {
+                                    homeCover = nil
+                                    if let tab = pendingProfileTab {
+                                        pendingProfileTab = nil
+                                        path.append(HomeRoute.profile(tab))
+                                    }
+                                },
+                                onCancel: {
+                                    homeCover = nil
+                                    pendingProfileTab = nil
+                                }
+                            )
+                            .environmentObject(auth)
+                        }
                     }
                     .sheet(isPresented: $isSheetPresented) {
                         SearchSheet(
@@ -288,13 +314,13 @@ struct HomeMapView: View {
 
             Spacer()
 
-            // Profile button opens Profile Menu
+            // Profile button opens Profile Menu (Sign in with Apple if needed)
             circularButton(systemName: "person.fill") {
-                path.append(HomeRoute.profile())
+                openProfile()
             }
             .simultaneousGesture(
                 LongPressGesture(minimumDuration: 0.5).onEnded { _ in
-                    showAnalysing = true
+                    homeCover = .analysing
                 }
             )
             .accessibilityHint("Long press to open Analysing demo")
@@ -393,6 +419,15 @@ struct HomeMapView: View {
         }
     }
 
+    private func openProfile(tab: ProfileTab = .reviews) {
+        if auth.isSignedIn {
+            path.append(HomeRoute.profile(tab))
+        } else {
+            pendingProfileTab = tab
+            homeCover = .auth
+        }
+    }
+
     private func openPlace(_ place: Place) {
         // Push the Place Details page. The sheet hides itself while the stack
         // is deeper than the root (see onChange(of: path.count)).
@@ -481,4 +516,5 @@ struct TeardropPinShape: Shape {
 #Preview {
     HomeMapView()
         .environmentObject(LanguageManager.shared)
+        .environmentObject(AuthSessionStore())
 }
