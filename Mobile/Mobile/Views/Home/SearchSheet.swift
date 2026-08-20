@@ -35,7 +35,7 @@ enum SheetMetrics {
     // Peek — Homepage 285:1323
     static let grabberWidth: CGFloat = 48
     static let grabberHeight: CGFloat = 6
-    static let grabberTopPadding: CGFloat = 8
+    static let grabberTopPadding: CGFloat = 18
     static let grabberBlockHeight: CGFloat = 16
 
     /// These two must still sum with the grabber and field to 102pt — that is
@@ -45,7 +45,7 @@ enum SheetMetrics {
     static let rowBottomPadding: CGFloat = 10
     static let horizontalPadding: CGFloat = 16
 
-    static let fieldHeight: CGFloat = 56
+    static let fieldHeight: CGFloat = 46
     static let fieldSpacing: CGFloat = 8
     static let fieldFillOpacity: CGFloat = 0.8
     static let fieldBorderWidth: CGFloat = 2
@@ -206,8 +206,12 @@ struct SearchSheet: View {
             }
         }
         .onChange(of: isExpanded) { _, expanded in
-            isFieldFocused = expanded
+            // Only collapsing touches focus. Expanding deliberately does not:
+            // dragging the grabber up should reveal the list without summoning
+            // the keyboard, the way Apple Maps behaves. Tapping the field still
+            // focuses it directly, which is what expands the sheet.
             if !expanded {
+                isFieldFocused = false
                 speechRecognizer.stopListening()
             }
         }
@@ -319,7 +323,7 @@ struct SearchSheet: View {
         .padding(.horizontal, 12)
         .frame(height: SheetMetrics.fieldHeight)
         .background {
-            Capsule().fill(Color(uiColor: .secondarySystemGroupedBackground))
+            Capsule().fill(Color(.systemBackground).opacity(isExpanded ? 1 : SheetMetrics.fieldFillOpacity))
         }
         .overlay {
             Capsule().strokeBorder(

@@ -242,7 +242,7 @@ struct HomeMapView: View {
     }
 
     private var mapLayer: some View {
-        Map(position: $cameraPosition) {
+        Map(position: $cameraPosition, selection: $mapSelection) {
             UserAnnotation()
 
             ForEach(displayedMalls) { place in
@@ -262,6 +262,9 @@ struct HomeMapView: View {
         .onMapCameraChange { context in
             visibleRegion = context.region
             scheduleNearbyPlacesLoad()
+        }
+        .onChange(of: mapSelection) { _, selection in
+            handleMapSelection(selection)
         }
         .mapStyle(.standard(elevation: .realistic))
     }
@@ -391,6 +394,21 @@ struct HomeMapView: View {
         withAnimation(.easeInOut(duration: 0.25)) {
             isSearchActive = false
         }
+    }
+
+    /// A tapped MapKit POI carries a name and coordinate — exactly what the
+    /// accessibility lookup needs — so route it through the same openPlace()
+    /// path a search result or a mall pin uses.
+    private func handleMapSelection(_ feature: MapFeature?) {
+        guard let feature else { return }
+        mapSelection = nil
+        openPlace(
+            Place.fromSearchResult(
+                name: feature.title ?? "Selected place",
+                category: "Place",
+                coordinate: feature.coordinate
+            )
+        )
     }
 
     private func openPlace(_ place: Place) {
