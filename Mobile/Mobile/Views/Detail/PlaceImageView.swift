@@ -24,6 +24,7 @@ struct PlaceImageView: View {
     @State private var image: UIImage?
     /// Low-quality stand-in shown, blurred, until the real image arrives.
     @State private var placeholder: UIImage?
+    @State private var shimmerPhase: CGFloat = -1
     @State private var shownAttribution: String?
     @State private var finishedLoading = false
 
@@ -65,6 +66,10 @@ struct PlaceImageView: View {
                             .blur(radius: 12)
                             .clipped()
                     }
+                    // A still placeholder reads as "empty", not "loading". A
+                    // sweeping highlight says work is happening without putting
+                    // a progress wheel over a photo.
+                    shimmer
                 }
             } else {
                 ZStack {
@@ -102,6 +107,26 @@ struct PlaceImageView: View {
 
             await load()
             if let image { ImageStore.shared.store(image, for: key) }
+        }
+    }
+
+    /// Skeleton sweep, the usual signal for media that is still loading.
+    private var shimmer: some View {
+        GeometryReader { geo in
+            LinearGradient(
+                colors: [.clear, Color.white.opacity(0.35), .clear],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: geo.size.width * 0.6)
+            .offset(x: shimmerPhase * geo.size.width * 1.6)
+            .blendMode(.plusLighter)
+        }
+        .allowsHitTesting(false)
+        .onAppear {
+            withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
+                shimmerPhase = 1
+            }
         }
     }
 

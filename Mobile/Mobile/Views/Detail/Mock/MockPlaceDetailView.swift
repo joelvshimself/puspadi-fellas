@@ -275,12 +275,15 @@ struct MockPlaceDetailView: View {
 
     private var placeInfoCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Reserve the badge's place while the grade resolves, rather than
-            // showing nothing and letting the card jump when it arrives.
-            if let grade = store.overallGrade {
-                AccessibilityBadge(grade: grade)
-            } else if store.isLoading || !store.enrichResolved {
+            // Resolution has to be checked FIRST. `overallGrade` falls back to
+            // `.noData` when there are no feature grades yet, so it is never
+            // nil — which made the placeholder below unreachable and showed a
+            // confident "NO DATA AVAILABLE" that then flipped to the real
+            // grade. Malls hid this because the map had already cached theirs.
+            if !store.enrichResolved {
                 AccessibilityBadgePlaceholder()
+            } else if let grade = store.overallGrade {
+                AccessibilityBadge(grade: grade)
             }
 
             HStack {
