@@ -212,6 +212,8 @@ struct SearchSheet: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var searchTask: Task<Void, Never>?
+    /// Warms the detail page's caches for the visible results.
+    @State private var prefetchTask: Task<Void, Never>?
 
     private var query: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -493,6 +495,7 @@ struct SearchSheet: View {
         do {
             let response = try await MKLocalSearch(request: request).start()
             guard !Task.isCancelled else { return }
+            defer { prefetchDetails(for: results) }
             results = response.mapItems.map { item in
                 Place.fromSearchResult(
                     name: item.name ?? text,
@@ -511,6 +514,52 @@ struct SearchSheet: View {
             results = []
             isLoading = false
             errorMessage = (error as NSError).localizedDescription
+        }
+    }
+
+    /// Warms everything the Place Details page waits on, while the user is
+    /// still reading the results list: the accessibility grade (cached to disk
+    /// by PlaceCacheStore) and the street and review photos (cached by
+    /// URLCache, since NetworkRetry downloads through URLSession.shared).
+    /// Opening a result should then be instant rather than a page of spinners.
+    private func prefetchDetails(for places: [Place]) {
+        prefetchTask?.cancel()
+        let targets = Array(places.prefix(6))
+        guard !targets.isEmpty else { return }
+
+        prefetchTask = Task(priority: .utility) {
+            await withTaskGroup(of: Void.self) { group in
+                for place in targets {
+                    group.addTask {
+                        let lat = place.coordinate.latitude
+                        let lng = place.coordinate.longitude
+
+                        // Grade — the slowest thing the detail page waits on.
+                        let enriched = try? await AccessibilityService.shared.enrich(
+                            lat: lat, lng: lng, name: place.name
+                        )
+                        if Task.isCancelled { return }
+
+                        // Mapillary street photo, straight into URLCache.
+                        if let url = enriched?.place?.imageUrl.flatMap(URL.init(string:)) {
+                            _ = try? await NetworkRetry.download(from: url)
+                        }
+                        if Task.isCancelled { return }
+
+                        // First few community photos.
+                        if let photos = try? await ReviewService.shared.fetchReviewPhotos(
+                            lat: lat, lng: lng
+                        ) {
+                            for photo in photos.photos.prefix(3) {
+                                if Task.isCancelled { return }
+                                if let url = photo.imageURL {
+                                    _ = try? await NetworkRetry.download(from: url)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
