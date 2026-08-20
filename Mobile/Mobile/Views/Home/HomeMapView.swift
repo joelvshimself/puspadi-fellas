@@ -126,7 +126,11 @@ struct HomeMapView: View {
                         if !isSearching && !showFilter {
                             locationButton
                                 .padding(.trailing, 16)
-                                .padding(.bottom, SheetMetrics.peekHeight + 12)
+                                // This overlay sits inside the safe area, so the
+                                // button already clears the home indicator; adding
+                                // the full peek height on top left a ~38pt gap.
+                                // Tuned to sit ~12pt above the sheet's top edge.
+                                .padding(.bottom, SheetMetrics.peekHeight - 14)
                                 .transition(.opacity)
                         }
                     }
