@@ -46,7 +46,11 @@ struct HomeMapView: View {
     /// map tap, the expanded search list if it came from a result).
     /// Accessibility grades the user is filtering the map to. Empty = show all
     /// (no filter). See the filter panel opened from the top-left button.
-    @State private var selectedGrades: Set<OverallAccessibility> = []
+    /// One grade at a time — the filter is a choice, not a combination.
+    @State private var selectedGrade: OverallAccessibility?
+    /// Set while the map is widening to look for a match, so the button can
+    /// show it is working.
+    @State private var isSearchingForGrade = false
     @State private var showFilter = false
     @State private var nearbyPlaces: [Place] = []
     @State private var placeGrades: [UUID: OverallAccessibility] = [:]
@@ -222,8 +226,8 @@ struct HomeMapView: View {
             copy.grade = placeGrades[place.id] ?? place.grade
             return copy
         }
-        if selectedGrades.isEmpty { return base }
-        return base.filter { selectedGrades.contains($0.grade ?? .noData) }
+        guard let selectedGrade else { return base }
+        return base.filter { ($0.grade ?? .noData) == selectedGrade }
     }
 
     @MainActor
@@ -286,14 +290,12 @@ struct HomeMapView: View {
                 }
             }
             .overlay(alignment: .topTrailing) {
-                if !selectedGrades.isEmpty {
-                    Text("\(selectedGrades.count)")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.white)
-                        .frame(minWidth: 20, minHeight: 20)
-                        .background(Circle().fill(Color.accentColor))
+                if let selectedGrade {
+                    Circle()
+                        .fill(selectedGrade.badgeForeground)
+                        .frame(width: 14, height: 14)
                         .overlay(Circle().stroke(.background, lineWidth: 2))
-                        .offset(x: 6, y: -6)
+                        .offset(x: 4, y: -4)
                         .transition(.scale.combined(with: .opacity))
                 }
             }
@@ -315,10 +317,12 @@ struct HomeMapView: View {
 
     private var filterPanel: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ForEach(OverallAccessibility.allCases) { grade in
-                let isOn = selectedGrades.contains(grade)
+            // `.noData` is deliberately absent: it means "we have no signal",
+            // which is not something anyone wants to filter *for*.
+            ForEach(OverallAccessibility.allCases.filter { $0 != .noData }) { grade in
+                let isOn = selectedGrade == grade
                 Button {
-                    toggleGrade(grade)
+                    selectGrade(grade)
                 } label: {
                     HStack(spacing: 14) {
                         Image(systemName: grade.symbolName)
@@ -342,14 +346,53 @@ struct HomeMapView: View {
         }
     }
 
-    private func toggleGrade(_ grade: OverallAccessibility) {
+    /// Picking a grade replaces any previous one, closes the panel, and then
+    /// widens the map until at least one place with that grade is in view.
+    /// Tapping the active grade again clears the filter.
+    private func selectGrade(_ grade: OverallAccessibility) {
+        let isClearing = (selectedGrade == grade)
         withAnimation(.easeInOut(duration: 0.2)) {
-            if selectedGrades.contains(grade) {
-                selectedGrades.remove(grade)
-            } else {
-                selectedGrades.insert(grade)
-            }
+            selectedGrade = isClearing ? nil : grade
         }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            showFilter = false
+        }
+        guard !isClearing else { return }
+        nearbyLoadTask?.cancel()
+        nearbyLoadTask = Task { await zoomOutUntilMatch(for: grade) }
+    }
+
+    /// Widens the region step by step, re-querying at each step, until a place
+    /// with `grade` is in view. Gives up past `maxSpan` and leaves the map
+    /// where it started rather than stranding the user zoomed out to nothing.
+    @MainActor
+    private func zoomOutUntilMatch(for grade: OverallAccessibility) async {
+        let center = visibleRegion.center
+        let startRegion = visibleRegion
+        let maxSpan: Double = 2.0
+        var span = max(visibleRegion.span.latitudeDelta, defaultMapSpan)
+
+        isSearchingForGrade = true
+        defer { isSearchingForGrade = false }
+
+        while span <= maxSpan {
+            let region = MKCoordinateRegion(
+                center: center,
+                span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)
+            )
+            visibleRegion = region
+            await loadNearbyPlaces()
+            guard !Task.isCancelled else { return }
+
+            if displayedMalls.contains(where: { ($0.grade ?? .noData) == grade }) {
+                withAnimation { cameraPosition = .region(region) }
+                return
+            }
+            span *= 2
+        }
+
+        visibleRegion = startRegion
+        withAnimation { cameraPosition = .region(startRegion) }
     }
 
     private var locationButton: some View {
