@@ -230,6 +230,35 @@ struct HomeMapView: View {
         return base.filter { ($0.grade ?? .noData) == selectedGrade }
     }
 
+    /// Searches a region and resolves grades WITHOUT touching `nearbyPlaces`
+    /// or `visibleRegion`. The filter uses this to look ahead silently — moving
+    /// the map at each step made the pins churn and the camera stutter.
+    @MainActor
+    private func probe(_ region: MKCoordinateRegion) async -> [Place] {
+        let places = await NearbyPlacesService.search(in: region)
+        for place in places where placeGrades[place.id] == nil {
+            placeGrades[place.id] = await resolveGrade(for: place)
+        }
+        return places.map { place in
+            var copy = place
+            copy.grade = placeGrades[place.id] ?? place.grade
+            return copy
+        }
+    }
+
+    @MainActor
+    private func resolveGrade(for place: Place) async -> OverallAccessibility {
+        guard let response = try? await AccessibilityService.shared.enrich(
+            lat: place.coordinate.latitude,
+            lng: place.coordinate.longitude,
+            name: place.name
+        ), let grades = response.grade, !grades.isEmpty else { return .noData }
+
+        if grades.contains(where: { $0.bestValue == "no" }) { return .notAccessible }
+        if grades.allSatisfy({ $0.bestValue == "yes" }) { return .accessible }
+        return .partiallyAccessible
+    }
+
     @MainActor
     private func loadNearbyPlaces() async {
         let places = await NearbyPlacesService.search(in: visibleRegion)
@@ -274,6 +303,9 @@ struct HomeMapView: View {
         }
         .onMapCameraChange { context in
             visibleRegion = context.region
+            // The filter drives the camera itself and has already loaded the
+            // places for its destination; re-querying here would fight it.
+            guard !isSearchingForGrade else { return }
             scheduleNearbyPlacesLoad()
         }
         .onChange(of: mapSelection) { _, selection in
@@ -380,19 +412,30 @@ struct HomeMapView: View {
                 center: center,
                 span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)
             )
-            visibleRegion = region
-            await loadNearbyPlaces()
+            // Look ahead without moving the map: the camera should make one
+            // deliberate move at the end, not a step per doubling.
+            let found = await probe(region)
             guard !Task.isCancelled else { return }
 
-            if displayedMalls.contains(where: { ($0.grade ?? .noData) == grade }) {
-                withAnimation { cameraPosition = .region(region) }
+            if found.contains(where: { ($0.grade ?? .noData) == grade }) {
+                nearbyPlaces = found
+                visibleRegion = region
+                withAnimation(.easeInOut(duration: 0.65)) {
+                    cameraPosition = .region(region)
+                }
+                // Let the animation finish before re-enabling camera-driven
+                // reloads, or it queries mid-flight and stutters again.
+                try? await Task.sleep(nanoseconds: 700_000_000)
                 return
             }
             span *= 2
         }
 
         visibleRegion = startRegion
-        withAnimation { cameraPosition = .region(startRegion) }
+        withAnimation(.easeInOut(duration: 0.65)) {
+            cameraPosition = .region(startRegion)
+        }
+        try? await Task.sleep(nanoseconds: 700_000_000)
     }
 
     private var locationButton: some View {
