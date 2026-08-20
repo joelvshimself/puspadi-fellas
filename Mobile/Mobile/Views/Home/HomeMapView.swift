@@ -338,6 +338,13 @@ struct HomeMapView: View {
 
             Spacer()
 
+            // Saved places, alongside the profile button and sharing its design.
+            circularButton(systemName: "bookmark.fill") {
+                path.append(HomeRoute.saved)
+            }
+            .accessibilityLabel("Saved places")
+            .padding(.trailing, 10)
+
             // Profile button opens Profile Menu
             circularButton(systemName: "person.fill") {
                 path.append(HomeRoute.profile())
