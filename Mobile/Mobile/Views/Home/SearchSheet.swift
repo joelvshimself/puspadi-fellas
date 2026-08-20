@@ -35,17 +35,17 @@ enum SheetMetrics {
     // Peek — Homepage 285:1323
     static let grabberWidth: CGFloat = 48
     static let grabberHeight: CGFloat = 6
-    static let grabberTopPadding: CGFloat = 18
+    static let grabberTopPadding: CGFloat = 10
     static let grabberBlockHeight: CGFloat = 16
 
     /// These two must still sum with the grabber and field to 102pt — that is
     /// the detent floor below which iOS squeezes the sheet's contents. To
     /// tighten the gap under the pill, move points from bottom to top.
-    static let rowTopPadding: CGFloat = 20
-    static let rowBottomPadding: CGFloat = 10
+    static let rowTopPadding: CGFloat = 10
+    static let rowBottomPadding: CGFloat = 15
     static let horizontalPadding: CGFloat = 16
 
-    static let fieldHeight: CGFloat = 46
+    static let fieldHeight: CGFloat = 40
     static let fieldSpacing: CGFloat = 8
     static let fieldFillOpacity: CGFloat = 0.8
     static let fieldBorderWidth: CGFloat = 2
@@ -55,10 +55,34 @@ enum SheetMetrics {
     static let textOpacity: CGFloat = 0.8
     static let placeholderOpacity: CGFloat = 0.3
 
-    /// 102pt is a hard floor for the detent: below it iOS squeezes the sheet's
-    /// contents to fit (at 92 the 6pt grabber renders 2pt and vanishes).
+    // MARK: Collapsed sheet height (the detent)
+    //
+    // Must equal what the peek CONTENT actually renders. If the detent is
+    // smaller than the content, iOS squeezes the sheet instead of honouring it
+    // — the 6pt grabber is the first thing to disappear.
+    //
+    // The catch: the grabber block renders `grabberTopPadding + grabberHeight`
+    // (18 + 6 = 24), NOT `grabberBlockHeight` (16). `minHeight` is only a
+    // floor, so raising grabberTopPadding grows the block while the old
+    // formula kept counting 16 — leaving the detent 8pt short.
+    //
+    // Swap which line is commented to compare the two.
+
+    //  OLD — under-counts the grabber block by 8pt (gives 92):
+    //  static let peekHeight: CGFloat =
+    //      grabberBlockHeight + rowTopPadding + fieldHeight + rowBottomPadding
+
+    //  CURRENT — counts the block as it really lays out (gives 100):
     static let peekHeight: CGFloat =
-        grabberBlockHeight + rowTopPadding + fieldHeight + rowBottomPadding
+        max(grabberBlockHeight, grabberTopPadding + grabberHeight)
+            + rowTopPadding + fieldHeight + rowBottomPadding
+
+    //  Knobs, for reference — change these, not peekHeight:
+    //    grabberTopPadding   10   space above the grabber
+    //    rowTopPadding       10   grabber block -> pill
+    //    fieldHeight         40   the pill itself
+    //    rowBottomPadding    15   pill -> sheet bottom
+    //    horizontalPadding   16   pill left/right inset
 
     // List rows — List/Location 285:2069
     static let rowCornerRadius: CGFloat = 16
