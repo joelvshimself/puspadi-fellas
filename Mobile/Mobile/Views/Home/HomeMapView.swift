@@ -1,4 +1,5 @@
 import MapKit
+import UIKit
 import SwiftUI
 
 /// A tall CUSTOM detent instead of .large: iOS gives the true .large detent an
@@ -498,19 +499,31 @@ struct HomeMapView: View {
         try? await Task.sleep(nanoseconds: 700_000_000)
     }
 
+    private var isLocationDenied: Bool {
+        locationManager.authorizationStatus == .denied
+            || locationManager.authorizationStatus == .restricted
+    }
+
     private var locationButton: some View {
         GlassCircleButton {
-            if let coordinate = locationManager.currentCoordinate {
+            // Denied was silently doing nothing: requestLocation() falls
+            // through to `default: break`, so the button was dead with no
+            // feedback at all. Send the user somewhere they can fix it.
+            if isLocationDenied {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            } else if let coordinate = locationManager.currentCoordinate {
                 recenter(on: coordinate.clLocation, span: defaultMapSpan)
             } else {
                 locationManager.requestLocation()
             }
         } label: {
-            Image(systemName: "location.fill")
+            Image(systemName: isLocationDenied ? "location.slash.fill" : "location.fill")
                 .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(.primary)
+                .foregroundStyle(isLocationDenied ? Color.secondary : Color.primary)
         }
-        .accessibilityLabel("My location")
+        .accessibilityLabel(isLocationDenied ? "Location access off — open Settings" : "My location")
     }
 
     /// Icon inside the saved/profile capsule — the capsule owns the glass, so
