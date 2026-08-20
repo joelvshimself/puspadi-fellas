@@ -525,51 +525,40 @@ struct SearchSheet: View {
     /// Opening a result should then be instant rather than a page of spinners.
     private func prefetchDetails(for places: [Place]) {
         prefetchTask?.cancel()
-        let targets = Array(places.prefix(6))
+        // Three, not six. Each target costs an enrich, an image download and a
+        // review-photos call, so six was up to ~30 requests fired on every
+        // search — enough to make the whole app feel slow on a phone.
+        let targets = Array(places.prefix(3))
         guard !targets.isEmpty else { return }
 
         prefetchTask = Task(priority: .utility) {
-            await withTaskGroup(of: Void.self) { group in
-                for place in targets {
-                    group.addTask {
-                        let lat = place.coordinate.latitude
-                        let lng = place.coordinate.longitude
+            _ = await mapWithLimit(targets, limit: 2) { place in
+                let lat = place.coordinate.latitude
+                let lng = place.coordinate.longitude
 
-                        // Grade — the slowest thing the detail page waits on.
-                        let enriched = try? await AccessibilityService.shared.enrich(
-                            lat: lat, lng: lng, name: place.name
+                // The grade is the slowest thing the detail page waits on.
+                let enriched = try? await AccessibilityService.shared.enrich(
+                    lat: lat, lng: lng, name: place.name
+                )
+                guard !Task.isCancelled else { return }
+
+                // Decoding the street photo here also writes the blurred
+                // thumbnail, so a place opened for the very first time has a
+                // stand-in to show rather than an empty box.
+                if let url = enriched?.place?.imageUrl.flatMap(URL.init(string:)),
+                   let data = try? await NetworkRetry.download(from: url),
+                   let image = UIImage(data: data) {
+                    await MainActor.run {
+                        ImageStore.shared.store(
+                            image,
+                            for: ImageStore.key(for: place.coordinate)
                         )
-                        if Task.isCancelled { return }
-
-                        // Mapillary street photo. Decoding it here also writes
-                        // the blurred thumbnail, so a place opened for the very
-                        // first time still has a stand-in to show rather than an
-                        // empty box.
-                        if let url = enriched?.place?.imageUrl.flatMap(URL.init(string:)),
-                           let data = try? await NetworkRetry.download(from: url),
-                           let image = UIImage(data: data) {
-                            await MainActor.run {
-                                ImageStore.shared.store(
-                                    image,
-                                    for: ImageStore.key(for: place.coordinate)
-                                )
-                            }
-                        }
-                        if Task.isCancelled { return }
-
-                        // First few community photos.
-                        if let photos = try? await ReviewService.shared.fetchReviewPhotos(
-                            lat: lat, lng: lng
-                        ) {
-                            for photo in photos.photos.prefix(3) {
-                                if Task.isCancelled { return }
-                                if let url = photo.imageURL {
-                                    _ = try? await NetworkRetry.download(from: url)
-                                }
-                            }
-                        }
                     }
                 }
+
+                // Community photos are deliberately NOT prefetched: they were
+                // the bulk of the requests and the least likely to be looked
+                // at. The detail page still loads them on demand.
             }
         }
     }

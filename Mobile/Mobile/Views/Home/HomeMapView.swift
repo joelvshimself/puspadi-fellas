@@ -255,21 +255,17 @@ struct HomeMapView: View {
             return known == nil || known == .noData
         }
 
-        // Concurrently, not one after another: this used to be a sequential
-        // await per place, so a probe cost up to 25 round-trips end to end and
-        // a rarer grade multiplied that by every doubling.
+        // Bounded, and capped. This previously fired one enrich per un-graded
+        // place with no limit — up to 25 at once, on every camera change. That
+        // saturates a phone's connection (starving the map tiles competing for
+        // it) and, since a cold enrich hits Google Places, spends real money
+        // per pan. A few at a time, for the nearest handful, is plenty.
         if !missing.isEmpty {
-            let resolved = await withTaskGroup(of: (String, OverallAccessibility).self) { group in
-                for place in missing {
-                    group.addTask {
-                        (Self.gradeKey(for: place), await Self.resolveGrade(for: place))
-                    }
-                }
-                var out: [String: OverallAccessibility] = [:]
-                for await (key, grade) in group { out[key] = grade }
-                return out
+            let batch = Array(missing.prefix(Self.maxGradesPerLoad))
+            let pairs = await mapWithLimit(batch, limit: Self.maxConcurrentGradeLookups) { place in
+                (Self.gradeKey(for: place), await Self.resolveGrade(for: place))
             }
-            placeGrades.merge(resolved) { _, new in new }
+            placeGrades.merge(Dictionary(uniqueKeysWithValues: pairs)) { _, new in new }
         }
 
         return places.map { place in
@@ -278,6 +274,11 @@ struct HomeMapView: View {
             return copy
         }
     }
+
+    /// How many places get a grade lookup per load, and how many run at once.
+    /// A pan should not cost 25 paid Google calls or 25 parallel connections.
+    private static let maxGradesPerLoad = 8
+    private static let maxConcurrentGradeLookups = 3
 
     /// Stable across searches, unlike `place.id`.
     private static func gradeKey(for place: Place) -> String {
@@ -307,17 +308,11 @@ struct HomeMapView: View {
         }
         guard !stale.isEmpty else { return }
 
-        let resolved = await withTaskGroup(of: (String, OverallAccessibility).self) { group in
-            for place in stale {
-                group.addTask {
-                    (Self.gradeKey(for: place), await Self.resolveGrade(for: place))
-                }
-            }
-            var out: [String: OverallAccessibility] = [:]
-            for await (key, grade) in group { out[key] = grade }
-            return out
+        let batch = Array(stale.prefix(Self.maxGradesPerLoad))
+        let pairs = await mapWithLimit(batch, limit: Self.maxConcurrentGradeLookups) { place in
+            (Self.gradeKey(for: place), await Self.resolveGrade(for: place))
         }
-        placeGrades.merge(resolved) { _, new in new }
+        placeGrades.merge(Dictionary(uniqueKeysWithValues: pairs)) { _, new in new }
     }
 
     @MainActor
@@ -376,23 +371,39 @@ struct HomeMapView: View {
 
             Spacer()
 
-            // Saved places, alongside the profile button and sharing its design.
-            circularButton(systemName: "bookmark.fill") {
-                path.append(HomeRoute.saved)
-            }
-            .accessibilityLabel("Saved places")
-            .padding(.trailing, 10)
-
-            // Profile button opens Profile Menu
-            circularButton(systemName: "person.fill") {
-                path.append(HomeRoute.profile())
-            }
-            .simultaneousGesture(
-                LongPressGesture(minimumDuration: 0.5).onEnded { _ in
-                    showAnalysing = true
+            // Saved places and profile share one glass capsule, matching the
+            // share/save pill on the place detail screen.
+            HStack(spacing: 22) {
+                Button {
+                    path.append(HomeRoute.saved)
+                } label: {
+                    pillIcon("bookmark.fill")
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Saved places")
+
+                Button {
+                    path.append(HomeRoute.profile())
+                } label: {
+                    pillIcon("person.fill")
+                }
+                .buttonStyle(.plain)
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: 0.5).onEnded { _ in
+                        showAnalysing = true
+                    }
+                )
+                .accessibilityLabel("Profile")
+                .accessibilityHint("Long press to open Analysing demo")
+            }
+            .padding(.horizontal, 16)
+            .frame(height: SheetMetrics.buttonDiameter)
+            .homeGlass(in: Capsule(), tint: .white.opacity(0.30))
+            .shadow(
+                color: .black.opacity(SheetMetrics.buttonShadowOpacity),
+                radius: SheetMetrics.buttonShadowRadius,
+                y: SheetMetrics.buttonShadowY
             )
-            .accessibilityHint("Long press to open Analysing demo")
         }
     }
 
@@ -500,6 +511,16 @@ struct HomeMapView: View {
                 .foregroundStyle(.primary)
         }
         .accessibilityLabel("My location")
+    }
+
+    /// Icon inside the saved/profile capsule — the capsule owns the glass, so
+    /// each icon only needs its own hit area.
+    private func pillIcon(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 16, weight: .medium))
+            .foregroundStyle(.primary)
+            .frame(width: 24, height: SheetMetrics.buttonDiameter)
+            .contentShape(Rectangle())
     }
 
     private func circularButton(systemName: String, action: @escaping () -> Void) -> some View {
