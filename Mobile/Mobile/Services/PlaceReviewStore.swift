@@ -31,8 +31,25 @@ final class PlaceReviewStore: ObservableObject {
     func load() async {
         loadGeneration += 1
         let generation = loadGeneration
-        isLoading = true
         reviewPhotosLoadFailed = false
+
+        // Publish the cached grade BEFORE awaiting anything. enrich() is only
+        // one of three requests below, and they resolve together — so a place
+        // opened before still sat on a spinner while the review and photo
+        // calls finished, even though its grade was already on disk.
+        let cacheKey = PlaceCacheStore.key(
+            lat: place.coordinate.latitude,
+            lng: place.coordinate.longitude
+        )
+        if let cached = await PlaceCacheStore.shared.get(cacheKey) {
+            featureGrades = cached.grade ?? []
+            imageAttribution = cached.place?.imageAttribution
+            streetImageURL = cached.place?.imageUrl.flatMap(URL.init(string:))
+            enrichResolved = true
+        }
+
+        // Only show loading if there is genuinely nothing to show yet.
+        isLoading = featureGrades.isEmpty
         defer {
             if generation == loadGeneration {
                 isLoading = false

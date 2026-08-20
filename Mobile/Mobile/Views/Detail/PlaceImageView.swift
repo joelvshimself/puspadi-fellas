@@ -63,7 +63,25 @@ struct PlaceImageView: View {
         // is known before we decide on a fallback).
         .task(id: taskKey) {
             guard resolved else { return }
+            let key = ImageStore.key(for: coordinate)
+
+            // Already decoded: no network, and crucially no regenerating a
+            // Look Around or map snapshot, which is what made revisits slow.
+            if let cached = ImageStore.shared.image(for: key) {
+                image = cached
+                shownAttribution = attribution
+                finishedLoading = true
+                return
+            }
+
+            // Nothing full-size yet — show the low-quality thumbnail so there
+            // is something on screen while the real one arrives.
+            if image == nil, let thumbnail = ImageStore.shared.thumbnail(for: key) {
+                image = thumbnail
+            }
+
             await load()
+            if let image { ImageStore.shared.store(image, for: key) }
         }
     }
 
@@ -72,6 +90,8 @@ struct PlaceImageView: View {
     }
 
     private func load() async {
+        // Deliberately not clearing `image` here: it may already hold the
+        // thumbnail, and blanking it would put the spinner back.
         finishedLoading = false
 
         // 1. Mapillary (cached, real street-level photo).
