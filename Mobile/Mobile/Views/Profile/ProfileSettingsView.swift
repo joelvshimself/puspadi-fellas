@@ -3,84 +3,79 @@ import SwiftUI
 struct ProfileSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var languageManager: LanguageManager
-    
+    @EnvironmentObject private var auth: AuthSessionStore
+
     @State private var showLanguageSheet = false
     @State private var showDeleteAccountSheet = false
     @State private var isAccountDeleted = false
     @State private var feedbackText = ""
-    
+
     var onBackToHome: (() -> Void)? = nil
-    
+
     var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
-                // Settings List Card
-                VStack(spacing: 0) {
+            VStack(spacing: 16) {
+                settingsCard {
                     settingsRow(icon: "person.fill", title: "My Account".localized)
-                    Divider().padding(.leading, 52)
-                    
-                    settingsRow(icon: "globe", title: "Language".localized, value: languageManager.currentLanguage.rawValue.localized) {
+                }
+                .padding(.top, 12)
+
+                settingsCard {
+                    settingsRow(
+                        icon: "globe",
+                        title: "Language".localized,
+                        value: languageManager.currentLanguage.rawValue.localized
+                    ) {
                         showLanguageSheet = true
                     }
                     Divider().padding(.leading, 52)
-                    
+
                     settingsRow(icon: "bell.fill", title: "Notifications".localized)
                     Divider().padding(.leading, 52)
-                    
+
                     settingsRow(icon: "info.circle.fill", title: "About App".localized)
                     Divider().padding(.leading, 52)
-                    
+
                     settingsRow(icon: "bubble.left.and.bubble.right.fill", title: "Give Feedback".localized)
                 }
-                .background(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(Color.primary.opacity(0.06), lineWidth: 1)
-                )
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
-                
-                // Sign Out Button
+
                 Button {
-                    // Sign out action
+                    Task {
+                        await auth.signOut()
+                        dismiss()
+                        onBackToHome?()
+                    }
                 } label: {
                     Text("Sign Out".localized)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(Color.red)
+                        .font(.body.weight(.bold))
+                        .foregroundStyle(Color(red: 0.72, green: 0.16, blue: 0.18))
                         .frame(maxWidth: .infinity)
-                        .frame(height: 50)
+                        .frame(height: 52)
                         .background(
-                            RoundedRectangle(cornerRadius: 25, style: .continuous)
-                                .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 25, style: .continuous)
-                                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(Color(uiColor: .systemBackground))
                         )
                 }
-                .padding(.horizontal, 20)
-                
-                // Delete Account Button
+                .padding(.top, 8)
+
                 Button {
                     showDeleteAccountSheet = true
                 } label: {
                     Text("Delete Account".localized)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(Color.red)
+                        .font(.body.weight(.bold))
+                        .foregroundStyle(Color(red: 0.72, green: 0.16, blue: 0.18))
                         .frame(maxWidth: .infinity)
-                        .frame(height: 50)
+                        .frame(height: 52)
                         .background(
-                            RoundedRectangle(cornerRadius: 25, style: .continuous)
-                                .fill(Color.red.opacity(0.12))
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(Color.red.opacity(0.14))
                         )
                 }
-                .padding(.horizontal, 20)
             }
+            .padding(.horizontal, 20)
             .padding(.bottom, 40)
         }
+        .background(Color.mockSectionBackground)
         .sheet(isPresented: $showLanguageSheet) {
             languageSheet
                 .presentationDetents([.height(240)])
@@ -97,7 +92,18 @@ struct ProfileSettingsView: View {
             accountDeletedView
         }
     }
-    
+
+    private func settingsCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 0) {
+            content()
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Color(uiColor: .systemBackground))
+                .shadow(color: .black.opacity(0.05), radius: 8, y: 3)
+        )
+    }
+
     private func settingsRow(icon: String, title: String, value: String? = nil, action: (() -> Void)? = nil) -> some View {
         Button {
             action?()
@@ -107,19 +113,19 @@ struct ProfileSettingsView: View {
                     .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(Color.blue)
                     .frame(width: 24, height: 24)
-                
+
                 Text(title)
                     .font(.body)
                     .foregroundStyle(.primary)
-                
+
                 Spacer()
-                
+
                 if let value {
                     Text(value)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
-                
+
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
@@ -130,7 +136,7 @@ struct ProfileSettingsView: View {
         }
         .buttonStyle(.plain)
     }
-    
+
     private var languageSheet: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Language".localized)
@@ -138,7 +144,7 @@ struct ProfileSettingsView: View {
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
-            
+
             VStack(spacing: 10) {
                 languageOptionRow(label: "English", appLanguage: .english)
                 languageOptionRow(label: "Indonesia", appLanguage: .indonesia)
@@ -148,7 +154,7 @@ struct ProfileSettingsView: View {
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity)
     }
-    
+
     private func languageOptionRow(label: String, appLanguage: AppLanguage) -> some View {
         let isSelected = (languageManager.currentLanguage == appLanguage)
         return Button {
@@ -161,9 +167,9 @@ struct ProfileSettingsView: View {
                 Text(label)
                     .font(.body.weight(isSelected ? .semibold : .regular))
                     .foregroundStyle(isSelected ? Color.blue : Color.primary)
-                
+
                 Spacer()
-                
+
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 18, weight: .semibold))
@@ -183,14 +189,14 @@ struct ProfileSettingsView: View {
         }
         .buttonStyle(.plain)
     }
-    
+
     private var deleteAccountSheet: some View {
         VStack(spacing: 16) {
             VStack(spacing: 6) {
                 Text("Delete Account?".localized)
                     .font(.title3.weight(.bold))
                     .foregroundStyle(.primary)
-                
+
                 Text("Deleting your account will permanently remove it along with all your reviews. This action is irreversible.".localized)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -198,7 +204,7 @@ struct ProfileSettingsView: View {
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
-            
+
             HStack(spacing: 12) {
                 Button {
                     showDeleteAccountSheet = false
@@ -217,7 +223,7 @@ struct ProfileSettingsView: View {
                                 .stroke(Color.gray.opacity(0.2), lineWidth: 1)
                         )
                 }
-                
+
                 Button {
                     showDeleteAccountSheet = false
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -240,7 +246,7 @@ struct ProfileSettingsView: View {
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity)
     }
-    
+
     private var accountDeletedView: some View {
         ZStack {
             LinearGradient(
@@ -249,14 +255,17 @@ struct ProfileSettingsView: View {
                 endPoint: .bottom
             )
             .ignoresSafeArea()
-            
+
             VStack(spacing: 24) {
                 HStack {
                     Spacer()
                     Button {
-                        isAccountDeleted = false
-                        dismiss()
-                        onBackToHome?()
+                        Task {
+                            await auth.signOut()
+                            isAccountDeleted = false
+                            dismiss()
+                            onBackToHome?()
+                        }
                     } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 16, weight: .bold))
@@ -266,29 +275,27 @@ struct ProfileSettingsView: View {
                     }
                 }
                 .padding(.horizontal, 20)
-                
+
                 Spacer()
-                
-                // Big green checkmark icon
+
                 Image(systemName: "checkmark.circle.fill")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 80, height: 80)
                     .foregroundStyle(Color.green)
-                
+
                 VStack(spacing: 8) {
                     Text("Account Deleted".localized)
                         .font(.title2.weight(.bold))
                         .foregroundStyle(.primary)
-                    
+
                     Text("We are sorry to hear you go... Tell us more about your experience for us to improve".localized)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
                 .padding(.horizontal, 32)
-                
-                // Feedback text input box
+
                 TextField("Your feedbacks here (Optional)".localized, text: $feedbackText, axis: .vertical)
                     .font(.body)
                     .lineLimit(4...6)
@@ -302,13 +309,16 @@ struct ProfileSettingsView: View {
                             .stroke(Color.gray.opacity(0.2), lineWidth: 1)
                     )
                     .padding(.horizontal, 24)
-                
+
                 Spacer()
-                
+
                 Button {
-                    isAccountDeleted = false
-                    dismiss()
-                    onBackToHome?()
+                    Task {
+                        await auth.signOut()
+                        isAccountDeleted = false
+                        dismiss()
+                        onBackToHome?()
+                    }
                 } label: {
                     Text("Back to Home".localized)
                         .font(.headline.weight(.semibold))
@@ -330,4 +340,5 @@ struct ProfileSettingsView: View {
 #Preview {
     ProfileSettingsView()
         .environmentObject(LanguageManager.shared)
+        .environmentObject(AuthSessionStore())
 }

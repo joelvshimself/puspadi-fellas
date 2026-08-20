@@ -3,8 +3,9 @@ import SwiftUI
 struct ProfileReviewItem: Identifiable, Equatable {
     let id: UUID
     var userName: String
-    var userAvatar: String?
+    var userAvatarURL: URL?
     var dateLabel: String
+    var placeId: String
     var placeName: String
     var notes: String
     var providedTags: [String]
@@ -13,24 +14,29 @@ struct ProfileReviewItem: Identifiable, Equatable {
 
 struct ProfileReviewsView: View {
     @EnvironmentObject private var languageManager: LanguageManager
-    
+    @EnvironmentObject private var auth: AuthSessionStore
+
+    var displayName: String
+    var avatarURL: URL?
+
     @State private var reviews: [ProfileReviewItem] = []
     @State private var reviewToDelete: ProfileReviewItem? = nil
     @State private var reviewToUpdate: ProfileReviewItem? = nil
     @State private var showDeleteConfirmation = false
     @State private var showSuccessToast = false
-    
+
     var body: some View {
         ZStack(alignment: .top) {
+            Color.mockSectionBackground.ignoresSafeArea()
+
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    // Title
                     Text("\("All reviews".localized) (\(reviews.count))")
                         .font(.title3.weight(.bold))
                         .foregroundStyle(.primary)
                         .padding(.horizontal, 20)
                         .padding(.top, 12)
-                    
+
                     if reviews.isEmpty {
                         VStack(spacing: 12) {
                             Image(systemName: "square.and.pencil")
@@ -52,24 +58,21 @@ struct ProfileReviewsView: View {
                 }
                 .padding(.bottom, 40)
             }
-            
-            // Top Toast Banner
+
             if showSuccessToast {
                 HStack(spacing: 10) {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(Color.green)
-                    
+
                     Text("Review successfully removed".localized)
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(Color.primary)
-                    
+
                     Spacer()
-                    
+
                     Button {
-                        withAnimation {
-                            showSuccessToast = false
-                        }
+                        withAnimation { showSuccessToast = false }
                     } label: {
                         Image(systemName: "xmark")
                             .font(.caption.weight(.bold))
@@ -92,7 +95,7 @@ struct ProfileReviewsView: View {
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        .task {
+        .task(id: "\(auth.userId?.uuidString ?? "")-\(displayName)-\(avatarURL?.absoluteString ?? "")") {
             await loadReviewsFromSupabase()
         }
         .sheet(isPresented: $showDeleteConfirmation) {
@@ -102,7 +105,7 @@ struct ProfileReviewsView: View {
                 .presentationDragIndicator(.visible)
         }
         .fullScreenCover(item: $reviewToUpdate) { review in
-            let place = SavedPlaceSnapshotStore.place(for: review.placeName)
+            let place = SavedPlaceSnapshotStore.place(for: review.placeId)
                 ?? Place.fromSearchResult(
                     name: review.placeName,
                     category: "Place",
@@ -115,49 +118,36 @@ struct ProfileReviewsView: View {
     }
 
     private func loadReviewsFromSupabase() async {
+        guard let userId = auth.userId else {
+            await MainActor.run { reviews = [] }
+            return
+        }
         do {
-            let dbRows = try await ReviewService.shared.fetchAllReviews()
-            var items: [ProfileReviewItem] = []
-            for row in dbRows {
-                let placeName = SavedPlaceSnapshotStore.place(for: row.placeId)?.name ?? row.placeId
-                var urls: [URL] = []
-                if let elevator = row.elevatorPhotoUrls {
-                    urls.append(contentsOf: elevator.compactMap { URL(string: $0) })
-                }
-                if let toilet = row.toiletPhotoUrls {
-                    urls.append(contentsOf: toilet.compactMap { URL(string: $0) })
-                }
-                let item = ProfileReviewItem(
+            let dbRows = try await ReviewService.shared.fetchMyReviews(userId: userId)
+            let items = dbRows.map { row in
+                ProfileReviewItem(
                     id: row.id,
-                    userName: "Community Contributor",
-                    userAvatar: nil,
-                    dateLabel: String(row.createdAt.prefix(10)),
-                    placeName: placeName,
-                    notes: row.notes ?? "No review notes written.",
-                    providedTags: ["Elevator", "Toilet", "Entrance"],
-                    photoURLs: urls
+                    userName: displayName.isEmpty ? "You" : displayName,
+                    userAvatarURL: avatarURL,
+                    dateLabel: ReviewService.profileDateLabel(row.createdAt),
+                    placeId: row.placeId,
+                    placeName: SavedPlaceSnapshotStore.place(for: row.placeId)?.name ?? row.placeId,
+                    notes: row.primaryNotes,
+                    providedTags: row.providedTags,
+                    photoURLs: row.allPhotoURLs
                 )
-                items.append(item)
             }
-            await MainActor.run {
-                self.reviews = items
-            }
+            await MainActor.run { self.reviews = items }
         } catch {
             print("ProfileReviewsView: Failed to fetch reviews from Supabase: \(error)")
         }
     }
-    
+
     private func reviewCard(_ review: ProfileReviewItem) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Header: User avatar, name, date, place
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "person.crop.circle.fill")
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: 36, height: 36)
-                    .foregroundStyle(.gray.opacity(0.6))
-                    .clipShape(Circle())
-                
+                reviewAvatar(review)
+
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
                         Text(review.userName)
@@ -168,20 +158,20 @@ struct ProfileReviewsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    
+
                     Text(review.placeName)
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
             }
-            
-            // Notes
+
+            Divider()
+
             Text(review.notes)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            
-            // What Provided
+
             if !review.providedTags.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("What Provided:".localized)
@@ -192,28 +182,27 @@ struct ProfileReviewsView: View {
                         .foregroundStyle(.primary)
                 }
             }
-            
-            // Photos thumbnails
+
             if !review.photoURLs.isEmpty {
-                HStack(spacing: 8) {
-                    ForEach(review.photoURLs.indices, id: \.self) { idx in
-                        AsyncImage(url: review.photoURLs[idx]) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image.resizable().aspectRatio(contentMode: .fill)
-                            default:
-                                Color(.secondarySystemBackground).overlay { ProgressView() }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(review.photoURLs.indices, id: \.self) { idx in
+                            AsyncImage(url: review.photoURLs[idx]) { phase in
+                                switch phase {
+                                case .success(let image):
+                                    image.resizable().aspectRatio(contentMode: .fill)
+                                default:
+                                    Color(.secondarySystemBackground).overlay { ProgressView() }
+                                }
                             }
+                            .frame(width: 88, height: 76)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
-                        .frame(width: 80, height: 70)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
                 }
             }
-            
-            // Action footer
+
             HStack(spacing: 12) {
-                // Delete button
                 Button {
                     reviewToDelete = review
                     showDeleteConfirmation = true
@@ -223,12 +212,11 @@ struct ProfileReviewsView: View {
                         .foregroundStyle(Color.red.opacity(0.8))
                         .frame(width: 44, height: 44)
                         .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(Color.red.opacity(0.1))
+                            Circle()
+                                .fill(Color.red.opacity(0.12))
                         )
                 }
-                
-                // Update Review button
+
                 Button {
                     reviewToUpdate = review
                 } label: {
@@ -238,8 +226,8 @@ struct ProfileReviewsView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 44)
                         .background(
-                            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                .fill(Color.accentColor.opacity(0.08))
+                            Capsule()
+                                .fill(Color.accentColor.opacity(0.12))
                         )
                 }
             }
@@ -248,21 +236,45 @@ struct ProfileReviewsView: View {
         .padding(16)
         .background(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(Color(uiColor: .secondarySystemGroupedBackground))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+                .fill(Color(uiColor: .systemBackground))
+                .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
         )
     }
-    
+
+    @ViewBuilder
+    private func reviewAvatar(_ review: ProfileReviewItem) -> some View {
+        if let url = review.userAvatarURL {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image.resizable().aspectRatio(contentMode: .fill)
+                default:
+                    placeholderReviewAvatar
+                }
+            }
+            .frame(width: 36, height: 36)
+            .clipShape(Circle())
+        } else {
+            placeholderReviewAvatar
+        }
+    }
+
+    private var placeholderReviewAvatar: some View {
+        Image(systemName: "person.crop.circle.fill")
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .frame(width: 36, height: 36)
+            .foregroundStyle(.gray.opacity(0.6))
+            .clipShape(Circle())
+    }
+
     private var deleteConfirmationSheet: some View {
         VStack(spacing: 16) {
             VStack(spacing: 6) {
                 Text("Delete Review?".localized)
                     .font(.title3.weight(.bold))
                     .foregroundStyle(.primary)
-                
+
                 Text("Your review will permanently removed. This action is irreversible.".localized)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -270,7 +282,7 @@ struct ProfileReviewsView: View {
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
-            
+
             HStack(spacing: 12) {
                 Button {
                     showDeleteConfirmation = false
@@ -290,7 +302,7 @@ struct ProfileReviewsView: View {
                                 .stroke(Color.gray.opacity(0.2), lineWidth: 1)
                         )
                 }
-                
+
                 Button {
                     if let target = reviewToDelete {
                         withAnimation {
@@ -320,6 +332,7 @@ struct ProfileReviewsView: View {
 }
 
 #Preview {
-    ProfileReviewsView()
+    ProfileReviewsView(displayName: "Aarief M.", avatarURL: nil)
         .environmentObject(LanguageManager.shared)
+        .environmentObject(AuthSessionStore())
 }

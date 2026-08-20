@@ -18,6 +18,8 @@ struct ContributeReviewFlowView: View {
     @State private var isSubmitted = false
     @State private var submitError: String?
     @State private var showExitConfirmation = false
+    @EnvironmentObject private var auth: AuthSessionStore
+    @State private var showLogin = false
 
     init(
         place: Place,
@@ -113,6 +115,18 @@ struct ContributeReviewFlowView: View {
                     .overlay { ProgressView() }
                     .task { await submit() }
             }
+        }
+        .onAppear {
+            if !auth.isSignedIn {
+                showLogin = true
+            }
+        }
+        .fullScreenCover(isPresented: $showLogin) {
+            LoginView(
+                onSuccess: { showLogin = false },
+                onCancel: { onFinished() }
+            )
+            .environmentObject(auth)
         }
         .alert(
             "Couldn't submit review",
@@ -320,4 +334,5 @@ private extension Array {
         place: Place.fromSearchResult(name: "Park23 Mall", category: "Mall", coordinate: .init(latitude: 0, longitude: 0)),
         onFinished: {}
     )
+    .environmentObject(AuthSessionStore())
 }

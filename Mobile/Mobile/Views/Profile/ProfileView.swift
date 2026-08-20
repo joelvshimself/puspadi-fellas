@@ -1,59 +1,68 @@
+import PhotosUI
 import SwiftUI
+import UIKit
 
 struct ProfileView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var languageManager: LanguageManager
-    
+    @EnvironmentObject private var auth: AuthSessionStore
+
     @State private var selectedTab: ProfileTab
-    @State private var userName: String = "Aarief M."
-    
+    @State private var userName: String = ""
+    @State private var avatarURL: URL?
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var isUploadingAvatar = false
+
     init(initialTab: ProfileTab = .reviews) {
         _selectedTab = State(initialValue: initialTab)
     }
-    
+
     var body: some View {
         VStack(spacing: 0) {
-            // Header content
             VStack(spacing: 12) {
-                // User Avatar
-                Image(systemName: "person.crop.circle.fill")
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: 72, height: 72)
-                    .foregroundStyle(Color.gray.opacity(0.4))
-                    .clipShape(Circle())
-                    .overlay(Circle().stroke(Color.white, lineWidth: 2))
-                    .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
-                    .padding(.top, 4)
-                
-                // Name & Badge
+                PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                    ZStack {
+                        avatarView
+                        if isUploadingAvatar {
+                            Circle()
+                                .fill(Color.black.opacity(0.35))
+                                .frame(width: 88, height: 88)
+                            ProgressView()
+                                .tint(.white)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
+
                 VStack(spacing: 6) {
-                    Text(userName)
+                    Text(userName.isEmpty ? " " : userName)
                         .font(.title2.weight(.bold))
                         .foregroundStyle(.primary)
-                    
+
                     HStack(spacing: 4) {
                         Image(systemName: "checkmark.seal.fill")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(Color.blue)
-                        
-                        Text("Top Contributor".localized)
+                            .foregroundStyle(Color.gray)
+
+                        Text("top".localized)
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(Color.blue)
-                        
+                            .foregroundStyle(Color.gray)
+                            .strikethrough(true, color: Color.gray)
+
                         Image(systemName: "chevron.right")
                             .font(.caption2.weight(.bold))
-                            .foregroundStyle(Color.blue.opacity(0.8))
+                            .foregroundStyle(Color.gray.opacity(0.8))
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
                     .background(
                         Capsule()
-                            .fill(Color.blue.opacity(0.08))
+                            .fill(Color.gray.opacity(0.18))
                     )
+                    .allowsHitTesting(false)
                 }
-                
-                // Segmented Tab Picker
+
                 HStack(spacing: 4) {
                     ForEach(ProfileTab.allCases) { tab in
                         let isSelected = (selectedTab == tab)
@@ -93,17 +102,20 @@ struct ProfileView: View {
             .padding(.bottom, 12)
             .background(
                 LinearGradient(
-                    colors: [Color.blue.opacity(0.12), Color(uiColor: .systemGroupedBackground)],
+                    colors: [
+                        Color(red: 0.72, green: 0.88, blue: 1.0),
+                        Color.white,
+                        Color.mockSectionBackground
+                    ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
             )
-            
-            // Tab Content Body
+
             Group {
                 switch selectedTab {
                 case .reviews:
-                    ProfileReviewsView()
+                    ProfileReviewsView(displayName: userName, avatarURL: avatarURL)
                 case .photos:
                     ProfilePhotosView()
                 case .settings:
@@ -113,8 +125,9 @@ struct ProfileView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.mockSectionBackground)
         }
-        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
+        .background(Color.mockSectionBackground.ignoresSafeArea())
         .navigationTitle("Profile".localized)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
@@ -129,6 +142,79 @@ struct ProfileView: View {
                 }
             }
         }
+        .task {
+            await loadProfile()
+        }
+        .onChange(of: selectedPhotoItem) { _, item in
+            guard let item else { return }
+            Task { await uploadAvatar(from: item) }
+        }
+    }
+
+    @ViewBuilder
+    private var avatarView: some View {
+        if let avatarURL {
+            AsyncImage(url: avatarURL) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                default:
+                    placeholderAvatar
+                }
+            }
+            .frame(width: 88, height: 88)
+            .clipShape(Circle())
+            .overlay(Circle().stroke(Color.white, lineWidth: 2))
+            .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
+        } else {
+            placeholderAvatar
+        }
+    }
+
+    private var placeholderAvatar: some View {
+        Image(systemName: "person.crop.circle.fill")
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .frame(width: 88, height: 88)
+            .foregroundStyle(Color.gray.opacity(0.4))
+            .clipShape(Circle())
+            .overlay(Circle().stroke(Color.white, lineWidth: 2))
+            .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
+    }
+
+    private func loadProfile() async {
+        do {
+            if let row = try await ProfileService.shared.fetchCurrent() {
+                await MainActor.run {
+                    userName = (row.displayName?.isEmpty == false) ? row.displayName! : "You"
+                    avatarURL = row.avatarUrl.flatMap(URL.init(string:))
+                }
+            }
+        } catch {
+            print("ProfileView: failed to load profile: \(error)")
+        }
+    }
+
+    private func uploadAvatar(from item: PhotosPickerItem) async {
+        isUploadingAvatar = true
+        defer {
+            isUploadingAvatar = false
+            selectedPhotoItem = nil
+        }
+        guard let data = try? await item.loadTransferable(type: Data.self),
+              let image = UIImage(data: data),
+              let jpeg = image.jpegData(compressionQuality: 0.85)
+        else { return }
+        do {
+            let urlString = try await ProfileService.shared.uploadAvatar(jpegData: jpeg)
+            await MainActor.run {
+                avatarURL = URL(string: urlString)
+            }
+        } catch {
+            print("ProfileView: avatar upload failed: \(error)")
+        }
     }
 }
 
@@ -136,5 +222,6 @@ struct ProfileView: View {
     NavigationStack {
         ProfileView()
             .environmentObject(LanguageManager.shared)
+            .environmentObject(AuthSessionStore())
     }
 }
