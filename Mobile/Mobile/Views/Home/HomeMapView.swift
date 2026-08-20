@@ -21,7 +21,16 @@ let baliRegion = MKCoordinateRegion(
     span: MKCoordinateSpan(latitudeDelta: 0.22, longitudeDelta: 0.22)
 )
 
+private enum HomeFullScreenCover: String, Identifiable {
+    case analysing
+    case auth
+    var id: String { rawValue }
+}
+
 struct HomeMapView: View {
+    @EnvironmentObject private var auth: AuthSessionStore
+    @State private var homeCover: HomeFullScreenCover?
+    @State private var pendingProfileTab: ProfileTab?
     @State private var cameraPosition: MapCameraPosition = .region(baliRegion)
     @State private var visibleRegion = baliRegion
     @State private var selectedMall: Place? = nil
@@ -29,7 +38,6 @@ struct HomeMapView: View {
     @State private var sheetDetent: PresentationDetent = .height(SheetMetrics.peekHeight)
     @State private var isSearchActive = false
     @State private var searchText = ""
-    @State private var showAnalysing = false
     @State private var path = NavigationPath()
     @StateObject private var locationManager = LocationManager()
     /// So the very first real location fix recenters the map once, without
@@ -164,8 +172,26 @@ struct HomeMapView: View {
                                 .enableSwipeBack()
                         }
                     }
-                    .fullScreenCover(isPresented: $showAnalysing) {
-                        AnalysingView(onDismiss: { showAnalysing = false })
+                    .fullScreenCover(item: $homeCover) { cover in
+                        switch cover {
+                        case .analysing:
+                            AnalysingView(onDismiss: { homeCover = nil })
+                        case .auth:
+                            LoginView(
+                                onSuccess: {
+                                    homeCover = nil
+                                    if let tab = pendingProfileTab {
+                                        pendingProfileTab = nil
+                                        path.append(HomeRoute.profile(tab))
+                                    }
+                                },
+                                onCancel: {
+                                    homeCover = nil
+                                    pendingProfileTab = nil
+                                }
+                            )
+                            .environmentObject(auth)
+                        }
                     }
                     .sheet(isPresented: $isSheetPresented) {
                         SearchSheet(
@@ -412,24 +438,11 @@ struct HomeMapView: View {
                     path.append(HomeRoute.saved)
                 } label: {
                     pillIcon("bookmark.fill")
+                circularButton(systemName: "person.fill") {
+                    openProfile()
+                }   
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Saved places")
-
-                Button {
-                    path.append(HomeRoute.profile())
-                } label: {
-                    pillIcon("person.fill")
-                }
-                .buttonStyle(.plain)
-                .simultaneousGesture(
-                    LongPressGesture(minimumDuration: 0.5).onEnded { _ in
-                        showAnalysing = true
-                    }
-                )
-                .accessibilityLabel("Profile")
-                .accessibilityHint("Long press to open Analysing demo")
-            }
+            
             .padding(.horizontal, 16)
             .frame(height: SheetMetrics.buttonDiameter)
             .homeGlass(in: Capsule(), tint: .white.opacity(0.30))
@@ -607,6 +620,7 @@ struct HomeMapView: View {
         }
     }
 
+
     /// A tapped MapKit POI carries a name and coordinate — exactly what the
     /// accessibility lookup needs — so route it through the same openPlace()
     /// path a search result or a mall pin uses.
@@ -620,6 +634,13 @@ struct HomeMapView: View {
                 coordinate: feature.coordinate
             )
         )
+    private func openProfile(tab: ProfileTab = .reviews) {
+        if auth.isSignedIn {
+            path.append(HomeRoute.profile(tab))
+        } else {
+            pendingProfileTab = tab
+            homeCover = .auth
+        }
     }
 
     private func openPlace(_ place: Place) {
@@ -713,4 +734,5 @@ struct TeardropPinShape: Shape {
 #Preview {
     HomeMapView()
         .environmentObject(LanguageManager.shared)
+        .environmentObject(AuthSessionStore())
 }

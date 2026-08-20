@@ -48,6 +48,79 @@ final class LanguageManager: ObservableObject {
         "PHOTOS": [.english: "PHOTOS", .indonesia: "FOTO"],
         "SETTINGS": [.english: "SETTINGS", .indonesia: "PENGATURAN"],
         "Top Contributor": [.english: "Top Contributor", .indonesia: "Kontributor Teratas"],
+        "top": [.english: "top", .indonesia: "atas"],
+        "Sign in": [.english: "Sign in", .indonesia: "Masuk"],
+        "Use Apple to save your reviews, photos, and profile.": [
+            .english: "Use Apple to save your reviews, photos, and profile.",
+            .indonesia: "Gunakan Apple untuk menyimpan ulasan, foto, dan profil Anda."
+        ],
+        "Not now": [.english: "Not now", .indonesia: "Nanti saja"],
+        "Welcome to Roll-Spot": [.english: "Welcome to Roll-Spot", .indonesia: "Selamat datang di Roll-Spot"],
+        "Sign in or create an account to save places and contribute to the community.": [
+            .english: "Sign in or create an account to save places and contribute to the community.",
+            .indonesia: "Masuk atau buat akun untuk menyimpan tempat dan berkontribusi ke komunitas."
+        ],
+        "Email Address": [.english: "Email Address", .indonesia: "Alamat Email"],
+        "Email": [.english: "Email", .indonesia: "Email"],
+        "Password": [.english: "Password", .indonesia: "Kata sandi"],
+        "Confirm Password": [.english: "Confirm Password", .indonesia: "Konfirmasi kata sandi"],
+        "or Sign in with": [.english: "or Sign in with", .indonesia: "atau masuk dengan"],
+        "Continue with Apple": [.english: "Continue with Apple", .indonesia: "Lanjut dengan Apple"],
+        "Sign in with Apple failed. Try again.": [
+            .english: "Sign in with Apple failed. Try again.",
+            .indonesia: "Masuk dengan Apple gagal. Coba lagi."
+        ],
+        "Incorrect password. Try again.": [
+            .english: "Incorrect password. Try again.",
+            .indonesia: "Kata sandi salah. Coba lagi."
+        ],
+        "Create a password": [.english: "Create a password", .indonesia: "Buat kata sandi"],
+        "Confirm your email": [.english: "Confirm your email", .indonesia: "Konfirmasi email Anda"],
+        "We sent a confirmation link to": [
+            .english: "We sent a confirmation link to",
+            .indonesia: "Kami mengirim tautan konfirmasi ke"
+        ],
+        "Open that email and tap the link, then come back here.": [
+            .english: "Open that email and tap the link, then come back here.",
+            .indonesia: "Buka email itu, ketuk tautannya, lalu kembali ke sini."
+        ],
+        "Resend email": [.english: "Resend email", .indonesia: "Kirim ulang email"],
+        "I've confirmed": [.english: "I've confirmed", .indonesia: "Sudah dikonfirmasi"],
+        "A new confirmation email was sent.": [
+            .english: "A new confirmation email was sent.",
+            .indonesia: "Email konfirmasi baru sudah dikirim."
+        ],
+        "Please tap the link in your email first, then try again.": [
+            .english: "Please tap the link in your email first, then try again.",
+            .indonesia: "Ketuk tautan di email Anda dulu, lalu coba lagi."
+        ],
+        "Use at least 8 characters, including a number and a special character.": [
+            .english: "Use at least 8 characters, including a number and a special character.",
+            .indonesia: "Gunakan minimal 8 karakter, termasuk angka dan karakter khusus."
+        ],
+        "What should we call you?": [.english: "What should we call you?", .indonesia: "Bagaimana kami memanggil Anda?"],
+        "Your name": [.english: "Your name", .indonesia: "Nama Anda"],
+        "How do you usually get around?": [
+            .english: "How do you usually get around?",
+            .indonesia: "Bagaimana Anda biasanya berpindah?"
+        ],
+        "Select all that apply": [.english: "Select all that apply", .indonesia: "Pilih semua yang sesuai"],
+        "Wheelchair": [.english: "Wheelchair", .indonesia: "Kursi roda"],
+        "Crutches": [.english: "Crutches", .indonesia: "Kruk"],
+        "Walking Aid": [.english: "Walking Aid", .indonesia: "Alat bantu jalan"],
+        "No mobility aid": [.english: "No mobility aid", .indonesia: "Tanpa alat bantu"],
+        "Other": [.english: "Other", .indonesia: "Lainnya"],
+        "You're all set!": [.english: "You're all set!", .indonesia: "Semua siap!"],
+        "Find accessible malls, save your favorites, or contribute a review to help others.": [
+            .english: "Find accessible malls, save your favorites, or contribute a review to help others.",
+            .indonesia: "Temukan mal aksesibel, simpan favorit, atau tulis ulasan untuk membantu orang lain."
+        ],
+        "Explore Malls": [.english: "Explore Malls", .indonesia: "Jelajahi Mal"],
+        "Photos you add to reviews will show up here.": [
+            .english: "Photos you add to reviews will show up here.",
+            .indonesia: "Foto yang Anda tambahkan ke ulasan akan muncul di sini."
+        ],
+        "No Photos Yet": [.english: "No Photos Yet", .indonesia: "Belum Ada Foto"],
         
         // Settings Menu
         "My Account": [.english: "My Account", .indonesia: "Akun Saya"],

@@ -245,6 +245,85 @@ final class ReviewService {
             .value
     }
 
+    /// Fetches reviews authored by the signed-in user, including entrance children.
+    func fetchMyReviews(userId: UUID) async throws -> [DBOwnedReviewRow] {
+        try await client.from("reviews")
+            .select("""
+                id, place_id, created_at, notes,
+                elevator_exists, elevator_wheelchair_accessible, elevator_blockers,
+                elevator_review_text, elevator_photo_urls,
+                has_disabled_toilet, toilet_review_text, toilet_photo_urls,
+                review_entrances(location, has_dropoff_ramp, has_rails, door_type, is_wide_enough, review_text, photo_urls)
+            """)
+            .eq("user_id", value: userId)
+            .order("created_at", ascending: false)
+            .execute()
+            .value
+    }
+
+    struct DBOwnedReviewRow: Decodable {
+        let id: UUID
+        let placeId: String
+        let createdAt: String
+        let notes: String?
+        let elevatorExists: Bool?
+        let elevatorWheelchairAccessible: Bool?
+        let elevatorBlockers: [String]?
+        let elevatorReviewText: String?
+        let elevatorPhotoUrls: [String]?
+        let hasDisabledToilet: Bool?
+        let toiletReviewText: String?
+        let toiletPhotoUrls: [String]?
+        let reviewEntrances: [DBReviewEntranceRow]?
+
+        var allPhotoURLs: [URL] {
+            var urls: [URL] = []
+            urls.append(contentsOf: (elevatorPhotoUrls ?? []).compactMap(URL.init(string:)))
+            urls.append(contentsOf: (toiletPhotoUrls ?? []).compactMap(URL.init(string:)))
+            for entrance in reviewEntrances ?? [] {
+                urls.append(contentsOf: (entrance.photoUrls ?? []).compactMap(URL.init(string:)))
+            }
+            return urls
+        }
+
+        var providedTags: [String] {
+            var tags: [String] = []
+            for entrance in reviewEntrances ?? [] {
+                tags.append(contentsOf: ReviewService.profileEntranceTags(from: entrance))
+            }
+            if elevatorExists == true { tags.append("Elevator") }
+            if hasDisabledToilet == true { tags.append("Toilet") }
+            var seen = Set<String>()
+            return tags.filter { seen.insert($0).inserted }
+        }
+
+        var primaryNotes: String {
+            if let notes, !notes.isEmpty { return notes }
+            if let text = elevatorReviewText, !text.isEmpty { return text }
+            if let text = toiletReviewText, !text.isEmpty { return text }
+            if let text = reviewEntrances?.compactMap(\.reviewText).first(where: { !$0.isEmpty }) {
+                return text
+            }
+            return "No review notes written."
+        }
+    }
+
+    static func profileEntranceTags(from row: DBReviewEntranceRow) -> [String] {
+        var tags: [String] = []
+        if row.hasDropoffRamp == true { tags.append("Ramp") }
+        if row.hasRails == true { tags.append("Handrail") }
+        if row.doorType == "automatic" { tags.append("Automatic Doors") }
+        if row.doorType == "manual" { tags.append("Manual Doors") }
+        return tags
+    }
+
+    static func profileDateLabel(_ createdAt: String) -> String {
+        let date = parseDate(createdAt)
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM yyyy"
+        return formatter.string(from: date)
+    }
+
     // MARK: - Place facility reviews
 
     struct DBReviewEntranceRow: Decodable {

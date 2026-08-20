@@ -5,8 +5,8 @@
 // columns on reviews + review_entrances rows, derives grade signals, and
 // returns the live accessibility_grade(). See docs/specs.md §4.5.
 //
-// TODO: re-enable auth before production — JWT is intentionally skipped
-// for device testing; inserts use user_id = null via service_role.
+// Auth: the caller must send a Supabase user JWT. user_id is taken from
+// that session; the service_role client is still used for the insert.
 //
 // Request body:
 // {
@@ -24,6 +24,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
@@ -69,8 +70,11 @@ Deno.serve(async (req: Request) => {
     return new Response("Method not allowed", { status: 405 });
   }
 
-  // TODO: re-enable auth before production — verify Authorization JWT and
-  // set user_id from auth.getUser(); for now anon inserts with user_id null.
+  const userId = await requireUserId(req);
+  if (!userId) {
+    return json({ error: "sign in required" }, 401);
+  }
+
   let body: RequestBody;
   try {
     body = await req.json();
@@ -98,7 +102,7 @@ Deno.serve(async (req: Request) => {
   const { data: review, error: insertError } = await supabase
     .from("reviews")
     .insert({
-      user_id: null, // TODO: re-enable auth — set from JWT
+      user_id: userId,
       place_id: placeId,
       apple_maps_id: appleMapsId,
       lat,
@@ -283,6 +287,17 @@ function collectNotes(
 }
 
 // --- helpers ----------------------------------------------------------------
+
+async function requireUserId(req: Request): Promise<string | null> {
+  const authorization = req.headers.get("Authorization");
+  if (!authorization) return null;
+  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: authorization } },
+  });
+  const { data: { user }, error } = await userClient.auth.getUser();
+  if (error || !user) return null;
+  return user.id;
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
