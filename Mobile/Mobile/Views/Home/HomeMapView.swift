@@ -309,16 +309,49 @@ struct HomeMapView: View {
         }
         guard !stale.isEmpty else { return }
 
-        let batch = Array(stale.prefix(Self.maxGradesPerLoad))
-        let pairs = await mapWithLimit(batch, limit: Self.maxConcurrentGradeLookups) { place in
-            (Self.gradeKey(for: place), await Self.resolveGrade(for: place))
-        }
-        placeGrades.merge(Dictionary(uniqueKeysWithValues: pairs)) { _, new in new }
+        await resolveGrades(for: stale)
     }
 
     @MainActor
     private func loadNearbyPlaces() async {
-        nearbyPlaces = await probe(visibleRegion)
+        // Pins first. `probe` waits for every grade before returning, so
+        // routing startup through it left the map empty until ~8 enrich calls
+        // finished — seconds of nothing, which is what made the app feel slow
+        // to load. Where the places are is known immediately; what grade they
+        // have is not, and should not hold them back.
+        let places = await NearbyPlacesService.search(in: visibleRegion)
+        nearbyPlaces = places
+        await resolveGrades(for: places)
+    }
+
+    /// Resolves grades a few at a time, publishing each as it lands so pins
+    /// tag themselves progressively instead of all at the end.
+    @MainActor
+    private func resolveGrades(for places: [Place]) async {
+        let pending = places.filter {
+            let known = placeGrades[Self.gradeKey(for: $0)]
+            return known == nil || known == .noData
+        }.prefix(Self.maxGradesPerLoad)
+        guard !pending.isEmpty else { return }
+
+        var queue = Array(pending).makeIterator()
+
+        await withTaskGroup(of: (String, OverallAccessibility).self) { group in
+            var started = 0
+            while started < Self.maxConcurrentGradeLookups, let place = queue.next() {
+                group.addTask { (Self.gradeKey(for: place), await Self.resolveGrade(for: place)) }
+                started += 1
+            }
+
+            while let (key, grade) = await group.next() {
+                // Publish immediately: one pin tagging itself is better than
+                // every pin tagging at once, several seconds later.
+                placeGrades[key] = grade
+                if let place = queue.next() {
+                    group.addTask { (Self.gradeKey(for: place), await Self.resolveGrade(for: place)) }
+                }
+            }
+        }
     }
 
     private var mapLayer: some View {
