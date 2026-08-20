@@ -6,9 +6,17 @@ struct MockPlaceDetailView: View {
     let place: Place
 
     @EnvironmentObject private var languageManager: LanguageManager
+    @EnvironmentObject private var auth: AuthSessionStore
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var store: PlaceReviewStore
 
-    @State private var isSaved = false
+    /// Observed rather than copied into local state: the saved set also
+    /// changes from sign-in and from the Saved list, and a snapshot taken in
+    /// `onAppear` went stale on both.
+    @ObservedObject private var savedPlaces = SavedPlacesService.shared
+    @State private var saveToast: String?
+    @State private var saveError: String?
+    @State private var showSignIn = false
     @State private var heroPage: Int? = 0
     @State private var showReviewWizard = false
     @State private var resumeScreenIndex = 0
@@ -54,10 +62,6 @@ struct MockPlaceDetailView: View {
         }
         .background(Color(.systemBackground))
         .ignoresSafeArea(edges: .top)
-        .onAppear {
-            let saveId = Place.canonicalPlaceId(from: place.coordinate)
-            isSaved = SavedPlacesService.shared.isSaved(placeId: saveId)
-        }
         .task {
             await store.load()
             store.startWatching()
@@ -74,7 +78,41 @@ struct MockPlaceDetailView: View {
             NotReviewView(kind: kind, store: store, place: place)
                 .enableSwipeBack()
         }
-        .toolbarBackground(.hidden, for: .navigationBar)
+        // Hidden, not just transparent: the bar stayed in the hierarchy at
+        // ~0-103pt and hit-tested first, so every tap on the share/save pill
+        // (which the design puts at 60pt) went to the bar instead of to the
+        // buttons. The screen draws its own back control below.
+        .toolbar(.hidden, for: .navigationBar)
+        .overlay(alignment: .top) {
+            if let saveToast {
+                PhotoSuccessToast(message: saveToast) { self.saveToast = nil }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 60)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy(duration: 0.25), value: saveToast)
+        .alert(
+            "Couldn't update your saved places",
+            isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } }),
+            presenting: saveError
+        ) { _ in
+            Button("OK") { saveError = nil }
+        } message: { message in
+            Text(message)
+        }
+        .fullScreenCover(isPresented: $showSignIn) {
+            LoginView(
+                onSuccess: {
+                    showSignIn = false
+                    // Finish what the tap was for, now that there is a user to
+                    // attach the row to.
+                    Task { await toggleSave() }
+                },
+                onCancel: { showSignIn = false }
+            )
+            .environmentObject(auth)
+        }
         .fullScreenCover(isPresented: $showReviewWizard) {
             ContributeReviewFlowView(
                 place: place,
@@ -173,8 +211,44 @@ struct MockPlaceDetailView: View {
         }
     }
 
+    private var saveId: String {
+        Place.canonicalPlaceId(from: place.coordinate)
+    }
+
+    private var isSaved: Bool {
+        savedPlaces.isSaved(placeId: saveId)
+    }
+
+    private func toggleSave() async {
+        switch await savedPlaces.toggleSave(placeId: saveId, place: place) {
+        case .saved:
+            showToast("Saved to your places".localized)
+        case .removed:
+            showToast("Removed from your saved places".localized)
+        case .needsSignIn:
+            showSignIn = true
+        case .failed(let message):
+            saveError = message
+        }
+    }
+
+    private func showToast(_ message: String) {
+        saveToast = message
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            if saveToast == message { saveToast = nil }
+        }
+    }
+
     private var topControls: some View {
         HStack {
+            GlassCircleButton(action: { dismiss() }) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.black)
+            }
+            .accessibilityLabel("Back")
+
             Spacer()
 
             HStack(spacing: 22) {
@@ -185,11 +259,7 @@ struct MockPlaceDetailView: View {
                 .buttonStyle(.plain)
 
                 Button {
-                    let saveId = Place.canonicalPlaceId(from: place.coordinate)
-                    Task {
-                        await SavedPlacesService.shared.toggleSave(placeId: saveId, place: place)
-                        isSaved = SavedPlacesService.shared.isSaved(placeId: saveId)
-                    }
+                    Task { await toggleSave() }
                 } label: {
                     Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
                         .font(.system(size: 20, weight: .medium))

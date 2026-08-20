@@ -439,11 +439,18 @@ struct HomeMapView: View {
                 } label: {
                     pillIcon("bookmark.fill")
                 }
+                // Without `.plain` the label inherits the accent tint and both
+                // icons render blue instead of the design's black.
+                .buttonStyle(.plain)
+                .accessibilityLabel("Saved places")
+
                 Button {
                     openProfile()
                 } label: {
                     pillIcon("person.fill")
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Profile")
             }
             .padding(.horizontal, 16)
             .frame(height: SheetMetrics.buttonDiameter)
