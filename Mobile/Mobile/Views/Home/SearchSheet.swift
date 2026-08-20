@@ -1,4 +1,5 @@
 import MapKit
+import UIKit
 import SwiftUI
 
 enum HomeRoute: Hashable {
@@ -540,9 +541,19 @@ struct SearchSheet: View {
                         )
                         if Task.isCancelled { return }
 
-                        // Mapillary street photo, straight into URLCache.
-                        if let url = enriched?.place?.imageUrl.flatMap(URL.init(string:)) {
-                            _ = try? await NetworkRetry.download(from: url)
+                        // Mapillary street photo. Decoding it here also writes
+                        // the blurred thumbnail, so a place opened for the very
+                        // first time still has a stand-in to show rather than an
+                        // empty box.
+                        if let url = enriched?.place?.imageUrl.flatMap(URL.init(string:)),
+                           let data = try? await NetworkRetry.download(from: url),
+                           let image = UIImage(data: data) {
+                            await MainActor.run {
+                                ImageStore.shared.store(
+                                    image,
+                                    for: ImageStore.key(for: place.coordinate)
+                                )
+                            }
                         }
                         if Task.isCancelled { return }
 
@@ -590,16 +601,14 @@ struct TypewriterPlaceholderView: View {
 
     private let englishPhrases: [String] = [
         "Search a place...",
-        "Search Malls in Bali...",
-        "Find Beachwalk, Level 21...",
+        "Search Malls in around you...",
         "Discover accessible spots...",
         "Search shopping centers..."
     ]
 
     private let indonesianPhrases: [String] = [
         "Cari tempat...",
-        "Cari Mall di Bali...",
-        "Temukan Beachwalk, Level 21...",
+        "Cari Mall di sekitar kamu...",
         "Cari tempat aksesibel...",
         "Cari pusat perbelanjaan..."
     ]

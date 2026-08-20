@@ -239,7 +239,14 @@ struct HomeMapView: View {
     @MainActor
     private func probe(_ region: MKCoordinateRegion) async -> [Place] {
         let places = await NearbyPlacesService.search(in: region)
-        let missing = places.filter { placeGrades[Self.gradeKey(for: $0)] == nil }
+        // `.noData` means "the backend had no signal yet", not "this place has
+        // no accessibility". Enrichment now finishes AFTER the first response,
+        // so caching that answer permanently left map pins untagged while the
+        // detail page — asking later — showed a real grade. Retry those.
+        let missing = places.filter {
+            let known = placeGrades[Self.gradeKey(for: $0)]
+            return known == nil || known == .noData
+        }
 
         // Concurrently, not one after another: this used to be a sequential
         // await per place, so a probe cost up to 25 round-trips end to end and

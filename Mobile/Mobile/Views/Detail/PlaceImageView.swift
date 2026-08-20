@@ -22,6 +22,8 @@ struct PlaceImageView: View {
     var cornerRadius: CGFloat = 16
 
     @State private var image: UIImage?
+    /// Low-quality stand-in shown, blurred, until the real image arrives.
+    @State private var placeholder: UIImage?
     @State private var shownAttribution: String?
     @State private var finishedLoading = false
 
@@ -31,6 +33,7 @@ struct PlaceImageView: View {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
+                    .transition(.opacity)
                     .overlay(alignment: .bottomLeading) {
                         if let shownAttribution {
                             Text(shownAttribution)
@@ -43,9 +46,25 @@ struct PlaceImageView: View {
                         }
                     }
             } else if !finishedLoading {
+                // No spinner: an image should resolve into view, not sit behind
+                // a progress wheel. Blurred thumbnail if we have one, otherwise
+                // a soft neutral wash that the real photo fades over.
                 ZStack {
-                    Rectangle().fill(Color(.secondarySystemBackground))
-                    ProgressView()
+                    LinearGradient(
+                        colors: [
+                            Color(.secondarySystemBackground),
+                            Color(.tertiarySystemBackground),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    if let placeholder {
+                        Image(uiImage: placeholder)
+                            .resizable()
+                            .scaledToFill()
+                            .blur(radius: 12)
+                            .clipped()
+                    }
                 }
             } else {
                 ZStack {
@@ -58,6 +77,7 @@ struct PlaceImageView: View {
         }
         .frame(height: height)
         .frame(maxWidth: .infinity)
+        .animation(.easeOut(duration: 0.35), value: image != nil)
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         // Re-run when the enrich result resolves (so the Mapillary URL, if any,
         // is known before we decide on a fallback).
@@ -76,8 +96,8 @@ struct PlaceImageView: View {
 
             // Nothing full-size yet — show the low-quality thumbnail so there
             // is something on screen while the real one arrives.
-            if image == nil, let thumbnail = ImageStore.shared.thumbnail(for: key) {
-                image = thumbnail
+            if image == nil {
+                placeholder = ImageStore.shared.thumbnail(for: key)
             }
 
             await load()
