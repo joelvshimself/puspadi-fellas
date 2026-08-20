@@ -275,8 +275,12 @@ struct MockPlaceDetailView: View {
 
     private var placeInfoCard: some View {
         VStack(alignment: .leading, spacing: 12) {
+            // Reserve the badge's place while the grade resolves, rather than
+            // showing nothing and letting the card jump when it arrives.
             if let grade = store.overallGrade {
                 AccessibilityBadge(grade: grade)
+            } else if store.isLoading || !store.enrichResolved {
+                AccessibilityBadgePlaceholder()
             }
 
             HStack {
