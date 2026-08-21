@@ -106,6 +106,7 @@ struct AuthSocialButtons: View {
     var onSuccess: () -> Void
     var onNeedsOnboarding: (_ suggestedName: String?) -> Void
     var onDeferAppleSignIn: (_ pending: PendingAppleSignIn, _ suggestedName: String?) -> Void
+    var showsOrLabel: Bool = true
 
     @EnvironmentObject private var auth: AuthSessionStore
     @State private var currentNonce = ""
@@ -114,9 +115,11 @@ struct AuthSocialButtons: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Text("or Sign in with".localized)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            if showsOrLabel {
+                Text("or Sign in with".localized)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             CenteredSignInWithAppleButton(
                 isDisabled: isBusy,

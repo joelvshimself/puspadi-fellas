@@ -4,9 +4,7 @@ struct LoginView: View {
     var onSuccess: () -> Void
     var onCancel: () -> Void
 
-    @EnvironmentObject private var auth: AuthSessionStore
     @State private var path: [AuthRoute] = []
-    @State private var signupEmail = ""
     @State private var signupPassword = ""
     @State private var pendingAppleSignIn: PendingAppleSignIn?
     @State private var displayName: String = ""
@@ -18,8 +16,6 @@ struct LoginView: View {
                 onCancel: onCancel,
                 onSuccess: onSuccess,
                 path: $path,
-                signupEmail: $signupEmail,
-                signupPassword: $signupPassword,
                 pendingAppleSignIn: $pendingAppleSignIn,
                 displayName: $displayName,
                 mobilityAids: $mobilityAids
@@ -85,16 +81,9 @@ struct AuthWelcomeView: View {
     var onCancel: () -> Void
     var onSuccess: () -> Void
     @Binding var path: [AuthRoute]
-    @Binding var signupEmail: String
-    @Binding var signupPassword: String
     @Binding var pendingAppleSignIn: PendingAppleSignIn?
     @Binding var displayName: String
     @Binding var mobilityAids: Set<String>
-
-    @EnvironmentObject private var auth: AuthSessionStore
-    @FocusState private var emailFocused: Bool
-    @State private var email = ""
-    @State private var isChecking = false
 
     var body: some View {
         ZStack {
@@ -117,27 +106,11 @@ struct AuthWelcomeView: View {
                     .font(.subheadline)
                     .foregroundStyle(AuthPalette.subtitle)
 
-                AuthFieldBox(isFocused: emailFocused) {
-                    TextField("Email Address".localized, text: $email)
-                        .textContentType(.emailAddress)
-                        .keyboardType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .focused($emailFocused)
-                }
-
-                AuthContinueButton(
-                    title: "Continue".localized,
-                    enabled: AuthPasswordRules.looksLikeEmail(email),
-                    isLoading: isChecking
-                ) {
-                    Task { await continueWithEmail() }
-                }
-
                 AuthSocialButtons(
                     onSuccess: onSuccess,
                     onNeedsOnboarding: beginAppleOnboarding,
-                    onDeferAppleSignIn: deferAppleSignIn
+                    onDeferAppleSignIn: deferAppleSignIn,
+                    showsOrLabel: false
                 )
 
                 Spacer()
@@ -146,41 +119,11 @@ struct AuthWelcomeView: View {
         }
     }
 
-    private func continueWithEmail() async {
-        isChecking = true
-        defer { isChecking = false }
-        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
-        do {
-            let exists = try await auth.emailRegistered(trimmed)
-            if exists {
-                path.append(.emailFound(trimmed))
-            } else {
-                signupEmail = trimmed
-                signupPassword = ""
-                pendingAppleSignIn = nil
-                displayName = ""
-                mobilityAids = []
-                AuthDebug.log("Welcome new email → createPassword email=\(trimmed)")
-                path.append(.createPassword(trimmed))
-            }
-        } catch {
-            // Hosted DB may not have email_registered yet — treat as a new account.
-            signupEmail = trimmed
-            signupPassword = ""
-            pendingAppleSignIn = nil
-            displayName = ""
-            mobilityAids = []
-            AuthDebug.log("Welcome email_registered failed, treating as new email=\(trimmed)")
-            path.append(.createPassword(trimmed))
-        }
-    }
-
     private func beginAppleOnboarding(suggestedName: String?) {
         displayName = suggestedName ?? ""
         mobilityAids = []
         AuthDebug.log(
-            "beginAppleOnboarding name=\(displayName) pendingApple=\(pendingAppleSignIn != nil) "
-            + "signupPasswordLen=\(signupPassword.count)"
+            "beginAppleOnboarding name=\(displayName) pendingApple=\(pendingAppleSignIn != nil)"
         )
         path.append(.name(email: "", password: ""))
     }
