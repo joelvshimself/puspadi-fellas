@@ -267,6 +267,7 @@
 				DEVELOPMENT_TEAM = 7HU54XPQ85;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Puspadi Fellas uses your camera so you can take photos of a place's accessibility features.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Puspadi Fellas uses your location to find and check accessibility info for places near you.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Puspadi Fellas uses your microphone for voice search.";
@@ -304,6 +305,7 @@
 				DEVELOPMENT_TEAM = 7HU54XPQ85;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Puspadi Fellas uses your camera so you can take photos of a place's accessibility features.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Puspadi Fellas uses your location to find and check accessibility info for places near you.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Puspadi Fellas uses your microphone for voice search.";

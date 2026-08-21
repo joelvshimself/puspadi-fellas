@@ -1,5 +1,6 @@
 import AuthenticationServices
 import SwiftUI
+import UIKit
 
 enum AuthPalette {
     static let brandBlue = Color(red: 0.0, green: 0.48, blue: 1.0)
@@ -13,9 +14,10 @@ enum AuthPalette {
 enum AuthRoute: Hashable {
     case emailFound(String)
     case createPassword(String)
-    case verifyEmail(email: String, password: String)
-    case name
-    case mobility
+    /// Carries signup fields in the route so NavigationStack doesn't drop parent `@State`.
+    case verifyEmail(email: String, password: String, displayName: String, mobilityAids: [String])
+    case name(email: String, password: String)
+    case mobility(email: String, password: String, displayName: String)
     case allSet
 }
 
@@ -102,6 +104,8 @@ struct AuthFieldBox<Content: View>: View {
 
 struct AuthSocialButtons: View {
     var onSuccess: () -> Void
+    var onNeedsOnboarding: (_ suggestedName: String?) -> Void
+    var onDeferAppleSignIn: (_ pending: PendingAppleSignIn, _ suggestedName: String?) -> Void
 
     @EnvironmentObject private var auth: AuthSessionStore
     @State private var currentNonce = ""
@@ -114,19 +118,20 @@ struct AuthSocialButtons: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            SignInWithAppleButton(.continue) { request in
-                let nonce = AppleSignInNonce.random()
-                currentNonce = nonce
-                request.requestedScopes = [.email, .fullName]
-                request.nonce = AppleSignInNonce.sha256(nonce)
-            } onCompletion: { result in
-                Task { await complete(result) }
-            }
-            .signInWithAppleButtonStyle(.black)
+            CenteredSignInWithAppleButton(
+                isDisabled: isBusy,
+                onRequest: { request in
+                    let nonce = AppleSignInNonce.random()
+                    currentNonce = nonce
+                    request.requestedScopes = [.email, .fullName]
+                    request.nonce = AppleSignInNonce.sha256(nonce)
+                },
+                onCompletion: { result in
+                    Task { await complete(result) }
+                }
+            )
             .frame(maxWidth: .infinity)
             .frame(height: 52)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .disabled(isBusy)
             .accessibilityLabel("Continue with Apple".localized)
 
             if isBusy {
@@ -153,11 +158,98 @@ struct AuthSocialButtons: View {
             isBusy = true
             defer { isBusy = false }
             do {
-                try await auth.signInWithApple(authorization: authorization, rawNonce: currentNonce)
-                onSuccess()
+                if AuthSessionStore.isFirstAppleAuthorization(authorization) {
+                    let (pending, suggestedName) = try AuthSessionStore.pendingAppleSignIn(
+                        from: authorization,
+                        rawNonce: currentNonce
+                    )
+                    AuthDebug.log("Apple first-time defer signup name=\(suggestedName ?? "nil")")
+                    onDeferAppleSignIn(pending, suggestedName)
+                } else {
+                    AuthDebug.log("Apple returning user sign-in")
+                    try await auth.signInWithAppleReturningUser(
+                        authorization: authorization,
+                        rawNonce: currentNonce
+                    )
+                    let needsOnboarding = await auth.profileNeedsOnboarding()
+                    AuthDebug.log("Apple returning user isSignedIn=\(auth.isSignedIn) needsOnboarding=\(needsOnboarding)")
+                    if needsOnboarding {
+                        onNeedsOnboarding(nil)
+                    } else {
+                        onSuccess()
+                    }
+                }
             } catch {
                 errorMessage = error.localizedDescription
             }
+        }
+    }
+}
+
+/// Official Apple button with centered logo + label at full width.
+private struct CenteredSignInWithAppleButton: UIViewRepresentable {
+    var isDisabled: Bool
+    var onRequest: (ASAuthorizationAppleIDRequest) -> Void
+    var onCompletion: (Result<ASAuthorization, Error>) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onRequest: onRequest, onCompletion: onCompletion)
+    }
+
+    func makeUIView(context: Context) -> ASAuthorizationAppleIDButton {
+        let button = ASAuthorizationAppleIDButton(type: .continue, style: .black)
+        button.cornerRadius = 16
+        button.addTarget(context.coordinator, action: #selector(Coordinator.handleTap), for: .touchUpInside)
+        return button
+    }
+
+    func updateUIView(_ uiView: ASAuthorizationAppleIDButton, context: Context) {
+        uiView.isEnabled = !isDisabled
+        uiView.alpha = isDisabled ? 0.6 : 1
+    }
+
+    final class Coordinator: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
+        let onRequest: (ASAuthorizationAppleIDRequest) -> Void
+        let onCompletion: (Result<ASAuthorization, Error>) -> Void
+
+        init(
+            onRequest: @escaping (ASAuthorizationAppleIDRequest) -> Void,
+            onCompletion: @escaping (Result<ASAuthorization, Error>) -> Void
+        ) {
+            self.onRequest = onRequest
+            self.onCompletion = onCompletion
+        }
+
+        @objc func handleTap() {
+            let provider = ASAuthorizationAppleIDProvider()
+            let request = provider.createRequest()
+            onRequest(request)
+            let controller = ASAuthorizationController(authorizationRequests: [request])
+            controller.delegate = self
+            controller.presentationContextProvider = self
+            controller.performRequests()
+        }
+
+        func authorizationController(
+            controller: ASAuthorizationController,
+            didCompleteWithAuthorization authorization: ASAuthorization
+        ) {
+            onCompletion(.success(authorization))
+        }
+
+        func authorizationController(
+            controller: ASAuthorizationController,
+            didCompleteWithError error: Error
+        ) {
+            onCompletion(.failure(error))
+        }
+
+        func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            if let keyWindow = scenes.flatMap(\.windows).first(where: \.isKeyWindow) {
+                return keyWindow
+            }
+            return scenes.flatMap(\.windows).first ?? ASPresentationAnchor()
         }
     }
 }

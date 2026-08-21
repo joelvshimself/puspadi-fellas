@@ -6,6 +6,9 @@ struct LoginView: View {
 
     @EnvironmentObject private var auth: AuthSessionStore
     @State private var path: [AuthRoute] = []
+    @State private var signupEmail = ""
+    @State private var signupPassword = ""
+    @State private var pendingAppleSignIn: PendingAppleSignIn?
     @State private var displayName: String = ""
     @State private var mobilityAids: Set<String> = []
 
@@ -14,7 +17,12 @@ struct LoginView: View {
             AuthWelcomeView(
                 onCancel: onCancel,
                 onSuccess: onSuccess,
-                path: $path
+                path: $path,
+                signupEmail: $signupEmail,
+                signupPassword: $signupPassword,
+                pendingAppleSignIn: $pendingAppleSignIn,
+                displayName: $displayName,
+                mobilityAids: $mobilityAids
             )
             .toolbar(.hidden, for: .navigationBar)
             .navigationBarBackButtonHidden(true)
@@ -24,16 +32,37 @@ struct LoginView: View {
                     AuthEmailFoundView(
                         email: email,
                         onSuccess: onSuccess,
-                        onSocialSuccess: onSuccess
+                        path: $path,
+                        pendingAppleSignIn: $pendingAppleSignIn,
+                        displayName: $displayName,
+                        mobilityAids: $mobilityAids
                     )
                 case .createPassword(let email):
-                    AuthCreatePasswordView(email: email, path: $path)
-                case .verifyEmail(let email, let password):
-                    AuthVerifyEmailView(email: email, password: password, path: $path)
-                case .name:
-                    AuthNameView(displayName: $displayName, path: $path)
-                case .mobility:
+                    AuthCreatePasswordView(
+                        email: email,
+                        signupPassword: $signupPassword,
+                        path: $path
+                    )
+                case .verifyEmail(let email, let password, let displayName, let mobilityAids):
+                    AuthVerifyEmailView(
+                        email: email,
+                        password: password,
+                        displayName: displayName,
+                        mobilityAids: mobilityAids,
+                        path: $path
+                    )
+                case .name(let email, let password):
+                    AuthNameView(
+                        email: email,
+                        password: password,
+                        displayName: $displayName,
+                        path: $path
+                    )
+                case .mobility(let email, let password, let displayName):
                     AuthMobilityView(
+                        email: email,
+                        password: password,
+                        pendingAppleSignIn: $pendingAppleSignIn,
                         mobilityAids: $mobilityAids,
                         displayName: displayName,
                         path: $path
@@ -41,13 +70,6 @@ struct LoginView: View {
                 case .allSet:
                     AuthAllSetView(onExplore: onSuccess)
                 }
-            }
-        }
-        .onChange(of: auth.isSignedIn) { _, signedIn in
-            // Apple sign-in from Welcome (empty stack) should close the gate.
-            // Email signup stays signed-in while name/mobility continue on the stack.
-            if signedIn, path.isEmpty {
-                onSuccess()
             }
         }
     }
@@ -63,6 +85,11 @@ struct AuthWelcomeView: View {
     var onCancel: () -> Void
     var onSuccess: () -> Void
     @Binding var path: [AuthRoute]
+    @Binding var signupEmail: String
+    @Binding var signupPassword: String
+    @Binding var pendingAppleSignIn: PendingAppleSignIn?
+    @Binding var displayName: String
+    @Binding var mobilityAids: Set<String>
 
     @EnvironmentObject private var auth: AuthSessionStore
     @FocusState private var emailFocused: Bool
@@ -107,7 +134,11 @@ struct AuthWelcomeView: View {
                     Task { await continueWithEmail() }
                 }
 
-                AuthSocialButtons(onSuccess: onSuccess)
+                AuthSocialButtons(
+                    onSuccess: onSuccess,
+                    onNeedsOnboarding: beginAppleOnboarding,
+                    onDeferAppleSignIn: deferAppleSignIn
+                )
 
                 Spacer()
             }
@@ -124,11 +155,38 @@ struct AuthWelcomeView: View {
             if exists {
                 path.append(.emailFound(trimmed))
             } else {
+                signupEmail = trimmed
+                signupPassword = ""
+                pendingAppleSignIn = nil
+                displayName = ""
+                mobilityAids = []
+                AuthDebug.log("Welcome new email → createPassword email=\(trimmed)")
                 path.append(.createPassword(trimmed))
             }
         } catch {
             // Hosted DB may not have email_registered yet — treat as a new account.
+            signupEmail = trimmed
+            signupPassword = ""
+            pendingAppleSignIn = nil
+            displayName = ""
+            mobilityAids = []
+            AuthDebug.log("Welcome email_registered failed, treating as new email=\(trimmed)")
             path.append(.createPassword(trimmed))
         }
+    }
+
+    private func beginAppleOnboarding(suggestedName: String?) {
+        displayName = suggestedName ?? ""
+        mobilityAids = []
+        AuthDebug.log(
+            "beginAppleOnboarding name=\(displayName) pendingApple=\(pendingAppleSignIn != nil) "
+            + "signupPasswordLen=\(signupPassword.count)"
+        )
+        path.append(.name(email: "", password: ""))
+    }
+
+    private func deferAppleSignIn(_ pending: PendingAppleSignIn, suggestedName: String?) {
+        pendingAppleSignIn = pending
+        beginAppleOnboarding(suggestedName: suggestedName)
     }
 }
