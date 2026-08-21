@@ -21,7 +21,7 @@ struct ReviewWizardView: View {
         self.place = place
         self.onFinished = onFinished
         // TODO(backend): placeholder appleMapsId — see ReviewDraft.
-        _draft = StateObject(wrappedValue: ReviewDraft(appleMapsId: place.id.uuidString, coordinate: place.coordinate))
+        _draft = StateObject(wrappedValue: ReviewDraft(appleMapsId: place.id.uuidString, coordinate: place.coordinate, name: place.name))
     }
 
     var body: some View {

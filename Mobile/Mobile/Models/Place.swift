@@ -42,8 +42,12 @@ struct Place: Identifiable, Hashable {
 
 extension Place {
     /// Canonical place key shared with Supabase edge functions.
+    ///
+    /// Delegates to PlaceCacheStore.key rather than re-deriving the format:
+    /// two copies of this string is how the device cache and the review /
+    /// saved-place keys drift apart, and they must address the same row.
     static func canonicalPlaceId(lat: Double, lng: Double) -> String {
-        String(format: "loc_%.5f_%.5f", lat, lng)
+        PlaceCacheStore.key(lat: lat, lng: lng)
     }
 
     static func canonicalPlaceId(from coordinate: CLLocationCoordinate2D) -> String {

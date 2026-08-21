@@ -29,11 +29,22 @@ private enum HomeFullScreenCover: String, Identifiable {
 
 struct HomeMapView: View {
     @EnvironmentObject private var auth: AuthSessionStore
+    /// Shared-link arrivals (puspadifellas://place?…) land here as a pending
+    /// place; this screen owns the navigation stack, so it does the routing.
+    @ObservedObject private var deepLinks = DeepLinkRouter.shared
     @State private var homeCover: HomeFullScreenCover?
     @State private var pendingProfileTab: ProfileTab?
     @State private var presentAuthAfterSheetDismiss = false
     @State private var cameraPosition: MapCameraPosition = .region(baliRegion)
     @State private var visibleRegion = baliRegion
+    /// `visibleRegion` as of the last SETTLED camera position.
+    ///
+    /// `onMapCameraChange` fires continuously through a pan, and SearchSheet
+    /// keys a `.task(id:)` off whatever region it is handed — so feeding it
+    /// `visibleRegion` directly restarted an MKLocalSearch on every frame of
+    /// every drag, which is what MapKit throttles. Only the debounce below
+    /// advances this, so the sheet re-queries once per gesture.
+    @State private var settledRegion = baliRegion
     @State private var selectedMall: Place? = nil
     @State private var isSheetPresented = true
     @State private var sheetDetent: PresentationDetent = .height(SheetMetrics.peekHeight)
@@ -173,32 +184,12 @@ struct HomeMapView: View {
                                 .enableSwipeBack()
                         }
                     }
-                    .fullScreenCover(item: $homeCover) { cover in
-                        switch cover {
-                        case .analysing:
-                            AnalysingView(onDismiss: { homeCover = nil })
-                        case .auth:
-                            LoginView(
-                                onSuccess: {
-                                    homeCover = nil
-                                    if let tab = pendingProfileTab {
-                                        pendingProfileTab = nil
-                                        path.append(HomeRoute.profile(tab))
-                                    }
-                                },
-                                onCancel: {
-                                    homeCover = nil
-                                    pendingProfileTab = nil
-                                }
-                            )
-                            .environmentObject(auth)
-                        }
-                    }
                     .sheet(isPresented: $isSheetPresented) {
                         SearchSheet(
                             isExpanded: $isSearchActive,
                             searchText: $searchText,
-                            searchRegion: visibleRegion,
+                            searchRegion: settledRegion,
+                            nearbyPlaces: gradedPlaces,
                             onSelectPlace: openPlace,
                             onCancelSearch: dismissSearch
                         )
@@ -216,6 +207,35 @@ struct HomeMapView: View {
 
                         .presentationDragIndicator(.hidden)
                         .interactiveDismissDisabled()
+                        // The cover is presented FROM the sheet, not from the map
+                        // underneath it. Presenting it below the sheet forced a
+                        // dismiss/re-present cycle around every login, and a sheet
+                        // re-presented while the cover was still animating away
+                        // came back as a default .large sheet — custom detents
+                        // ignored, the peek pill floating mid-screen. From up
+                        // here the sheet never moves: the cover slides over it
+                        // and dismissing the cover simply reveals it again.
+                        .fullScreenCover(item: $homeCover) { cover in
+                            switch cover {
+                            case .analysing:
+                                AnalysingView(onDismiss: { homeCover = nil })
+                            case .auth:
+                                LoginView(
+                                    onSuccess: {
+                                        homeCover = nil
+                                        if let tab = pendingProfileTab {
+                                            pendingProfileTab = nil
+                                            path.append(HomeRoute.profile(tab))
+                                        }
+                                    },
+                                    onCancel: {
+                                        homeCover = nil
+                                        pendingProfileTab = nil
+                                    }
+                                )
+                                .environmentObject(auth)
+                            }
+                        }
                     }
                     .onChange(of: isSheetPresented) { _, presented in
                         guard !presented, presentAuthAfterSheetDismiss else { return }
@@ -250,9 +270,19 @@ struct HomeMapView: View {
                         hasCenteredOnUser = true
                         recenter(on: coordinate.clLocation)
                     }
+                    .onChange(of: deepLinks.pendingPlace) { _, place in
+                        openDeepLinkedPlace(place)
+                    }
                     .task {
+                        // A link that launched the app may have landed before
+                        // this view existed — drain it here as well.
+                        openDeepLinkedPlace(deepLinks.pendingPlace)
                         locationManager.requestLocation()
-                        await loadNearbyPlaces()
+                        // Through the debounce, not a direct load: the map's
+                        // first render also fires onMapCameraChange, so a
+                        // direct call here ran two identical nearby searches
+                        // side by side on every launch.
+                        scheduleNearbyPlacesLoad()
                     }
                     .onDisappear {
                         nearbyLoadTask?.cancel()
@@ -261,16 +291,22 @@ struct HomeMapView: View {
         }
     }
 
-    private var displayedMalls: [Place] {
+    /// Deduped nearby + visited places with their latest known grades — the
+    /// full set, before the map's grade filter. The search sheet lists these
+    /// so it never re-queries what the map already loaded.
+    private var gradedPlaces: [Place] {
         var seen = Set<String>()
         let combined = (nearbyPlaces + visitedPlaces).filter { seen.insert(Self.gradeKey(for: $0)).inserted }
-        let base = combined.map { place in
+        return combined.map { place in
             var copy = place
             copy.grade = placeGrades[Self.gradeKey(for: place)] ?? place.grade
             return copy
         }
-        guard let selectedGrade else { return base }
-        return base.filter { ($0.grade ?? .noData) == selectedGrade }
+    }
+
+    private var displayedMalls: [Place] {
+        guard let selectedGrade else { return gradedPlaces }
+        return gradedPlaces.filter { ($0.grade ?? .noData) == selectedGrade }
     }
 
     /// Searches a region and resolves grades WITHOUT touching `nearbyPlaces`
@@ -279,27 +315,8 @@ struct HomeMapView: View {
     @MainActor
     private func probe(_ region: MKCoordinateRegion) async -> [Place] {
         let places = await NearbyPlacesService.search(in: region)
-        // `.noData` means "the backend had no signal yet", not "this place has
-        // no accessibility". Enrichment now finishes AFTER the first response,
-        // so caching that answer permanently left map pins untagged while the
-        // detail page — asking later — showed a real grade. Retry those.
-        let missing = places.filter {
-            let known = placeGrades[Self.gradeKey(for: $0)]
-            return known == nil || known == .noData
-        }
-
-        // Bounded, and capped. This previously fired one enrich per un-graded
-        // place with no limit — up to 25 at once, on every camera change. That
-        // saturates a phone's connection (starving the map tiles competing for
-        // it) and, since a cold enrich hits Google Places, spends real money
-        // per pan. A few at a time, for the nearest handful, is plenty.
-        if !missing.isEmpty {
-            let batch = Array(missing.prefix(Self.maxGradesPerLoad))
-            let pairs = await mapWithLimit(batch, limit: Self.maxConcurrentGradeLookups) { place in
-                (Self.gradeKey(for: place), await Self.resolveGrade(for: place))
-            }
-            placeGrades.merge(Dictionary(uniqueKeysWithValues: pairs)) { _, new in new }
-        }
+        guard !Task.isCancelled else { return places }
+        await resolveGrades(for: places)
 
         return places.map { place in
             var copy = place
@@ -312,6 +329,34 @@ struct HomeMapView: View {
     /// A pan should not cost 25 paid Google calls or 25 parallel connections.
     private static let maxGradesPerLoad = 8
     private static let maxConcurrentGradeLookups = 3
+    /// How many times the filter may widen before giving up. Doubling from the
+    /// default span all the way to 2.0 is eight rounds, and every round is a
+    /// fresh search plus up to `maxGradesPerLoad` enrich calls — one filter tap
+    /// could cost ~64 of them.
+    private static let maxGradeSearchSteps = 4
+
+    /// Places whose grade came back `.noData` and have already been given a
+    /// second chance this session.
+    ///
+    /// `.noData` means "the backend had no signal yet", not "this place has no
+    /// accessibility" — server-side enrichment finishes after the first
+    /// response, so a single lookup genuinely can be too early and one retry is
+    /// worth it. Retrying *forever*, on every pan and every return to the map,
+    /// is what turned a rate-limited backend into a self-sustaining request
+    /// storm. One retry, then the place is left alone until something
+    /// invalidates it.
+    @State private var retriedNoDataGrades: Set<String> = []
+
+    /// Places still worth a lookup: never asked, or asked once and answered
+    /// `.noData`.
+    @MainActor
+    private func placesNeedingGrade(from places: [Place]) -> [Place] {
+        places.filter { place in
+            let key = Self.gradeKey(for: place)
+            guard let known = placeGrades[key] else { return true }
+            return known == .noData && !retriedNoDataGrades.contains(key)
+        }
+    }
 
     /// Stable across searches, unlike `place.id`.
     private nonisolated static func gradeKey(for place: Place) -> String {
@@ -319,12 +364,27 @@ struct HomeMapView: View {
     }
 
     private static func resolveGrade(for place: Place) async -> OverallAccessibility {
-        guard let response = try? await AccessibilityService.shared.enrich(
+        let response = try? await AccessibilityService.shared.enrich(
             lat: place.coordinate.latitude,
             lng: place.coordinate.longitude,
             name: place.name
-        ), let grades = response.grade, !grades.isEmpty else { return .noData }
+        )
+        return grade(from: response)
+    }
 
+    /// Grade from the device cache alone — no request, so it costs nothing and
+    /// is not subject to the per-load budget.
+    private static func cachedGrade(for place: Place) async -> OverallAccessibility? {
+        guard let response = await AccessibilityService.shared.cached(
+            lat: place.coordinate.latitude,
+            lng: place.coordinate.longitude,
+            name: place.name
+        ) else { return nil }
+        return grade(from: response)
+    }
+
+    private static func grade(from response: PlaceAccessibilityResponse?) -> OverallAccessibility {
+        guard let grades = response?.grade, !grades.isEmpty else { return .noData }
         if grades.contains(where: { $0.bestValue == "no" }) { return .notAccessible }
         if grades.allSatisfy({ $0.bestValue == "yes" }) { return .accessible }
         return .partiallyAccessible
@@ -335,10 +395,7 @@ struct HomeMapView: View {
     /// resolved shows up on the pin instead of waiting for the next pan.
     @MainActor
     private func refreshStaleGrades() async {
-        let stale = (nearbyPlaces + visitedPlaces).filter {
-            let known = placeGrades[Self.gradeKey(for: $0)]
-            return known == nil || known == .noData
-        }
+        let stale = placesNeedingGrade(from: nearbyPlaces + visitedPlaces)
         guard !stale.isEmpty else { return }
 
         await resolveGrades(for: stale)
@@ -352,6 +409,7 @@ struct HomeMapView: View {
         // to load. Where the places are is known immediately; what grade they
         // have is not, and should not hold them back.
         let places = await NearbyPlacesService.search(in: visibleRegion)
+        guard !Task.isCancelled else { return }
         nearbyPlaces = places
         await resolveGrades(for: places)
     }
@@ -360,11 +418,32 @@ struct HomeMapView: View {
     /// tag themselves progressively instead of all at the end.
     @MainActor
     private func resolveGrades(for places: [Place]) async {
-        let pending = places.filter {
-            let known = placeGrades[Self.gradeKey(for: $0)]
-            return known == nil || known == .noData
-        }.prefix(Self.maxGradesPerLoad)
+        let candidates = placesNeedingGrade(from: places)
+        guard !candidates.isEmpty else { return }
+
+        // Free pass first. `maxGradesPerLoad` exists to cap NETWORK calls, but
+        // it used to cap places — so with 25 pins and a budget of 8, seventeen
+        // of them stayed Unknown even when their grade was already sitting on
+        // disk. Publish everything we already know, then spend the budget only
+        // on what genuinely needs asking.
+        var needsRequest: [Place] = []
+        for place in candidates {
+            if let grade = await Self.cachedGrade(for: place) {
+                placeGrades[Self.gradeKey(for: place)] = grade
+            } else {
+                needsRequest.append(place)
+            }
+        }
+
+        let pending = needsRequest.prefix(Self.maxGradesPerLoad)
         guard !pending.isEmpty else { return }
+
+        // A place asked about now has had its chance; if the answer is
+        // `.noData` again it stops being retried. Marked up front rather than
+        // on completion so an interrupted round still counts.
+        for place in pending where placeGrades[Self.gradeKey(for: place)] == .noData {
+            retriedNoDataGrades.insert(Self.gradeKey(for: place))
+        }
 
         var queue = Array(pending).makeIterator()
 
@@ -379,10 +458,18 @@ struct HomeMapView: View {
                 // Publish immediately: one pin tagging itself is better than
                 // every pin tagging at once, several seconds later.
                 placeGrades[key] = grade
+                // Cancellation has to be checked here as well as at the call
+                // site. The debounce cancels `nearbyLoadTask` on every camera
+                // change, but nothing in this loop noticed — so a superseded
+                // round kept feeding new places into the group and a long pan
+                // left several full rounds of enrich calls in flight at once.
+                guard !Task.isCancelled else { break }
                 if let place = queue.next() {
                     group.addTask { (Self.gradeKey(for: place), await Self.resolveGrade(for: place)) }
                 }
             }
+
+            group.cancelAll()
         }
     }
 
@@ -529,7 +616,14 @@ struct HomeMapView: View {
             isSearchingForGrade = true
             defer { isSearchingForGrade = false }
             
-            while span <= maxSpan {
+            // Bounded by BOTH the span ceiling and a step count. Doubling
+            // 0.012 up to 2.0 is eight rounds of (one search + up to eight
+            // enrich calls); four rounds already covers a ~16x wider area than
+            // the user is looking at, which is as far as "nearby" reasonably
+            // stretches.
+            var step = 0
+            while span <= maxSpan, step < Self.maxGradeSearchSteps {
+                step += 1
                 let region = MKCoordinateRegion(
                     center: center,
                     span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)
@@ -542,6 +636,7 @@ struct HomeMapView: View {
                 if found.contains(where: { ($0.grade ?? .noData) == grade }) {
                     nearbyPlaces = found
                     visibleRegion = region
+                    settledRegion = region
                     withAnimation(.easeInOut(duration: 0.65)) {
                         cameraPosition = .region(region)
                     }
@@ -554,6 +649,7 @@ struct HomeMapView: View {
             }
             
             visibleRegion = startRegion
+            settledRegion = startRegion
             withAnimation(.easeInOut(duration: 0.65)) {
                 cameraPosition = .region(startRegion)
             }
@@ -622,6 +718,9 @@ struct HomeMapView: View {
             nearbyLoadTask = Task {
                 try? await Task.sleep(nanoseconds: 400_000_000)
                 guard !Task.isCancelled else { return }
+                // Publishing the region here rather than in onMapCameraChange
+                // is what keeps SearchSheet to one search per gesture.
+                settledRegion = visibleRegion
                 await loadNearbyPlaces()
             }
         }
@@ -649,6 +748,18 @@ struct HomeMapView: View {
                 coordinate: feature.coordinate
             )
         )
+    }
+
+    /// Routes a shared-link place onto the navigation stack, popping whatever
+    /// was open first so the link always lands on its own detail page.
+    private func openDeepLinkedPlace(_ place: Place?) {
+        guard let place else { return }
+        deepLinks.pendingPlace = nil
+        homeCover = nil
+        if !path.isEmpty {
+            path = NavigationPath()
+        }
+        openPlace(place)
     }
 
     private func openProfile(tab: ProfileTab = .reviews) {

@@ -26,6 +26,7 @@ struct FacilityPhotosView: View {
     @State private var showsSuccessToast = false
     @State private var toastDismissTask: Task<Void, Never>?
     @State private var isUploading = false
+    @State private var uploadError: String?
 
     private struct LightboxSelection: Identifiable {
         let id = UUID()
@@ -42,7 +43,8 @@ struct FacilityPhotosView: View {
         photos: [FacilityPhoto] = [],
         place: Place? = nil,
         facilityKind: FacilityKind? = nil,
-        onBack: @escaping () -> Void = {}
+        onBack: @escaping () -> Void = {},
+        onPhotosChanged: (() -> Void)? = nil
     ) {
         self.init(
             facilityName: facilityName,
@@ -53,7 +55,7 @@ struct FacilityPhotosView: View {
             showsChrome: true,
             onBack: onBack,
             onComposingChanged: nil,
-            onPhotosChanged: nil
+            onPhotosChanged: onPhotosChanged
         )
     }
 
@@ -146,6 +148,15 @@ struct FacilityPhotosView: View {
         .onDisappear { toastDismissTask?.cancel() }
         .fullScreenCover(item: $lightbox) { selection in
             FacilityPhotoDetailView(photos: selection.photos, initialID: selection.initialID)
+        }
+        .alert(
+            "Couldn't add your photos",
+            isPresented: Binding(get: { uploadError != nil }, set: { if !$0 { uploadError = nil } }),
+            presenting: uploadError
+        ) { _ in
+            Button("OK") { uploadError = nil }
+        } message: { message in
+            Text(message)
         }
         .overlay {
             if isUploading {
@@ -299,14 +310,39 @@ struct FacilityPhotosView: View {
                 facility: facilityKind,
                 localPhotos: submitted
             )
+            // Show the upload immediately. Only the failure path kept the
+            // local copies before, so a SUCCESSFUL upload toasted "added!"
+            // over a gallery that still didn't contain the photos — they only
+            // reappeared after a full backend round-trip.
+            store.add(submitted)
             goToGallery()
             showToast()
             onPhotosChanged?()
         } catch {
+            // Never claim success for an upload that failed. The photos are
+            // kept in the local store so the user does not lose the pick, but
+            // they only exist on this device until a retry goes through — the
+            // old code showed "successfully added!" here, so a photo silently
+            // vanished on the next reload.
+            print("[FacilityPhotosView] Photo upload FAILED: \(error)")
             store.add(submitted)
             goToGallery()
-            showToast()
+            uploadError = Self.uploadErrorMessage(for: error)
         }
+    }
+
+    /// Storage rejects an unauthenticated upload with a row-level-security
+    /// error, which is true but unreadable — say the thing the user can act on.
+    private static func uploadErrorMessage(for error: Error) -> String {
+        let text = "\(error)".lowercased()
+        if text.contains("row-level security")
+            || text.contains("sign in")
+            || text.contains("unauthorized")
+            || text.contains("401")
+            || text.contains("403") {
+            return "You need to be signed in to add photos. Sign in and try again."
+        }
+        return "Your photos couldn't be uploaded. Check your connection and try again."
     }
 
     private func showToast() {

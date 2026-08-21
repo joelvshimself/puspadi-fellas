@@ -1,7 +1,9 @@
 import CoreLocation
 import SwiftUI
 
-/// Primary place details screen — live grades, reviews, and facility cards.
+/// Primary place details screen — hero carousel, grade banner, and the
+/// Overview / Reviews / Photos sections scoped to one facility at a time
+/// (Figma "Place Details").
 struct MockPlaceDetailView: View {
     let place: Place
 
@@ -20,9 +22,20 @@ struct MockPlaceDetailView: View {
     @State private var heroPage: Int? = 0
     @State private var showReviewWizard = false
     @State private var resumeScreenIndex = 0
-    @State private var facilityDestination: FacilityKind?
+
+    @State private var selectedSection: PlaceDetailSection = .overview
+    @State private var selectedFacility: FacilityKind = .entrance
+    @State private var contentWidth: CGFloat = 0
+    @State private var isAddingPhotos = false
+    @State private var lightbox: LightboxSelection?
 
     private let heroHeight: CGFloat = 253
+
+    private struct LightboxSelection: Identifiable {
+        let id = UUID()
+        let photos: [FacilityPhoto]
+        let initialID: UUID
+    }
 
     init(place: Place) {
         self.place = place
@@ -52,6 +65,11 @@ struct MockPlaceDetailView: View {
             ScrollView {
                 VStack(spacing: 0) {
                     heroSection
+                    // Overlaps the photo by its corner radius so the rounded
+                    // top corners are visible against the hero.
+                    gradeBanner
+                        .padding(.top, -18)
+                        .zIndex(1)
                     contentSection
                         .background(Color(.systemBackground))
                 }
@@ -62,6 +80,10 @@ struct MockPlaceDetailView: View {
         }
         .background(Color(.systemBackground))
         .ignoresSafeArea(edges: .top)
+        .overlay(alignment: .bottom) {
+            ContributeFloatingButton { startReview() }
+                .padding(.bottom, 20)
+        }
         .task {
             await store.load()
             store.startWatching()
@@ -73,10 +95,6 @@ struct MockPlaceDetailView: View {
         // then resolves from cache instead of from the network.
         .task(id: heroURLs) {
             await prefetchCarousel()
-        }
-        .navigationDestination(item: $facilityDestination) { kind in
-            NotReviewView(kind: kind, store: store, place: place)
-                .enableSwipeBack()
         }
         // Hidden, not just transparent: the bar stayed in the hierarchy at
         // ~0-103pt and hit-tested first, so every tap on the share/save pill
@@ -116,12 +134,35 @@ struct MockPlaceDetailView: View {
         .fullScreenCover(isPresented: $showReviewWizard) {
             ContributeReviewFlowView(
                 place: place,
+                startingFacility: selectedFacility,
                 initialScreenIndex: resumeScreenIndex
             ) {
                 showReviewWizard = false
                 UnfinishedReviewStore.clear(for: place)
+                Task {
+                    // Drop the cached grade first or load() republishes the
+                    // pre-review grade and the banner only updates if the
+                    // realtime insert happens to arrive.
+                    await PlaceCacheStore.shared.remove(store.placeId)
+                    await store.load()
+                }
+            }
+        }
+        // Add Photos goes straight to the source dialog and then the composer
+        // (Figma "Photos - Adding Photo" → "Photos - Confirm photos"). It used
+        // to open a second gallery screen with its own dead Overview/Reviews
+        // tabs and a second Add Photos button before the picker ever appeared.
+        .photoComposerFlow(
+            isSourcePresented: $isAddingPhotos,
+            place: place,
+            facility: selectedFacility,
+            onUploaded: { _ in
+                showToast("Your photos successfully added!".localized)
                 Task { await store.load() }
             }
+        )
+        .fullScreenCover(item: $lightbox) { selection in
+            FacilityPhotoDetailView(photos: selection.photos, initialID: selection.initialID)
         }
     }
 
@@ -300,7 +341,8 @@ struct MockPlaceDetailView: View {
                 MockGalleryView(
                     streetImageURL: store.streetImageURL,
                     reviewPhotos: store.reviewPhotos,
-                    place: place
+                    place: place,
+                    onPhotosChanged: { Task { await store.load() } }
                 )
             } label: {
                 HStack(spacing: 6) {
@@ -320,141 +362,213 @@ struct MockPlaceDetailView: View {
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 20)
-        .padding(.bottom, 14)
+        // 14pt of clearance above the grade banner, which now covers the
+        // bottom 18pt of the hero.
+        .padding(.bottom, 32)
+    }
+
+    /// Full-bleed grade strip between the hero and the title — the badge that
+    /// used to sit inside the info card.
+    @ViewBuilder
+    private var gradeBanner: some View {
+        // Resolution has to be checked FIRST. `overallGrade` falls back to
+        // `.noData` when there are no feature grades yet, so it is never nil —
+        // which made the placeholder below unreachable and showed a confident
+        // "NO DATA AVAILABLE" that then flipped to the real grade.
+        if !store.enrichResolved {
+            AccessibilityBannerPlaceholder()
+        } else if let grade = store.overallGrade {
+            AccessibilityBanner(grade: grade)
+        }
     }
 
     private var contentSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            placeInfoCard
+            titleBlock
                 .padding(.horizontal, 22)
-                .padding(.top, 16)
+                .padding(.top, 18)
 
-            Divider().padding(.top, 16)
+            PlaceDetailTabBar(
+                selection: $selectedSection,
+                reviewCount: facilityReviews.count
+            )
+            .padding(.top, 18)
 
-            facilitiesHeader
-                .padding(.horizontal, 22)
-                .padding(.top, 16)
+            FacilityChipRow(selection: $selectedFacility)
+                .padding(.top, 18)
 
-            let facilityCards = FacilityCardModel.cards(from: store)
-            let listHeight = facilityCards.reduce(0) { sum, f in
-                sum + FacilityCardHeight.height(for: f.state) + 12 // 12 = top(6) + bottom(6) insets
+            sectionContent
+                .padding(.top, 22)
+                // Clears the floating CONTRIBUTE pill.
+                .padding(.bottom, 96)
+        }
+        .background {
+            GeometryReader { geo in
+                Color.clear.preference(key: DetailWidthKey.self, value: geo.size.width)
             }
-            List {
-                ForEach(facilityCards) { facility in
-                    if let kind = facility.kind {
-                        Button { facilityDestination = kind } label: {
-                            FacilityCard(facility: facility)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(top: 6, leading: 22, bottom: 6, trailing: 22))
-                .listRowBackground(Color(.systemBackground))
+        }
+        .onPreferenceChange(DetailWidthKey.self) { contentWidth = $0 }
+    }
+
+    private var titleBlock: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(place.name)
+                .font(.system(size: 26, weight: .bold))
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 10) {
+                PlaceActionPill(icon: "location.fill", title: "Open in Maps", action: openMaps)
+                PlaceActionPill(icon: "phone.fill", title: "Call", action: callWhatsApp)
+                Spacer(minLength: 0)
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .scrollDisabled(true)
-            .frame(height: listHeight)
-            .padding(.top, 16)
-            .padding(.bottom, 32)
         }
     }
 
-    private var placeInfoCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Resolution has to be checked FIRST. `overallGrade` falls back to
-            // `.noData` when there are no feature grades yet, so it is never
-            // nil — which made the placeholder below unreachable and showed a
-            // confident "NO DATA AVAILABLE" that then flipped to the real
-            // grade. Malls hid this because the map had already cached theirs.
-            if !store.enrichResolved {
-                AccessibilityBadgePlaceholder()
-            } else if let grade = store.overallGrade {
-                AccessibilityBadge(grade: grade)
-            }
+    private var facilityReviews: [PlaceFacilityReview] {
+        store.reviews(for: selectedFacility)
+    }
 
-            HStack {
-                Text(place.name)
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(.primary)
-                Spacer()
-                HStack(spacing: 8) {
-                    circularActionButton(icon: "location.fill", action: openMaps)
-                    circularActionButton(icon: "phone.fill", action: callWhatsApp)
-                }
-            }
-
-            ctaRow
-        }
+    /// Every tag the community confirmed for this facility, newest review
+    /// first — not just the latest review's, so one thin review does not hide
+    /// what earlier reviewers reported.
+    private var providedTags: [String] {
+        var seen = Set<String>()
+        return facilityReviews
+            .flatMap(\.providedTags)
+            .filter { $0 != "NOT AVAILABLE" && seen.insert($0).inserted }
     }
 
     @ViewBuilder
-    private var ctaRow: some View {
-        if UnfinishedReviewStore.hasUnfinished(for: place) {
-            addReviewButton(title: "Unfinished review")
-        } else if !store.hasAnyReviews() {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("No one review this place yet")
+    private var sectionContent: some View {
+        switch selectedSection {
+        case .overview:
+            overviewContent
+                .padding(.horizontal, 22)
+        case .reviews:
+            reviewsContent
+                .padding(.horizontal, 22)
+        case .photos:
+            photosContent
+                .padding(.horizontal, 22)
+        }
+    }
+
+    private var overviewContent: some View {
+        let notes = store.noteSnippets(for: selectedFacility)
+        return VStack(alignment: .leading, spacing: 24) {
+            WhatProvidedCard(
+                tags: providedTags,
+                isUnavailable: store.isUnavailable(selectedFacility),
+                facilityName: selectedFacility.title
+            )
+
+            NotesFromReviewsSection(
+                snippets: notes,
+                onBeFirstReviewer: { startReview() },
+                onOpenReviews: { withAnimation(.snappy(duration: 0.22)) { selectedSection = .reviews } }
+            )
+
+            // The empty notes card already carries a "Be the first reviewer"
+            // button — a second identical CTA right under it is noise, so this
+            // block only appears once there is something to disagree with.
+            if !notes.isEmpty {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Find something different?".localized)
+                        .font(.system(size: 20, weight: .bold))
+
+                    Button { startReview() } label: {
+                        Text(reviewCTATitle.localized)
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 48)
+                            .background(Color.accentColor, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var reviewCTATitle: String {
+        if UnfinishedReviewStore.hasUnfinished(for: place) { return "Unfinished review" }
+        return store.hasAnyReviews() ? "Add New Review" : "Be the first reviewer"
+    }
+
+    @ViewBuilder
+    private var reviewsContent: some View {
+        if facilityReviews.isEmpty {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("No one review this place yet".localized)
                     .font(.system(size: 15))
                     .foregroundStyle(.secondary)
-                addReviewButton(title: "Be the first reviewer")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button { startReview() } label: {
+                    Text("Be the first reviewer".localized)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 48)
+                        .background(Color.accentColor, in: Capsule())
+                }
+                .buttonStyle(.plain)
             }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.mockSectionBackground)
+            )
         } else {
-            addReviewButton(title: "Add New Review")
+            FacilityReviewsList(reviews: facilityReviews)
         }
     }
 
-    private func addReviewButton(title: String) -> some View {
-        Button {
-            if let snap = UnfinishedReviewStore.snapshot(for: place) {
-                resumeScreenIndex = snap.screenIndex
-            } else {
-                resumeScreenIndex = 0
-            }
-            showReviewWizard = true
-        } label: {
-            Text(title.localized)
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(.white)
+    private var photosContent: some View {
+        let photos = store.facilityPhotos(for: selectedFacility)
+        return VStack(spacing: 16) {
+            Button { isAddingPhotos = true } label: {
+                HStack(spacing: PhotoMetrics.addPhotosSpacing) {
+                    Image(systemName: "photo.badge.plus.fill")
+                        .font(.system(size: 20))
+                    Text("Add Photos".localized)
+                        .font(.system(size: PhotoMetrics.addPhotosLabelSize, weight: .semibold))
+                }
+                .foregroundStyle(PhotoPalette.brandBlue)
                 .frame(maxWidth: .infinity)
-                .frame(height: 48)
-                .background(Color.accentColor, in: Capsule())
-        }
-        .buttonStyle(.plain)
-    }
+                .frame(height: PhotoMetrics.addPhotosHeight)
+                .background(Capsule().fill(PhotoPalette.background1))
+            }
+            .buttonStyle(.plain)
 
-    private var facilitiesHeader: some View {
-        HStack {
-            Label {
-                Text("Facilities".localized)
-                    .font(.system(size: 18, weight: .semibold))
-            } icon: {
-                Image(systemName: "info.circle.fill")
+            if photos.isEmpty {
+                Text("No photos yet".localized)
                     .font(.system(size: 15))
-            }
-            .foregroundStyle(.primary)
-            Spacer()
-            if store.hasAnyReviews() {
-                Text("\(store.facilityReviews.count) reviews")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Color.mockSecondaryText)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Color.mockSectionBackground, in: Capsule())
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 40)
+            } else {
+                PhotoMosaicGrid(
+                    photos: photos,
+                    width: max(contentWidth - 44, 0),
+                    onSelect: { photo in
+                        let siblings = photo.reviewId.map { id in
+                            photos.filter { $0.reviewId == id }
+                        } ?? [photo]
+                        lightbox = LightboxSelection(photos: siblings, initialID: photo.id)
+                    }
+                )
             }
         }
     }
 
-    private func circularActionButton(icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 40, height: 40)
-                .background(Color.accentColor.opacity(0.15), in: Circle())
-        }
-        .buttonStyle(.plain)
+    /// Opens the contribute flow on the facility the user is looking at,
+    /// resuming an unfinished draft when there is one.
+    private func startReview() {
+        resumeScreenIndex = UnfinishedReviewStore.snapshot(for: place)?.screenIndex ?? 0
+        showReviewWizard = true
     }
 
     private func openMaps() {
@@ -480,12 +594,29 @@ struct MockPlaceDetailView: View {
 
     private func sharePlace() {
         let gradeText = (store.overallGrade ?? .noData).label
-        let shareText = "Check out \(place.name) — \(gradeText) on Puspadi Fellas!"
+        // ONE string with the link inside, not [text, URL]: WhatsApp (and
+        // several other share targets) take only the URL item when handed
+        // both, so the message text silently vanished. Chat apps linkify the
+        // https URL inside plain text on their own. The link redirects into
+        // the app — see DeepLinkRouter and the place-link Edge Function.
+        var shareText = "Check out \(place.name) — \(gradeText) on Puspadi Fellas!"
+        if let url = DeepLinkRouter.shareURL(for: place) {
+            shareText += "\n\(url.absoluteString)"
+        }
         let av = UIActivityViewController(activityItems: [shareText], applicationActivities: nil)
         if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
            let root = scene.windows.first?.rootViewController {
             root.present(av, animated: true)
         }
+    }
+}
+
+/// Width of the content column, so the photo mosaic can size its tiles without
+/// a GeometryReader inside the scroll view.
+private struct DetailWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 
@@ -499,5 +630,6 @@ struct MockPlaceDetailView: View {
             )
         )
         .environmentObject(LanguageManager.shared)
+        .environmentObject(AuthSessionStore())
     }
 }

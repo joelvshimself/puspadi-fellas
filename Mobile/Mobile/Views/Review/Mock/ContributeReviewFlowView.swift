@@ -32,7 +32,7 @@ struct ContributeReviewFlowView: View {
         self.initialScreenIndex = initialScreenIndex
         self.onFinished = onFinished
 
-        let draft = ReviewDraft(appleMapsId: place.id.uuidString, coordinate: place.coordinate)
+        let draft = ReviewDraft(appleMapsId: place.id.uuidString, coordinate: place.coordinate, name: place.name)
         var startIndex = initialScreenIndex
         var facilities = startingFacility.map { Set([$0]) } ?? Set<FacilityKind>()
         var entranceLoc: EntranceLocation?
@@ -318,8 +318,34 @@ struct ContributeReviewFlowView: View {
             UnfinishedReviewStore.clear(for: place)
             isSubmitted = true
         } catch {
-            submitError = "Check your connection and try again."
+            print("[ContributeReviewFlow] Submit failed: \(error)")
+            submitError = Self.submitErrorMessage(for: error)
+            // A session that lapsed mid-flow is the one failure the user can
+            // actually clear, and the draft is already persisted — send them
+            // to sign-in rather than leaving them to guess.
+            if Self.isAuthFailure(error) {
+                showLogin = true
+            }
         }
+    }
+
+    /// `submit-accessibility-review` answers 401 "sign in required" without a
+    /// user JWT, and Storage rejects the photo upload that precedes it with a
+    /// row-level-security error. Both used to surface as "check your
+    /// connection", which sends the user to fix the one thing that is fine.
+    private static func isAuthFailure(_ error: Error) -> Bool {
+        let text = "\(error)".lowercased()
+        return text.contains("sign in required")
+            || text.contains("row-level security")
+            || text.contains("unauthorized")
+            || text.contains("401")
+            || text.contains("403")
+    }
+
+    private static func submitErrorMessage(for error: Error) -> String {
+        isAuthFailure(error)
+            ? "You need to be signed in to post a review. Sign in and submit again — your answers are saved."
+            : "Check your connection and try again."
     }
 }
 

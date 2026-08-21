@@ -20,6 +20,9 @@ const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 interface RequestBody {
   lat: number;
   lng: number;
+  /// Optional: lets resolve_place_id map this onto the id the grade and the
+  /// reviews are actually filed under, instead of the raw coordinate key.
+  name?: string;
 }
 
 type Facility = "lobby" | "basement" | "elevator" | "toilet" | "exit_side" | "other";
@@ -41,7 +44,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "lat and lng are required numbers" }, 400);
   }
 
-  const placeId = canonicalPlaceId(lat, lng);
+  const placeId = await resolvePlaceId(lat, lng, typeof body.name === "string" ? body.name : undefined) ?? canonicalPlaceId(lat, lng);
 
   const { data: reviews, error: reviewsError } = await supabase
     .from("reviews")
@@ -151,8 +154,30 @@ function facilityLabel(facility: Facility): string {
   }
 }
 
+// Four decimals (~11m), not five. MUST match canonicalPlaceId() in
+// place-accessibility/index.ts and PlaceCacheStore.key on the client — a
+// review filed under a different id than the one the grade is cached against
+// is a review nobody ever sees.
+/// Existing id for this venue, or null if we have not seen it. Mirrors the
+/// helper in place-accessibility — all three functions must agree on which
+/// place an incoming coordinate refers to, or reviews are filed against an id
+/// the grade is not cached under.
+async function resolvePlaceId(lat: number, lng: number, name?: string): Promise<string | null> {
+  if (!name) return null;
+  const { data, error } = await supabase.rpc("resolve_place_id", {
+    in_lat: lat,
+    in_lng: lng,
+    in_name: name,
+  });
+  if (error) {
+    console.error("resolve_place_id failed (falling back to coordinate key):", error);
+    return null;
+  }
+  return typeof data === "string" && data.length > 0 ? data : null;
+}
+
 function canonicalPlaceId(lat: number, lng: number): string {
-  return `loc_${lat.toFixed(5)}_${lng.toFixed(5)}`;
+  return `loc_${lat.toFixed(4)}_${lng.toFixed(4)}`;
 }
 
 function json(body: unknown, status = 200): Response {
