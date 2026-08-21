@@ -50,3 +50,7 @@ verify_jwt = false
 
 [functions.place-review-photos]
 verify_jwt = false
+
+# Public share-link redirect page — recipients have no session by definition.
+[functions.place-link]
+verify_jwt = false

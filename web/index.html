@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Puspadi Fellas</title>
+<meta property="og:title" content="Puspadi Fellas">
+<meta property="og:description" content="Community-checked accessibility info for places around you.">
+<style>
+  :root {
+    --paper: #f2f1ec;
+    --ink: #1e1e1c;
+    --ink-soft: #55554f;
+    --line: #d9d7cf;
+    --lime: #c9f464;
+    --stone: #e5e3da;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    font-family: -apple-system, "SF Pro Text", system-ui, sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+  }
+  .mono {
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .wordmark { font-size: 17px; font-weight: 600; letter-spacing: -0.02em; }
+
+  .hero { padding: 40px 20px 28px; }
+  h1 {
+    font-size: clamp(40px, 12vw, 56px);
+    line-height: 1.0;
+    letter-spacing: -0.03em;
+    font-weight: 650;
+  }
+  .hero p { margin-top: 16px; font-size: 15px; line-height: 1.5; color: var(--ink-soft); max-width: 34ch; }
+
+  .shot { position: relative; padding: 26px 20px 30px; }
+  .shot::before {
+    content: "";
+    position: absolute;
+    inset: 44px 20px 12px 20px;
+    background: var(--stone);
+    border: 1px solid var(--line);
+  }
+  .phone {
+    position: relative;
+    width: min(66vw, 270px);
+    margin: 0 auto;
+    border: 2px solid var(--ink);
+    border-radius: 34px;
+    padding: 8px;
+    background: var(--paper);
+    box-shadow: 10px 10px 0 var(--ink);
+    transform: rotate(-1.6deg);
+  }
+  .phone img { display: block; width: 100%; border-radius: 24px; }
+  .shot-caption {
+    position: relative;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-top: 22px;
+    padding-bottom: 10px;
+    border-bottom: 1px dashed var(--ink-soft);
+  }
+  .shot-caption strong {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+  }
+  .live::before { content: "● "; color: #58b14c; }
+
+  .row { padding: 22px 20px; border-top: 1px solid var(--line); }
+  .row .mono { display: block; margin-bottom: 8px; }
+  .row h2 { font-size: 20px; letter-spacing: -0.02em; font-weight: 650; }
+  .row p { margin-top: 8px; font-size: 14px; line-height: 1.5; color: var(--ink-soft); }
+  .row-flex { display: flex; gap: 18px; align-items: flex-start; }
+  .phone.small {
+    width: min(44vw, 190px);
+    margin: 0;
+    transform: rotate(1.4deg);
+    box-shadow: 7px 7px 0 var(--ink);
+    flex-shrink: 0;
+  }
+
+  .cta-card {
+    margin: 24px 20px;
+    background: var(--lime);
+    border: 1px solid var(--ink);
+    border-radius: 20px;
+    padding: 22px 20px;
+    box-shadow: 6px 6px 0 var(--ink);
+  }
+  .cta-card p { font-size: 15px; line-height: 1.45; }
+  .cta-card .mono { color: var(--ink); margin-bottom: 8px; display: block; }
+
+  footer {
+    margin-top: auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 20px 30px;
+    border-top: 1px solid var(--line);
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="wordmark">Puspadi Fellas</div>
+  <span class="mono">Bali &middot; Live</span>
+</header>
+<main>
+  <section class="hero">
+    <h1>Access is everything.</h1>
+    <p>Community-checked accessibility info &mdash; entrances, elevators and
+    accessible toilets &mdash; for places around you.</p>
+  </section>
+
+  <section class="shot">
+    <div class="phone">
+      <img src="/assets/app-map.jpg" alt="The Puspadi Fellas map with color-graded accessibility pins across Kuta, Bali">
+    </div>
+    <div class="shot-caption">
+      <strong>MAP_VIEW</strong>
+      <span class="mono live">Live</span>
+    </div>
+  </section>
+
+  <section class="row">
+    <span class="mono">Mode 1 of 2 &middot; Find</span>
+    <h2>Navigate with confidence</h2>
+    <p>Every pin is a graded spot &mdash; accessible, moderate, or not &mdash;
+    from real visits, not assumptions.</p>
+  </section>
+
+  <section class="row">
+    <div class="row-flex">
+      <div class="phone small">
+        <img src="/assets/app-place.jpg" alt="A place's detail screen: photo, accessibility grade, and facility reviews">
+      </div>
+      <div>
+        <span class="mono">Mode 2 of 2 &middot; Contribute</span>
+        <h2>Share what you know</h2>
+        <p>Review a place&rsquo;s ramps, doors and elevators, add photos, and
+        help the next person know what to expect.</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="cta-card">
+    <span class="mono">Get the app</span>
+    <p>Puspadi Fellas for iPhone is in early access &mdash; App Store link
+    coming soon.</p>
+  </div>
+</main>
+<footer>
+  <span class="mono">Puspadi Fellas &mdash; access is everything</span>
+  <span>&rarr;</span>
+</footer>
+</body>
+</html>

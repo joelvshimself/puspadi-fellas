@@ -1,0 +1,12 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["7HU54XPQ85.com.puspadifellas.app"],
+        "components": [
+          { "/": "/place*", "comment": "Place share links open the app" }
+        ]
+      }
+    ]
+  }
+}

@@ -204,11 +204,15 @@ struct SearchSheet: View {
     /// so focus changes were unreliable in both directions.
     @FocusState private var isFieldFocused: Bool
     let searchRegion: MKCoordinateRegion
+    /// HomeMapView's pins, reused as the empty-query "Nearby" list. The sheet
+    /// used to run its own MKLocalSearch for the same region — every settled
+    /// pan cost two identical nearby queries, and each re-presentation of the
+    /// sheet (returning from a place page) cost another.
+    let nearbyPlaces: [Place]
     let onSelectPlace: (Place) -> Void
     let onCancelSearch: () -> Void
 
     @StateObject private var speechRecognizer = SpeechRecognizer()
-    @State private var nearbyPlaces: [Place] = []
     @State private var results: [Place] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -244,9 +248,6 @@ struct SearchSheet: View {
         }
         .onDisappear {
             speechRecognizer.stopListening()
-        }
-        .task(id: searchRegion.center.latitude + searchRegion.center.longitude) {
-            nearbyPlaces = await NearbyPlacesService.search(in: searchRegion)
         }
     }
 
@@ -482,7 +483,10 @@ struct SearchSheet: View {
         errorMessage = nil
 
         searchTask = Task {
-            try? await Task.sleep(nanoseconds: 250_000_000)
+            // 400ms, not 250: MKLocalSearch throttles rapid-fire requests, and
+            // a fast typist at 250ms still got several queries per word — the
+            // throttle then surfaced as spurious "no results" errors.
+            try? await Task.sleep(nanoseconds: 400_000_000)
             guard !Task.isCancelled else { return }
             await performSearch(trimmed)
         }

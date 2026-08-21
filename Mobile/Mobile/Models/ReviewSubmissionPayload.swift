@@ -28,6 +28,9 @@ struct ReviewSubmissionPayload: Encodable {
     let appleMapsId: String
     let lat: Double
     let lng: Double
+    /// Lets the backend map (lat, lng, name) onto an existing place_id rather
+    /// than minting one from the coordinate — see ReviewDraft.name.
+    let name: String?
     let entrances: [EntranceReport]?
     let elevator: ElevatorReport?
     let toilet: ToiletReport?
@@ -109,6 +112,7 @@ extension ReviewDraft {
             appleMapsId: appleMapsId,
             lat: coordinate.latitude,
             lng: coordinate.longitude,
+            name: name,
             entrances: [
                 lobby.asReport(photoUrls: photoUrls.lobby),
                 basement.asReport(photoUrls: photoUrls.basement),

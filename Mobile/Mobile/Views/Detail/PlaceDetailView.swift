@@ -85,7 +85,8 @@ struct PlaceDetailView: View {
             let response = try await AccessibilityService.shared.enrich(
                 lat: place.coordinate.latitude,
                 lng: place.coordinate.longitude,
-                name: place.name
+                name: place.name,
+                userInitiated: true
             )
             grade = response.grade ?? []
             imageURL = response.place?.imageUrl.flatMap(URL.init(string:))
@@ -103,7 +104,8 @@ struct PlaceDetailView: View {
         do {
             let response = try await ReviewService.shared.fetchReviewPhotos(
                 lat: place.coordinate.latitude,
-                lng: place.coordinate.longitude
+                lng: place.coordinate.longitude,
+                name: place.name
             )
             reviewPhotos = response.photos
         } catch {

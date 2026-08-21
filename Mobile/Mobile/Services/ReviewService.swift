@@ -46,6 +46,9 @@ final class ReviewService {
     private struct ReviewPhotosRequestBody: Encodable {
         let lat: Double
         let lng: Double
+        /// Same reason as the submission payload: without it the backend can
+        /// only key on the raw coordinate, which is not stable per venue.
+        let name: String?
     }
 
     @discardableResult
@@ -77,19 +80,23 @@ final class ReviewService {
         }
         guard !jpegPhotos.isEmpty else { return }
 
-        let draft = ReviewDraft(appleMapsId: place.id.uuidString, coordinate: place.coordinate)
+        let draft = ReviewDraft(appleMapsId: place.id.uuidString, coordinate: place.coordinate, name: place.name)
         var urlMap = ReviewPhotoURLMap()
 
+        // Photos only — no facility answers. This used to set
+        // `elevator.exists = true` / `toilet.hasDisabledToilet = true` so the
+        // review "had something", but the backend derives grade signals from
+        // those flags: adding a toilet photo silently graded the toilet
+        // accessible. A review whose facility fields are all null still
+        // carries its photoUrls and contributes no grade signal.
         switch facility {
         case .entrance:
             draft.lobby.review.photos = jpegPhotos
             urlMap.lobby = try await uploadPhotos(jpegPhotos, appleMapsId: draft.appleMapsId, facility: "lobby")
         case .elevator:
-            draft.elevator.exists = true
             draft.elevator.review.photos = jpegPhotos
             urlMap.elevator = try await uploadPhotos(jpegPhotos, appleMapsId: draft.appleMapsId, facility: "elevator")
         case .toilet:
-            draft.toilet.hasDisabledToilet = true
             draft.toilet.review.photos = jpegPhotos
             urlMap.toilet = try await uploadPhotos(jpegPhotos, appleMapsId: draft.appleMapsId, facility: "toilet")
         }
@@ -102,13 +109,21 @@ final class ReviewService {
         )
     }
 
-    /// Loads community review photos for the canonical place key derived from
-    /// lat/lng (same `loc_{lat5}_{lng5}` as submit / place-accessibility).
-    func fetchReviewPhotos(lat: Double, lng: Double) async throws -> PlaceReviewPhotosResponse {
+    /// Loads community review photos for the canonical place. The backend
+    /// resolves (lat, lng, name) onto an existing place_id where it knows one,
+    /// falling back to `loc_{lat4}_{lng4}` — same rule as submit and
+    /// place-accessibility, so all three agree on which place this is.
+    func fetchReviewPhotos(
+        lat: Double,
+        lng: Double,
+        name: String? = nil
+    ) async throws -> PlaceReviewPhotosResponse {
         try await NetworkRetry.run {
             try await client.functions.invoke(
                 "place-review-photos",
-                options: FunctionInvokeOptions(body: ReviewPhotosRequestBody(lat: lat, lng: lng)),
+                options: FunctionInvokeOptions(
+                    body: ReviewPhotosRequestBody(lat: lat, lng: lng, name: name)
+                ),
                 decoder: decoder
             )
         }
@@ -377,8 +392,12 @@ final class ReviewService {
     }
 
     /// Loads flattened review rows + entrance children for one canonical place.
-    func fetchPlaceReviews(lat: Double, lng: Double) async throws -> [PlaceFacilityReview] {
-        let placeId = Place.canonicalPlaceId(lat: lat, lng: lng)
+    ///
+    /// Takes the place_id rather than a coordinate on purpose: this queries
+    /// `reviews` directly, so unlike the Edge Functions it cannot resolve
+    /// identity itself. The caller (PlaceReviewStore) passes the id enrich()
+    /// resolved, which is the one the backend actually filed reviews under.
+    func fetchPlaceReviews(placeId: String) async throws -> [PlaceFacilityReview] {
         let rows: [DBPlaceReviewRow] = try await client.from("reviews")
             .select("""
                 id, created_at, notes,

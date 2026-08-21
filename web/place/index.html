@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Puspadi Fellas</title>
+<meta property="og:title" content="Puspadi Fellas">
+<meta property="og:description" content="Check this place's accessibility on Puspadi Fellas.">
+<style>
+  :root {
+    --paper: #f2f1ec;
+    --ink: #1e1e1c;
+    --ink-soft: #55554f;
+    --line: #d9d7cf;
+    --lime: #c9f464;
+    --stone: #e5e3da;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, "SF Pro Text", system-ui, sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+  }
+  .mono {
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .wordmark { font-size: 17px; font-weight: 600; letter-spacing: -0.02em; }
+  .tag {
+    background: var(--lime);
+    border: 1px solid var(--ink);
+    color: var(--ink);
+    border-radius: 999px;
+    padding: 5px 12px;
+    font-weight: 600;
+  }
+
+  .hero { padding: 30px 20px 24px; }
+  .kicker { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .dot {
+    width: 8px; height: 8px; border-radius: 999px;
+    background: var(--lime); border: 1px solid var(--ink);
+    animation: pulse 2.2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(201, 244, 100, 0.9); }
+    50% { box-shadow: 0 0 0 7px rgba(201, 244, 100, 0); }
+  }
+  h1 {
+    font-size: clamp(36px, 11vw, 48px);
+    line-height: 1.02;
+    letter-spacing: -0.03em;
+    font-weight: 650;
+    overflow-wrap: anywhere;
+  }
+  .coords { margin-top: 12px; }
+
+  /* Real app snippet in a device frame with a hard editorial shadow. */
+  .shot { position: relative; padding: 26px 20px 30px; }
+  .shot::before {
+    /* stone panel behind the phone, offset like the reference's stacked boxes */
+    content: "";
+    position: absolute;
+    inset: 44px 20px 12px 20px;
+    background: var(--stone);
+    border: 1px solid var(--line);
+  }
+  .phone {
+    position: relative;
+    width: min(66vw, 270px);
+    margin: 0 auto;
+    border: 2px solid var(--ink);
+    border-radius: 34px;
+    padding: 8px;
+    background: var(--paper);
+    box-shadow: 10px 10px 0 var(--ink);
+    transform: rotate(-1.6deg);
+    animation: rise 0.7s ease-out both;
+  }
+  .phone img { display: block; width: 100%; border-radius: 24px; }
+  @keyframes rise {
+    from { opacity: 0; transform: rotate(-1.6deg) translateY(16px); }
+    to   { opacity: 1; transform: rotate(-1.6deg) translateY(0); }
+  }
+  .shot-caption {
+    position: relative;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-top: 22px;
+    padding-bottom: 10px;
+    border-bottom: 1px dashed var(--ink-soft);
+  }
+  .shot-caption strong {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    color: var(--ink);
+  }
+  .live { color: var(--ink); }
+  .live::before { content: "● "; color: #58b14c; }
+
+  .cta { padding: 4px 20px 8px; }
+  .cta-card {
+    background: var(--lime);
+    border: 1px solid var(--ink);
+    border-radius: 20px;
+    padding: 22px 20px;
+    box-shadow: 6px 6px 0 var(--ink);
+  }
+  .cta-card p { font-size: 15px; line-height: 1.45; }
+  .open {
+    display: block;
+    margin-top: 18px;
+    background: var(--ink);
+    color: var(--paper);
+    text-decoration: none;
+    text-align: center;
+    font-size: 16px;
+    font-weight: 600;
+    padding: 16px;
+    border-radius: 999px;
+  }
+  .open:active { transform: translate(2px, 2px); }
+
+  .inside { margin-top: 30px; border-top: 1px solid var(--line); padding: 22px 20px 6px; }
+  .inside-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; }
+  .inside h2 { font-size: 20px; letter-spacing: -0.02em; font-weight: 650; }
+  .snippet-row { display: flex; gap: 18px; align-items: flex-start; }
+  .phone.small {
+    width: min(44vw, 190px);
+    margin: 0;
+    transform: rotate(1.4deg);
+    box-shadow: 7px 7px 0 var(--ink);
+    animation: none;
+  }
+  .snippet-copy { flex: 1; padding-top: 8px; }
+  .snippet-copy p { font-size: 14px; line-height: 1.5; color: var(--ink-soft); margin-top: 8px; }
+  .checks { list-style: none; padding: 0; margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .checks li {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .checks li::before { content: "☑ "; }
+
+  .fallback {
+    margin: 26px 20px 0;
+    border: 1px dashed var(--ink-soft);
+    padding: 16px 18px;
+  }
+  .fallback p { margin-top: 8px; font-size: 14px; line-height: 1.5; color: var(--ink-soft); }
+
+  footer {
+    margin-top: 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 20px 30px;
+    border-top: 1px solid var(--line);
+  }
+  footer .arrow { font-size: 20px; line-height: 1; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wordmark">Puspadi Fellas</div>
+  <div class="mono tag">Shared&nbsp;place</div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="kicker">
+      <span class="dot"></span>
+      <span class="mono" id="kicker-label">Accessible spot &middot; shared with you</span>
+    </div>
+    <h1 id="place-name">A place worth checking</h1>
+    <div class="mono coords" id="coords" hidden></div>
+  </section>
+
+  <section class="shot">
+    <div class="phone">
+      <img src="/assets/app-place.jpg" alt="The place's detail screen in the Puspadi Fellas app: photo, accessibility grade, and facility reviews">
+    </div>
+    <div class="shot-caption">
+      <strong>PLACE_DETAILS_VIEW</strong>
+      <span class="mono live">Live</span>
+    </div>
+  </section>
+
+  <section class="cta">
+    <div class="cta-card">
+      <p>This is how the place looks in the app &mdash; graded by people
+      who&rsquo;ve been there, with entrances, elevators and accessible
+      toilets checked one by one.</p>
+      <a class="open" id="open-app" href="#">Open in Puspadi Fellas</a>
+    </div>
+  </section>
+
+  <section class="inside">
+    <div class="inside-head">
+      <h2>Inside the app</h2>
+      <span class="mono">Mode 1 of 2 &middot; Find</span>
+    </div>
+    <div class="snippet-row">
+      <div class="phone small">
+        <img src="/assets/app-map.jpg" alt="The Puspadi Fellas map with color-graded accessibility pins across Kuta, Bali">
+      </div>
+      <div class="snippet-copy">
+        <strong style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; letter-spacing: 0.06em;">MAP_VIEW</strong>
+        <p>Every pin is a graded spot &mdash; green means go.</p>
+        <ul class="checks">
+          <li>Ramps</li>
+          <li>Elevators</li>
+          <li>Toilets</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <div class="fallback">
+    <span class="mono">Don&rsquo;t have the app?</span>
+    <p>The Puspadi Fellas app is needed to view this place. App Store link
+    coming soon &mdash; ask the person who shared this for an invite.</p>
+  </div>
+</main>
+
+<footer>
+  <span class="mono">Puspadi Fellas &mdash; access is everything</span>
+  <span class="arrow">&rarr;</span>
+</footer>
+
+<script>
+  var q = new URLSearchParams(location.search);
+  var name = (q.get("name") || "").slice(0, 120);
+  if (name) {
+    document.getElementById("place-name").textContent = name;
+    document.title = name + " on Puspadi Fellas";
+  }
+  var lat = q.get("lat"), lng = q.get("lng");
+  if (lat && lng) {
+    var coords = document.getElementById("coords");
+    coords.hidden = false;
+    coords.textContent = "lat " + lat.slice(0, 10) + " / lng " + lng.slice(0, 10);
+  }
+  var category = (q.get("category") || "").slice(0, 60);
+  if (category) {
+    document.getElementById("kicker-label").textContent = category + " · shared with you";
+  }
+
+  // Button-only, no automatic redirect: users WITH the app never reach this
+  // page (the Universal Link opens the app first), so an auto-attempt only
+  // fires Safari's "address is invalid" alert on phones WITHOUT the app —
+  // the exact failure this page exists to replace.
+  var parts = [];
+  ["lat", "lng", "name", "category"].forEach(function (k) {
+    var v = q.get(k);
+    if (v) parts.push(k + "=" + encodeURIComponent(v));
+  });
+  document.getElementById("open-app").href = "puspadifellas://place?" + parts.join("&");
+</script>
+</body>
+</html>

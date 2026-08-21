@@ -10,6 +10,9 @@ struct MobileApp: App {
             ContentView()
                 .environmentObject(languageManager)
                 .environmentObject(authSession)
+                .onOpenURL { url in
+                    DeepLinkRouter.shared.handle(url)
+                }
         }
     }
 }

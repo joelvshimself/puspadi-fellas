@@ -13,6 +13,12 @@ final class ReviewDraft: ObservableObject {
     /// (likely an MKMapItem identifier once the search flow captures one).
     let appleMapsId: String
     let coordinate: CLLocationCoordinate2D
+    /// Sent with the submission so the backend can resolve this to the SAME
+    /// place_id the grade is cached under. The coordinate alone cannot do it —
+    /// MapKit's reading of one venue moves by hundreds of metres between
+    /// searches, so a review keyed on the raw coordinate can land on an id
+    /// nothing else points at. See resolve_place_id in the migrations.
+    let name: String
 
     /// The wizard always walks both entrances in sequence (Lobby, then
     /// Basement) rather than letting the user pick one — matches the
@@ -23,9 +29,10 @@ final class ReviewDraft: ObservableObject {
     @Published var elevator = ElevatorDraft()
     @Published var toilet = ToiletDraft()
 
-    init(appleMapsId: String, coordinate: CLLocationCoordinate2D) {
+    init(appleMapsId: String, coordinate: CLLocationCoordinate2D, name: String) {
         self.appleMapsId = appleMapsId
         self.coordinate = coordinate
+        self.name = name
     }
 }
 
