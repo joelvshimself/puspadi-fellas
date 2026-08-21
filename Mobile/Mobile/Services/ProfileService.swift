@@ -58,6 +58,14 @@ final class ProfileService {
             .execute()
     }
 
+    func updateMobilityAids(_ mobilityAids: [String]) async throws {
+        let userId = try await client.auth.session.user.id
+        try await client.from("profiles")
+            .update(ProfileMobilityAidsUpdate(mobilityAids: mobilityAids))
+            .eq("id", value: userId)
+            .execute()
+    }
+
     func uploadAvatar(jpegData: Data) async throws -> String {
         let userId = try await client.auth.session.user.id
         let path = "\(userId.uuidString.lowercased())/avatar.jpg"
@@ -89,6 +97,11 @@ private struct ProfileOnboardingUpdate: Encodable {
 private struct ProfileDisplayNameUpdate: Encodable {
     let displayName: String
     enum CodingKeys: String, CodingKey { case displayName = "display_name" }
+}
+
+private struct ProfileMobilityAidsUpdate: Encodable {
+    let mobilityAids: [String]
+    enum CodingKeys: String, CodingKey { case mobilityAids = "mobility_aids" }
 }
 
 private struct ProfileAvatarUpdate: Encodable {

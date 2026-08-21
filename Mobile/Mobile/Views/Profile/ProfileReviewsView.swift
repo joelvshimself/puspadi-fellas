@@ -1,6 +1,7 @@
+import CoreLocation
 import SwiftUI
 
-struct ProfileReviewItem: Identifiable, Equatable {
+struct ProfileReviewItem: Identifiable, Equatable, Hashable {
     let id: UUID
     var userName: String
     var userAvatarURL: URL?
@@ -18,12 +19,15 @@ struct ProfileReviewsView: View {
 
     var displayName: String
     var avatarURL: URL?
+    var mobilityLabel: String = ""
 
     @State private var reviews: [ProfileReviewItem] = []
     @State private var reviewToDelete: ProfileReviewItem? = nil
-    @State private var reviewToUpdate: ProfileReviewItem? = nil
+    @State private var reviewToOpen: ProfileReviewItem? = nil
     @State private var showDeleteConfirmation = false
+    @State private var isDeleting = false
     @State private var showSuccessToast = false
+    @State private var deleteError: String?
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -95,7 +99,7 @@ struct ProfileReviewsView: View {
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        .task(id: "\(auth.userId?.uuidString ?? "")-\(displayName)-\(avatarURL?.absoluteString ?? "")") {
+        .task(id: "\(auth.userId?.uuidString ?? "")-\(displayName)-\(avatarURL?.absoluteString ?? "")-\(mobilityLabel)") {
             await loadReviewsFromSupabase()
         }
         .sheet(isPresented: $showDeleteConfirmation) {
@@ -104,16 +108,9 @@ struct ProfileReviewsView: View {
                 .presentationCornerRadius(28)
                 .presentationDragIndicator(.visible)
         }
-        .fullScreenCover(item: $reviewToUpdate) { review in
-            let place = SavedPlaceSnapshotStore.place(for: review.placeId)
-                ?? Place.fromSearchResult(
-                    name: review.placeName,
-                    category: "Place",
-                    coordinate: .init(latitude: 0, longitude: 0)
-                )
-            ContributeReviewFlowView(place: place) {
-                reviewToUpdate = nil
-            }
+        .navigationDestination(item: $reviewToOpen) { review in
+            MockPlaceDetailView(place: place(for: review))
+                .enableSwipeBack()
         }
     }
 
@@ -125,13 +122,14 @@ struct ProfileReviewsView: View {
         do {
             let dbRows = try await ReviewService.shared.fetchMyReviews(userId: userId)
             let items = dbRows.map { row in
-                ProfileReviewItem(
+                let resolved = SavedPlaceSnapshotStore.place(for: row.placeId)
+                return ProfileReviewItem(
                     id: row.id,
                     userName: displayName.isEmpty ? "You" : displayName,
                     userAvatarURL: avatarURL,
                     dateLabel: ReviewService.profileDateLabel(row.createdAt),
                     placeId: row.placeId,
-                    placeName: SavedPlaceSnapshotStore.place(for: row.placeId)?.name ?? row.placeId,
+                    placeName: resolved?.name ?? row.placeId,
                     notes: row.primaryNotes,
                     providedTags: row.providedTags,
                     photoURLs: row.allPhotoURLs
@@ -141,6 +139,37 @@ struct ProfileReviewsView: View {
         } catch {
             print("ProfileReviewsView: Failed to fetch reviews from Supabase: \(error)")
         }
+    }
+
+    /// Rebuilds the Place for navigation using the review's canonical
+    /// `loc_lat_lng` place id (same key as place detail + saves).
+    private func place(for review: ProfileReviewItem) -> Place {
+        if let snap = SavedPlaceSnapshotStore.place(for: review.placeId) {
+            return snap
+        }
+        if let coordinate = Self.coordinate(fromCanonicalPlaceId: review.placeId) {
+            return Place.fromSearchResult(
+                name: review.placeName == review.placeId ? "Place".localized : review.placeName,
+                category: "Place",
+                coordinate: coordinate
+            )
+        }
+        return Place.fromSearchResult(
+            name: review.placeName,
+            category: "Place",
+            coordinate: .init(latitude: 0, longitude: 0)
+        )
+    }
+
+    /// Parses `loc_-8.72000_115.20000` into a coordinate.
+    private static func coordinate(fromCanonicalPlaceId placeId: String) -> CLLocationCoordinate2D? {
+        guard placeId.hasPrefix("loc_") else { return nil }
+        let parts = placeId.dropFirst(4).split(separator: "_")
+        guard parts.count == 2,
+              let lat = Double(parts[0]),
+              let lng = Double(parts[1])
+        else { return nil }
+        return CLLocationCoordinate2D(latitude: lat, longitude: lng)
     }
 
     private func reviewCard(_ review: ProfileReviewItem) -> some View {
@@ -159,9 +188,11 @@ struct ProfileReviewsView: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    Text(review.placeName)
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
+                    if !mobilityLabel.isEmpty {
+                        Text(mobilityLabel)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
@@ -173,14 +204,15 @@ struct ProfileReviewsView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             if !review.providedTags.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("What Provided:".localized)
-                        .font(.caption)
+                (
+                    Text("What Provided:".localized + " ")
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
-                    Text(review.providedTags.joined(separator: ", "))
-                        .font(.caption.weight(.medium))
+                    + Text(review.providedTags.joined(separator: ", "))
+                        .font(.subheadline)
                         .foregroundStyle(.primary)
-                }
+                )
+                .fixedSize(horizontal: false, vertical: true)
             }
 
             if !review.photoURLs.isEmpty {
@@ -205,6 +237,7 @@ struct ProfileReviewsView: View {
             HStack(spacing: 12) {
                 Button {
                     reviewToDelete = review
+                    deleteError = nil
                     showDeleteConfirmation = true
                 } label: {
                     Image(systemName: "trash")
@@ -218,16 +251,16 @@ struct ProfileReviewsView: View {
                 }
 
                 Button {
-                    reviewToUpdate = review
+                    reviewToOpen = review
                 } label: {
                     Text("Update Review".localized)
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(AuthPalette.brandBlue)
                         .frame(maxWidth: .infinity)
                         .frame(height: 44)
                         .background(
                             Capsule()
-                                .fill(Color.accentColor.opacity(0.12))
+                                .fill(Color(uiColor: .secondarySystemGroupedBackground))
                         )
                 }
             }
@@ -269,8 +302,8 @@ struct ProfileReviewsView: View {
     }
 
     private var deleteConfirmationSheet: some View {
-        VStack(spacing: 16) {
-            VStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text("Delete Review?".localized)
                     .font(.title3.weight(.bold))
                     .foregroundStyle(.primary)
@@ -278,15 +311,23 @@ struct ProfileReviewsView: View {
                 Text("Your review will permanently removed. This action is irreversible.".localized)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
+
+            if let deleteError {
+                Text(deleteError)
+                    .font(.caption)
+                    .foregroundStyle(AuthPalette.errorRed)
+                    .padding(.horizontal, 20)
+            }
 
             HStack(spacing: 12) {
                 Button {
                     showDeleteConfirmation = false
                     reviewToDelete = nil
+                    deleteError = nil
                 } label: {
                     Text("Cancel".localized)
                         .font(.body.weight(.semibold))
@@ -302,37 +343,62 @@ struct ProfileReviewsView: View {
                                 .stroke(Color.gray.opacity(0.2), lineWidth: 1)
                         )
                 }
+                .disabled(isDeleting)
 
                 Button {
-                    if let target = reviewToDelete {
-                        withAnimation {
-                            reviews.removeAll { $0.id == target.id }
-                            showDeleteConfirmation = false
-                            reviewToDelete = nil
-                            showSuccessToast = true
+                    Task { await confirmDelete() }
+                } label: {
+                    Group {
+                        if isDeleting {
+                            ProgressView()
+                        } else {
+                            Text("Delete".localized)
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(Color.red)
                         }
                     }
-                } label: {
-                    Text("Delete".localized)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(Color.red)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
-                        .background(
-                            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                .fill(Color.red.opacity(0.15))
-                        )
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .background(
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .fill(Color.red.opacity(0.15))
+                    )
                 }
+                .disabled(isDeleting)
             }
             .padding(.horizontal, 20)
         }
         .padding(.vertical, 16)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func confirmDelete() async {
+        guard let target = reviewToDelete else { return }
+        isDeleting = true
+        deleteError = nil
+        defer { isDeleting = false }
+        do {
+            try await ReviewService.shared.deleteMyReview(id: target.id)
+            await MainActor.run {
+                withAnimation {
+                    reviews.removeAll { $0.id == target.id }
+                    showDeleteConfirmation = false
+                    reviewToDelete = nil
+                    showSuccessToast = true
+                }
+            }
+        } catch {
+            await MainActor.run {
+                deleteError = error.localizedDescription
+            }
+        }
     }
 }
 
 #Preview {
-    ProfileReviewsView(displayName: "Aarief M.", avatarURL: nil)
-        .environmentObject(LanguageManager.shared)
-        .environmentObject(AuthSessionStore())
+    NavigationStack {
+        ProfileReviewsView(displayName: "Aarief M.", avatarURL: nil)
+            .environmentObject(LanguageManager.shared)
+            .environmentObject(AuthSessionStore())
+    }
 }

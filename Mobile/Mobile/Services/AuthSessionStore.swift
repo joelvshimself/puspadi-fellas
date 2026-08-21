@@ -25,6 +25,14 @@ final class AuthSessionStore: ObservableObject {
 
     var isSignedIn: Bool { session != nil }
     var userId: UUID? { session?.user.id }
+    var userEmail: String? {
+        session?.user.email?.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    /// Email/password identities can change password; Apple-only accounts cannot.
+    var canChangePassword: Bool {
+        guard let identities = session?.user.identities else { return false }
+        return identities.contains { $0.provider == "email" }
+    }
 
     init() {
         let client = self.client
@@ -268,6 +276,19 @@ final class AuthSessionStore: ObservableObject {
         return false
     }
 
+    func updatePassword(newPassword: String) async throws {
+        lastError = nil
+        guard AuthPasswordRules.isValid(newPassword) else {
+            throw AuthFlowError.invalidPassword
+        }
+        _ = try await client.auth.update(user: UserAttributes(password: newPassword))
+    }
+
+    func updateMobilityProfile(_ profile: MobilityProfile) async throws {
+        lastError = nil
+        try await ProfileService.shared.updateMobilityAids(profile.storageAids)
+    }
+
     func signOut() async {
         lastError = nil
         do {
@@ -295,11 +316,14 @@ enum EmailSignupResult {
 
 enum AuthFlowError: LocalizedError {
     case appleSignInFailed
+    case invalidPassword
 
     var errorDescription: String? {
         switch self {
         case .appleSignInFailed:
             return "Sign in with Apple failed. Try again.".localized
+        case .invalidPassword:
+            return "Use at least 8 characters, including a number and a special character.".localized
         }
     }
 }

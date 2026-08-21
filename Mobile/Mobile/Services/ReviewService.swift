@@ -261,6 +261,14 @@ final class ReviewService {
             .value
     }
 
+    /// Deletes the signed-in user's review row (cascades entrance children via FK).
+    func deleteMyReview(id: UUID) async throws {
+        try await client.from("reviews")
+            .delete()
+            .eq("id", value: id)
+            .execute()
+    }
+
     struct DBOwnedReviewRow: Decodable {
         let id: UUID
         let placeId: String
