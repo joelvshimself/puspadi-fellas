@@ -17,15 +17,22 @@ port = 54323
 
 [auth]
 enabled = true
-site_url = "http://localhost:3000"
-additional_redirect_urls = []
+# Deep link into the iOS app after the user taps the confirmation email.
+# Mirror on hosted project: Dashboard → Authentication → URL Configuration
+#   Site URL:      puspadi://auth/callback
+#   Redirect URLs: puspadi://auth/callback
+site_url = "puspadi://auth/callback"
+additional_redirect_urls = ["puspadi://auth/callback"]
 jwt_expiry = 3600
 enable_signup = true
-enable_confirmations = false
+enable_confirmations = true
 
 [auth.email]
-enable_confirmations = false
+# Require users to confirm email before they can sign in.
+enable_confirmations = true
 enable_signup = true
+# Confirmation / magic-link tokens expire after this many seconds (default 3600).
+otp_expiry = 3600
 
 # Sign in with Apple — final call on Apple vs email/OTP is open, see
 # docs/specs.md §8. Fill in client_id / secret via `supabase secrets set`

@@ -3,7 +3,10 @@ import SwiftUI
 struct AuthEmailFoundView: View {
     let email: String
     var onSuccess: () -> Void
-    var onSocialSuccess: () -> Void
+    @Binding var path: [AuthRoute]
+    @Binding var pendingAppleSignIn: PendingAppleSignIn?
+    @Binding var displayName: String
+    @Binding var mobilityAids: Set<String>
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var auth: AuthSessionStore
@@ -17,10 +20,20 @@ struct AuthEmailFoundView: View {
 
     private enum Field { case email, password }
 
-    init(email: String, onSuccess: @escaping () -> Void, onSocialSuccess: @escaping () -> Void) {
+    init(
+        email: String,
+        onSuccess: @escaping () -> Void,
+        path: Binding<[AuthRoute]>,
+        pendingAppleSignIn: Binding<PendingAppleSignIn?>,
+        displayName: Binding<String>,
+        mobilityAids: Binding<Set<String>>
+    ) {
         self.email = email
         self.onSuccess = onSuccess
-        self.onSocialSuccess = onSocialSuccess
+        _path = path
+        _pendingAppleSignIn = pendingAppleSignIn
+        _displayName = displayName
+        _mobilityAids = mobilityAids
         _emailText = State(initialValue: email)
     }
 
@@ -93,7 +106,11 @@ struct AuthEmailFoundView: View {
                     Task { await submit() }
                 }
 
-                AuthSocialButtons(onSuccess: onSocialSuccess)
+                AuthSocialButtons(
+                    onSuccess: onSuccess,
+                    onNeedsOnboarding: beginAppleOnboarding,
+                    onDeferAppleSignIn: deferAppleSignIn
+                )
 
                 Spacer()
             }
@@ -115,5 +132,16 @@ struct AuthEmailFoundView: View {
         } catch {
             passwordError = true
         }
+    }
+
+    private func beginAppleOnboarding(suggestedName: String?) {
+        displayName = suggestedName ?? ""
+        mobilityAids = []
+        path.append(.name(email: "", password: ""))
+    }
+
+    private func deferAppleSignIn(_ pending: PendingAppleSignIn, suggestedName: String?) {
+        pendingAppleSignIn = pending
+        beginAppleOnboarding(suggestedName: suggestedName)
     }
 }

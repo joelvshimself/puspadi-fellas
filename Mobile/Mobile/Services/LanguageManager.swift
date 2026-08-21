@@ -70,6 +70,10 @@ final class LanguageManager: ObservableObject {
             .english: "Sign in with Apple failed. Try again.",
             .indonesia: "Masuk dengan Apple gagal. Coba lagi."
         ],
+        "Something went wrong. Try again.": [
+            .english: "Something went wrong. Try again.",
+            .indonesia: "Terjadi kesalahan. Coba lagi."
+        ],
         "Incorrect password. Try again.": [
             .english: "Incorrect password. Try again.",
             .indonesia: "Kata sandi salah. Coba lagi."
