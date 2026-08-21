@@ -10,6 +10,7 @@ struct ProfileView: View {
     @State private var selectedTab: ProfileTab
     @State private var userName: String = ""
     @State private var avatarURL: URL?
+    @State private var mobilityProfile: MobilityProfile?
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var isUploadingAvatar = false
 
@@ -21,18 +22,35 @@ struct ProfileView: View {
         VStack(spacing: 0) {
             VStack(spacing: 12) {
                 PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
-                    ZStack {
-                        avatarView
-                        if isUploadingAvatar {
-                            Circle()
-                                .fill(Color.black.opacity(0.35))
-                                .frame(width: 88, height: 88)
-                            ProgressView()
-                                .tint(.white)
+                    ZStack(alignment: .bottomTrailing) {
+                        ZStack {
+                            avatarView
+                            if isUploadingAvatar {
+                                Circle()
+                                    .fill(Color.black.opacity(0.35))
+                                    .frame(width: 88, height: 88)
+                                ProgressView()
+                                    .tint(.white)
+                            }
+                        }
+
+                        if !isUploadingAvatar {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Color(white: 0.38))
+                                .frame(width: 28, height: 28)
+                                .background(
+                                    Circle()
+                                        .fill(Color(uiColor: .systemGray6))
+                                        .shadow(color: .black.opacity(0.16), radius: 3, y: 1)
+                                )
+                                .offset(x: 2, y: 2)
+                                .accessibilityHidden(true)
                         }
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Change profile photo".localized)
                 .padding(.top, 4)
 
                 VStack(spacing: 6) {
@@ -40,27 +58,17 @@ struct ProfileView: View {
                         .font(.title2.weight(.bold))
                         .foregroundStyle(.primary)
 
-                    HStack(spacing: 4) {
-                        Image(systemName: "checkmark.seal.fill")
+                    if let mobilityProfile {
+                        Text(mobilityProfile.titleKey.localized)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Color.gray)
-
-                        Text("top".localized)
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(Color.gray)
-                            .strikethrough(true, color: Color.gray)
-
-                        Image(systemName: "chevron.right")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(Color.gray.opacity(0.8))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(
+                                Capsule()
+                                    .fill(Color.gray.opacity(0.18))
+                            )
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(
-                        Capsule()
-                            .fill(Color.gray.opacity(0.18))
-                    )
-                    .allowsHitTesting(false)
                 }
 
                 HStack(spacing: 4) {
@@ -115,7 +123,11 @@ struct ProfileView: View {
             Group {
                 switch selectedTab {
                 case .reviews:
-                    ProfileReviewsView(displayName: userName, avatarURL: avatarURL)
+                    ProfileReviewsView(
+                        displayName: userName,
+                        avatarURL: avatarURL,
+                        mobilityLabel: mobilityProfile?.titleKey.localized ?? ""
+                    )
                 case .photos:
                     ProfilePhotosView()
                 case .settings:
@@ -174,14 +186,29 @@ struct ProfileView: View {
     }
 
     private var placeholderAvatar: some View {
-        Image(systemName: "person.crop.circle.fill")
-            .resizable()
-            .aspectRatio(contentMode: .fill)
-            .frame(width: 88, height: 88)
-            .foregroundStyle(Color.gray.opacity(0.4))
-            .clipShape(Circle())
-            .overlay(Circle().stroke(Color.white, lineWidth: 2))
-            .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.45, green: 0.75, blue: 0.98),
+                            Color(red: 0.26, green: 0.65, blue: 0.96)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            Image(systemName: "person.fill")
+                .resizable()
+                .scaledToFit()
+                .foregroundStyle(.white)
+                .frame(width: 42, height: 42)
+                .offset(y: 6)
+        }
+        .frame(width: 88, height: 88)
+        .clipShape(Circle())
+        .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
     }
 
     private func loadProfile() async {
@@ -190,6 +217,7 @@ struct ProfileView: View {
                 await MainActor.run {
                     userName = (row.displayName?.isEmpty == false) ? row.displayName! : "You"
                     avatarURL = row.avatarUrl.flatMap(URL.init(string:))
+                    mobilityProfile = MobilityProfile.from(aids: row.mobilityAids)
                 }
             }
         } catch {

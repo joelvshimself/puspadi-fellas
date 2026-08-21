@@ -5,11 +5,17 @@ struct UserProfileRow: Decodable {
     let id: UUID
     let displayName: String?
     let avatarUrl: String?
+    let mobilityAids: [String]?
 
     enum CodingKeys: String, CodingKey {
         case id
         case displayName = "display_name"
         case avatarUrl = "avatar_url"
+        case mobilityAids = "mobility_aids"
+    }
+
+    var needsOnboarding: Bool {
+        mobilityAids?.isEmpty ?? true
     }
 }
 
@@ -28,7 +34,7 @@ final class ProfileService {
     func fetchCurrent() async throws -> UserProfileRow? {
         let userId = try await client.auth.session.user.id
         let rows: [UserProfileRow] = try await client.from("profiles")
-            .select("id, display_name, avatar_url")
+            .select("id, display_name, avatar_url, mobility_aids")
             .eq("id", value: userId)
             .limit(1)
             .execute()
@@ -48,6 +54,14 @@ final class ProfileService {
         let userId = try await client.auth.session.user.id
         try await client.from("profiles")
             .update(ProfileDisplayNameUpdate(displayName: name))
+            .eq("id", value: userId)
+            .execute()
+    }
+
+    func updateMobilityAids(_ mobilityAids: [String]) async throws {
+        let userId = try await client.auth.session.user.id
+        try await client.from("profiles")
+            .update(ProfileMobilityAidsUpdate(mobilityAids: mobilityAids))
             .eq("id", value: userId)
             .execute()
     }
@@ -83,6 +97,11 @@ private struct ProfileOnboardingUpdate: Encodable {
 private struct ProfileDisplayNameUpdate: Encodable {
     let displayName: String
     enum CodingKeys: String, CodingKey { case displayName = "display_name" }
+}
+
+private struct ProfileMobilityAidsUpdate: Encodable {
+    let mobilityAids: [String]
+    enum CodingKeys: String, CodingKey { case mobilityAids = "mobility_aids" }
 }
 
 private struct ProfileAvatarUpdate: Encodable {

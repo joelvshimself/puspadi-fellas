@@ -34,6 +34,7 @@ struct HomeMapView: View {
     @ObservedObject private var deepLinks = DeepLinkRouter.shared
     @State private var homeCover: HomeFullScreenCover?
     @State private var pendingProfileTab: ProfileTab?
+    @State private var presentAuthAfterSheetDismiss = false
     @State private var cameraPosition: MapCameraPosition = .region(baliRegion)
     @State private var visibleRegion = baliRegion
     /// `visibleRegion` as of the last SETTLED camera position.
@@ -236,6 +237,11 @@ struct HomeMapView: View {
                             }
                         }
                     }
+                    .onChange(of: isSheetPresented) { _, presented in
+                        guard !presented, presentAuthAfterSheetDismiss else { return }
+                        presentAuthAfterSheetDismiss = false
+                        homeCover = .auth
+                    }
                     .onChange(of: sheetDetent) { _, detent in
                         let expanded = (detent == expandedDetent)
                         if expanded != isSearchActive {
@@ -353,7 +359,7 @@ struct HomeMapView: View {
     }
 
     /// Stable across searches, unlike `place.id`.
-    private static func gradeKey(for place: Place) -> String {
+    private nonisolated static func gradeKey(for place: Place) -> String {
         PlaceCacheStore.key(lat: place.coordinate.latitude, lng: place.coordinate.longitude)
     }
 
@@ -757,24 +763,28 @@ struct HomeMapView: View {
     }
 
     private func openProfile(tab: ProfileTab = .reviews) {
-                if auth.isSignedIn {
-                    path.append(HomeRoute.profile(tab))
-                } else {
-                    pendingProfileTab = tab
-                    homeCover = .auth
-                }
-            }
-            
-            private func openPlace(_ place: Place) {
-                // Push the Place Details page. The sheet hides itself while the stack
-                // is deeper than the root (see onChange(of: path.count)).
-                isSearchActive = false
-                if !visitedPlaces.contains(where: { Self.gradeKey(for: $0) == Self.gradeKey(for: place) }) {
-                    visitedPlaces.append(place)
-                }
-                path.append(HomeRoute.place(place))
+        if auth.isSignedIn {
+            path.append(HomeRoute.profile(tab))
+        } else {
+            pendingProfileTab = tab
+            isSearchActive = false
+            if isSheetPresented {
+                presentAuthAfterSheetDismiss = true
+                isSheetPresented = false
+            } else {
+                homeCover = .auth
             }
         }
+    }
+
+    private func openPlace(_ place: Place) {
+        isSearchActive = false
+        if !visitedPlaces.contains(where: { Self.gradeKey(for: $0) == Self.gradeKey(for: place) }) {
+            visitedPlaces.append(place)
+        }
+        path.append(HomeRoute.place(place))
+    }
+}
         
         // MARK: - Custom Pinpoint Marker View
         

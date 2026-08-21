@@ -25,6 +25,7 @@ final class LanguageManager: ObservableObject {
     private let translations: [String: [AppLanguage: String]] = [
         // Home & General
         "Profile": [.english: "Profile", .indonesia: "Profil"],
+        "Change profile photo": [.english: "Change profile photo", .indonesia: "Ubah foto profil"],
         "Saved": [.english: "Saved", .indonesia: "Tersimpan"],
         "All reviews": [.english: "All reviews", .indonesia: "Semua ulasan"],
         "All Photos": [.english: "All Photos", .indonesia: "Semua Foto"],
@@ -69,6 +70,10 @@ final class LanguageManager: ObservableObject {
         "Sign in with Apple failed. Try again.": [
             .english: "Sign in with Apple failed. Try again.",
             .indonesia: "Masuk dengan Apple gagal. Coba lagi."
+        ],
+        "Something went wrong. Try again.": [
+            .english: "Something went wrong. Try again.",
+            .indonesia: "Terjadi kesalahan. Coba lagi."
         ],
         "Incorrect password. Try again.": [
             .english: "Incorrect password. Try again.",
@@ -124,9 +129,54 @@ final class LanguageManager: ObservableObject {
         
         // Settings Menu
         "My Account": [.english: "My Account", .indonesia: "Akun Saya"],
+        "CHANGE": [.english: "CHANGE", .indonesia: "UBAH"],
+        "Mobility Profile": [.english: "Mobility Profile", .indonesia: "Profil Mobilitas"],
+        "Wheelchair User": [.english: "Wheelchair User", .indonesia: "Pengguna Kursi Roda"],
+        "Community Contributor": [.english: "Community Contributor", .indonesia: "Kontributor Komunitas"],
+        "Firsthand experience using a wheelchair": [
+            .english: "Firsthand experience using a wheelchair",
+            .indonesia: "Pengalaman langsung menggunakan kursi roda"
+        ],
+        "User with other mobility aid": [
+            .english: "User with other mobility aid",
+            .indonesia: "Pengguna dengan alat bantu lain"
+        ],
+        "User with no mobility aid": [
+            .english: "User with no mobility aid",
+            .indonesia: "Pengguna tanpa alat bantu"
+        ],
+        "Not set": [.english: "Not set", .indonesia: "Belum diatur"],
+        "Change Password": [.english: "Change Password", .indonesia: "Ubah Kata Sandi"],
+        "Password updated.": [.english: "Password updated.", .indonesia: "Kata sandi diperbarui."],
+        "Save": [.english: "Save", .indonesia: "Simpan"],
         "Language": [.english: "Language", .indonesia: "Bahasa"],
         "Notifications": [.english: "Notifications", .indonesia: "Notifikasi"],
         "About App": [.english: "About App", .indonesia: "Tentang Aplikasi"],
+        "What is Roll-Spot?": [.english: "What is Roll-Spot?", .indonesia: "Apa itu Roll-Spot?"],
+        "About Roll-Spot summary": [
+            .english: "Roll-Spot helps people with mobility disabilities make informed decisions by providing accessibility insights for places like malls, restaurants, and markets. It is a community-powered directory focused on wheelchair accessibility.",
+            .indonesia: "Roll-Spot membantu orang dengan disabilitas mobilitas membuat keputusan yang tepat dengan memberikan wawasan aksesibilitas untuk tempat seperti mal, restoran, dan pasar. Ini adalah direktori berbasis komunitas yang berfokus pada aksesibilitas kursi roda."
+        ],
+        "What the app does": [.english: "What the app does", .indonesia: "Apa yang dilakukan aplikasi"],
+        "About app features summary": [
+            .english: "View accessibility information for entrances, elevators, and toilets. Contribute reviews with photos. Save places and share insights with the community.",
+            .indonesia: "Lihat informasi aksesibilitas untuk pintu masuk, lift, dan toilet. Berkontribusi ulasan dengan foto. Simpan tempat dan bagikan wawasan dengan komunitas."
+        ],
+        "Who it's for": [.english: "Who it's for", .indonesia: "Untuk siapa"],
+        "About audience summary": [
+            .english: "Primary users are wheelchair and crutches users planning visits to public places. Secondary users include volunteers and anyone contributing accessibility information for others.",
+            .indonesia: "Pengguna utama adalah pengguna kursi roda dan kruk yang merencanakan kunjungan ke tempat umum. Pengguna sekunder termasuk relawan dan siapa pun yang berkontribusi informasi aksesibilitas untuk orang lain."
+        ],
+        "Why it matters": [.english: "Why it matters", .indonesia: "Mengapa ini penting"],
+        "About why it matters summary": [
+            .english: "Accessibility information is often scattered or missing. Many places may be accessible but hard to find, or look accessible without enough detail. Community reviews make real experiences visible.",
+            .indonesia: "Informasi aksesibilitas sering tersebar atau tidak ada. Banyak tempat mungkin dapat diakses tetapi sulit ditemukan, atau terlihat dapat diakses tanpa detail yang cukup. Ulasan komunitas membuat pengalaman nyata terlihat."
+        ],
+        "What makes us different": [.english: "What makes us different", .indonesia: "Apa yang membuat kami berbeda"],
+        "About differentiation summary": [
+            .english: "Roll-Spot combines community reviews with photos and facility-level detail, rather than only a generic accessible label or a simple map pin list.",
+            .indonesia: "Roll-Spot menggabungkan ulasan komunitas dengan foto dan detail tingkat fasilitas, bukan hanya label aksesibel generik atau daftar pin peta sederhana."
+        ],
         "Give Feedback": [.english: "Give Feedback", .indonesia: "Beri Masukan"],
         "Sign Out": [.english: "Sign Out", .indonesia: "Keluar"],
         "Delete Account": [.english: "Delete Account", .indonesia: "Hapus Akun"],

@@ -1,6 +1,9 @@
 import SwiftUI
 
 struct AuthMobilityView: View {
+    let email: String
+    let password: String
+    @Binding var pendingAppleSignIn: PendingAppleSignIn?
     @Binding var mobilityAids: Set<String>
     var displayName: String
     @Binding var path: [AuthRoute]
@@ -92,19 +95,79 @@ struct AuthMobilityView: View {
             .padding(.horizontal, 24)
         }
         .navigationBarBackButtonHidden(true)
+        .onAppear {
+            AuthDebug.log(
+                "Mobility onAppear email=\(email.isEmpty ? "empty" : email) "
+                + "passwordLen=\(password.count) "
+                + "pendingApple=\(pendingAppleSignIn != nil) "
+                + "isSignedIn=\(auth.isSignedIn) "
+                + "userId=\(auth.userId?.uuidString ?? "nil") "
+                + "name=\(displayName) aids=\(mobilityAids.sorted())"
+            )
+        }
     }
 
     private func saveAndContinue() async {
         errorMessage = nil
         isSaving = true
         defer { isSaving = false }
+        let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let aids = mobilityAids.sorted()
+        AuthDebug.log(
+            "Mobility continue email=\(email.isEmpty ? "empty" : email) "
+            + "passwordLen=\(password.count) "
+            + "pendingApple=\(pendingAppleSignIn != nil) "
+            + "isSignedIn=\(auth.isSignedIn) "
+            + "name=\(trimmedName) aids=\(aids)"
+        )
         do {
-            try await auth.updateOnboardingProfile(
-                displayName: displayName.trimmingCharacters(in: .whitespacesAndNewlines),
-                mobilityAids: mobilityAids.sorted()
-            )
-            path.append(.allSet)
+            if let pendingAppleSignIn {
+                AuthDebug.log("Mobility branch: completeAppleSignup")
+                try await auth.completeAppleSignup(
+                    pending: pendingAppleSignIn,
+                    displayName: trimmedName,
+                    mobilityAids: aids
+                )
+                AuthDebug.log("Mobility completeAppleSignup success → allSet")
+                path.append(.allSet)
+            } else if !password.isEmpty {
+                AuthDebug.log("Mobility branch: registerEmailAccount")
+                switch try await auth.registerEmailAccount(
+                    email: email,
+                    password: password,
+                    displayName: trimmedName,
+                    mobilityAids: aids
+                ) {
+                case .ready:
+                    AuthDebug.log("Mobility registerEmailAccount → allSet")
+                    path.append(.allSet)
+                case .needsEmailConfirmation:
+                    AuthDebug.log("Mobility registerEmailAccount → verifyEmail")
+                    path.append(
+                        .verifyEmail(
+                            email: email,
+                            password: password,
+                            displayName: trimmedName,
+                            mobilityAids: aids
+                        )
+                    )
+                }
+            } else if auth.isSignedIn {
+                AuthDebug.log("Mobility branch: updateOnboardingProfile (already signed in)")
+                try await auth.updateOnboardingProfile(
+                    displayName: trimmedName,
+                    mobilityAids: aids
+                )
+                AuthDebug.log("Mobility updateOnboardingProfile success → allSet")
+                path.append(.allSet)
+            } else {
+                AuthDebug.log(
+                    "Mobility branch: NO CREDENTIALS — password empty, not signed in, no pending Apple"
+                )
+                errorMessage = "Something went wrong. Try again.".localized
+            }
         } catch {
+            AuthDebug.log("Mobility error: \(type(of: error)) \(error.localizedDescription)")
             errorMessage = error.localizedDescription
         }
     }

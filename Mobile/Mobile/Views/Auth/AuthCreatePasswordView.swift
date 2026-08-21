@@ -2,17 +2,15 @@ import SwiftUI
 
 struct AuthCreatePasswordView: View {
     let email: String
+    @Binding var signupPassword: String
     @Binding var path: [AuthRoute]
 
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var auth: AuthSessionStore
 
     @State private var password = ""
     @State private var confirm = ""
     @State private var showPassword = false
     @State private var showConfirm = false
-    @State private var isLoading = false
-    @State private var errorMessage: String?
     @FocusState private var focusedField: Field?
 
     private enum Field { case password, confirm }
@@ -93,41 +91,26 @@ struct AuthCreatePasswordView: View {
                     }
                 }
 
-                if let errorMessage {
-                    Text(errorMessage)
-                        .font(.caption)
-                        .foregroundStyle(AuthPalette.errorRed)
-                }
-
                 Spacer()
 
                 AuthContinueButton(
                     title: "Continue".localized,
-                    enabled: canContinue,
-                    isLoading: isLoading
+                    enabled: canContinue
                 ) {
-                    Task { await submit() }
+                    signupPassword = password
+                    AuthDebug.log("CreatePassword saved passwordLen=\(password.count) email=\(email)")
+                    path.append(.name(email: email, password: password))
                 }
                 .padding(.bottom, 12)
             }
             .padding(.horizontal, 24)
         }
         .navigationBarBackButtonHidden(true)
-    }
-
-    private func submit() async {
-        errorMessage = nil
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            let needsEmailConfirm = try await auth.signUpWithEmail(email: email, password: password)
-            if needsEmailConfirm {
-                path.append(.verifyEmail(email: email, password: password))
-            } else {
-                path.append(.name)
+        .onAppear {
+            if password.isEmpty, !signupPassword.isEmpty {
+                password = signupPassword
+                confirm = signupPassword
             }
-        } catch {
-            errorMessage = error.localizedDescription
         }
     }
 }

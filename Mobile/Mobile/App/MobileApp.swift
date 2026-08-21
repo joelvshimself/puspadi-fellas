@@ -12,6 +12,7 @@ struct MobileApp: App {
                 .environmentObject(authSession)
                 .onOpenURL { url in
                     DeepLinkRouter.shared.handle(url)
+                    Task { await authSession.handleAuthCallback(url) }
                 }
         }
     }
