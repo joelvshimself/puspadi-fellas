@@ -5,6 +5,7 @@ struct ProfileReviewItem: Identifiable, Equatable, Hashable {
     let id: UUID
     var userName: String
     var userAvatarURL: URL?
+    var userRole: String = ""
     var dateLabel: String
     var placeId: String
     var placeName: String
@@ -99,7 +100,7 @@ struct ProfileReviewsView: View {
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        .task(id: "\(auth.userId?.uuidString ?? "")-\(displayName)-\(avatarURL?.absoluteString ?? "")-\(mobilityLabel)") {
+        .task(id: auth.userId) {
             await loadReviewsFromSupabase()
         }
         .sheet(isPresented: $showDeleteConfirmation) {
@@ -115,24 +116,28 @@ struct ProfileReviewsView: View {
     }
 
     private func loadReviewsFromSupabase() async {
-        guard let userId = auth.userId else {
+        guard auth.userId != nil else {
             await MainActor.run { reviews = [] }
             return
         }
         do {
-            let dbRows = try await ReviewService.shared.fetchMyReviews(userId: userId)
-            let items = dbRows.map { row in
+            let response = try await ReviewService.shared.fetchMyReviews()
+            let resolvedName = response.userName?.isEmpty == false ? response.userName! : (displayName.isEmpty ? "You" : displayName)
+            let resolvedAvatar = response.profileImageUrl.flatMap(URL.init(string:)) ?? avatarURL
+            let resolvedRole = response.userRole?.localized ?? mobilityLabel
+            let items = response.reviews.map { row in
                 let resolved = SavedPlaceSnapshotStore.place(for: row.placeId)
                 return ProfileReviewItem(
                     id: row.id,
-                    userName: displayName.isEmpty ? "You" : displayName,
-                    userAvatarURL: avatarURL,
+                    userName: resolvedName,
+                    userAvatarURL: resolvedAvatar,
+                    userRole: resolvedRole,
                     dateLabel: ReviewService.profileDateLabel(row.createdAt),
                     placeId: row.placeId,
-                    placeName: resolved?.name ?? row.placeId,
-                    notes: row.primaryNotes,
-                    providedTags: row.providedTags,
-                    photoURLs: row.allPhotoURLs
+                    placeName: resolved?.name ?? row.placeName,
+                    notes: row.reviewText,
+                    providedTags: row.providedFeatures,
+                    photoURLs: row.photoURLs
                 )
             }
             await MainActor.run { self.reviews = items }
@@ -188,8 +193,8 @@ struct ProfileReviewsView: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    if !mobilityLabel.isEmpty {
-                        Text(mobilityLabel)
+                    if !review.userRole.isEmpty {
+                        Text(review.userRole)
                             .font(.caption.weight(.medium))
                             .foregroundStyle(.secondary)
                     }
@@ -227,7 +232,7 @@ struct ProfileReviewsView: View {
                                     Color(.secondarySystemBackground).overlay { ProgressView() }
                                 }
                             }
-                            .frame(width: 88, height: 76)
+                            .frame(width: 96, height: 96)
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
                     }
@@ -260,7 +265,7 @@ struct ProfileReviewsView: View {
                         .frame(height: 44)
                         .background(
                             Capsule()
-                                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                                .fill(PhotoPalette.background1)
                         )
                 }
             }
@@ -285,7 +290,7 @@ struct ProfileReviewsView: View {
                     placeholderReviewAvatar
                 }
             }
-            .frame(width: 36, height: 36)
+            .frame(width: 40, height: 40)
             .clipShape(Circle())
         } else {
             placeholderReviewAvatar
@@ -296,7 +301,7 @@ struct ProfileReviewsView: View {
         Image(systemName: "person.crop.circle.fill")
             .resizable()
             .aspectRatio(contentMode: .fill)
-            .frame(width: 36, height: 36)
+            .frame(width: 40, height: 40)
             .foregroundStyle(.gray.opacity(0.6))
             .clipShape(Circle())
     }

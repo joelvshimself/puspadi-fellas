@@ -48,6 +48,30 @@ final class ReviewService {
         let lng: Double
     }
 
+    private struct EmptyRequestBody: Encodable {}
+
+    struct MyReviewsResponse: Decodable {
+        let status: String
+        let userName: String?
+        let userRole: String?
+        let profileImageUrl: String?
+        let reviews: [MyReviewItem]
+    }
+
+    struct MyReviewItem: Decodable, Identifiable {
+        let id: UUID
+        let placeId: String
+        let placeName: String
+        let createdAt: String
+        let reviewText: String
+        let providedFeatures: [String]
+        let photoUrls: [String]
+
+        var photoURLs: [URL] {
+            photoUrls.compactMap(URL.init(string:))
+        }
+    }
+
     @discardableResult
     func submit(_ draft: ReviewDraft) async throws -> SubmitResponse {
         print("[ReviewService] Submitting review for place \(draft.appleMapsId)…")
@@ -245,20 +269,15 @@ final class ReviewService {
             .value
     }
 
-    /// Fetches reviews authored by the signed-in user, including entrance children.
-    func fetchMyReviews(userId: UUID) async throws -> [DBOwnedReviewRow] {
-        try await client.from("reviews")
-            .select("""
-                id, place_id, created_at, notes,
-                elevator_exists, elevator_wheelchair_accessible, elevator_blockers,
-                elevator_review_text, elevator_photo_urls,
-                has_disabled_toilet, toilet_review_text, toilet_photo_urls,
-                review_entrances(location, has_dropoff_ramp, has_rails, door_type, is_wide_enough, review_text, photo_urls)
-            """)
-            .eq("user_id", value: userId)
-            .order("created_at", ascending: false)
-            .execute()
-            .value
+    /// Fetches reviews authored by the signed-in user via the `my-reviews` Edge Function.
+    func fetchMyReviews() async throws -> MyReviewsResponse {
+        try await NetworkRetry.run {
+            try await client.functions.invoke(
+                "my-reviews",
+                options: FunctionInvokeOptions(body: EmptyRequestBody()),
+                decoder: decoder
+            )
+        }
     }
 
     /// Deletes the signed-in user's review row (cascades entrance children via FK).

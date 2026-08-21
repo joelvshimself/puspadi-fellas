@@ -57,3 +57,6 @@ verify_jwt = false
 
 [functions.place-review-photos]
 verify_jwt = false
+
+[functions.my-reviews]
+verify_jwt = false
