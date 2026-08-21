@@ -34,7 +34,6 @@ struct HomeMapView: View {
     @ObservedObject private var deepLinks = DeepLinkRouter.shared
     @State private var homeCover: HomeFullScreenCover?
     @State private var pendingProfileTab: ProfileTab?
-    @State private var presentAuthAfterSheetDismiss = false
     @State private var cameraPosition: MapCameraPosition = .region(baliRegion)
     @State private var visibleRegion = baliRegion
     /// `visibleRegion` as of the last SETTLED camera position.
@@ -236,11 +235,6 @@ struct HomeMapView: View {
                                 .environmentObject(auth)
                             }
                         }
-                    }
-                    .onChange(of: isSheetPresented) { _, presented in
-                        guard !presented, presentAuthAfterSheetDismiss else { return }
-                        presentAuthAfterSheetDismiss = false
-                        homeCover = .auth
                     }
                     .onChange(of: sheetDetent) { _, detent in
                         let expanded = (detent == expandedDetent)
@@ -766,14 +760,14 @@ struct HomeMapView: View {
         if auth.isSignedIn {
             path.append(HomeRoute.profile(tab))
         } else {
+            // The sheet STAYS presented: the auth cover is attached to the
+            // sheet's content and slides over everything. Dismissing the sheet
+            // first (an earlier fix that merged in from another branch) tore
+            // down the very view the cover presents from — "not in the window
+            // hierarchy" — so the login never appeared.
             pendingProfileTab = tab
             isSearchActive = false
-            if isSheetPresented {
-                presentAuthAfterSheetDismiss = true
-                isSheetPresented = false
-            } else {
-                homeCover = .auth
-            }
+            homeCover = .auth
         }
     }
 

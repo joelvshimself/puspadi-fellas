@@ -13,6 +13,9 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>puspadifellas</string>
+				<!-- Supabase email-confirmation redirect: puspadi://auth/callback
+				     (see backend/supabase/config.toml [auth] site_url). -->
+				<string>puspadi</string>
 			</array>
 		</dict>
 	</array>
