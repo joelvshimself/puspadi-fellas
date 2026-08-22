@@ -11,9 +11,16 @@ import SwiftUI
 /// another reset its own state right after a successful one. Attaching this
 /// modifier is now the whole integration: the call site owns only the button
 /// and what to do once the backend has accepted the photos.
+/// Where the next photos come from — set by the Add Photos `Menu` at the call
+/// site ("Choose Existing" / "Take New Photo", as the design draws it).
+enum PhotoComposerSource: String, Identifiable {
+    case library, camera
+    var id: String { rawValue }
+}
+
 struct PhotoComposerFlow: ViewModifier {
-    /// Set true from the Add Photos button; the flow drives everything after.
-    @Binding var isSourcePresented: Bool
+    /// Set from the Add Photos menu; the flow drives everything after.
+    @Binding var source: PhotoComposerSource?
     let place: Place
     let facility: FacilityKind
     /// Runs after the backend accepted the upload, with the submitted photos —
@@ -33,14 +40,12 @@ struct PhotoComposerFlow: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .confirmationDialog(
-                "Add Photo".localized,
-                isPresented: $isSourcePresented,
-                titleVisibility: .visible
-            ) {
-                Button("Choose Existing".localized) { isLibraryPresented = true }
-                if CameraPicker.isAvailable {
-                    Button("Take New Photo".localized) { isCameraPresented = true }
+            .onChange(of: source) { _, requested in
+                guard let requested else { return }
+                source = nil
+                switch requested {
+                case .library: isLibraryPresented = true
+                case .camera: isCameraPresented = true
                 }
             }
             .photosPicker(
@@ -162,16 +167,16 @@ struct PhotoComposerFlow: ViewModifier {
 }
 
 extension View {
-    /// Attach the shared add-photos flow. Toggle `isSourcePresented` from the
-    /// Add Photos button; `onUploaded` fires only after a successful upload.
+    /// Attach the shared add-photos flow. Set `source` from the Add Photos
+    /// menu; `onUploaded` fires only after a successful upload.
     func photoComposerFlow(
-        isSourcePresented: Binding<Bool>,
+        source: Binding<PhotoComposerSource?>,
         place: Place,
         facility: FacilityKind,
         onUploaded: @escaping ([FacilityPhoto]) -> Void
     ) -> some View {
         modifier(PhotoComposerFlow(
-            isSourcePresented: isSourcePresented,
+            source: source,
             place: place,
             facility: facility,
             onUploaded: onUploaded

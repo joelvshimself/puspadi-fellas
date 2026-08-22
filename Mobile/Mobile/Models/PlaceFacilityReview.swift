@@ -9,6 +9,13 @@ struct PlaceFacilityReview: Identifiable, Hashable {
     let bodyText: String
     let providedTags: [String]
     let photoURLs: [String]
+    /// Display-safe reviewer identity, joined server-side by the
+    /// `place-reviews` Edge Function (profiles are RLS-locked to their owner,
+    /// so the client can never read them directly). All nil for legacy rows
+    /// written before auth.
+    var reviewerName: String? = nil
+    var reviewerRole: String? = nil
+    var reviewerAvatarURL: URL? = nil
 
     var providedList: String {
         providedTags.joined(separator: ", ")

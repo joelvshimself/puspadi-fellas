@@ -1,5 +1,8 @@
 import SwiftUI
 
+/// One review card (Figma "Reviewed"): avatar + name + role, date on the
+/// trailing edge, a hairline under the header, then body text, the
+/// "What Provided:" line, and a photo strip.
 struct FacilityReviewRow: View {
     let review: PlaceFacilityReview
     var onSelectPhoto: (FacilityPhoto) -> Void = { _ in }
@@ -11,33 +14,49 @@ struct FacilityReviewRow: View {
         }
     }
 
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM yyyy"
+        return f
+    }()
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "person.crop.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(.orange)
-                Text("Community")
-                    .font(.subheadline.weight(.semibold))
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                avatar
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(review.reviewerName ?? "Community".localized)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    if let role = review.reviewerRole {
+                        Text(role.localized)
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 Spacer()
-                Text(review.createdAt.formatted(date: .abbreviated, time: .omitted))
-                    .font(.caption)
+
+                Text(Self.dateFormatter.string(from: review.createdAt))
+                    .font(.system(size: 14))
                     .foregroundStyle(.secondary)
             }
 
+            Divider()
+
             Text(review.bodyText)
-                .font(.subheadline)
+                .font(.system(size: 15))
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
 
             if !review.providedList.isEmpty {
-                (
-                    Text("What Provided: ")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(.secondary)
-                    + Text(review.providedList)
-                        .font(.subheadline)
-                )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("What Provided:".localized)
+                        .font(.system(size: 15, weight: .semibold))
+                    Text(review.providedList.lowercased().capitalized)
+                        .font(.system(size: 15))
+                }
             }
 
             if !photos.isEmpty {
@@ -55,22 +74,50 @@ struct FacilityReviewRow: View {
             }
         }
     }
-}
 
-private enum ReviewFilter: String, CaseIterable, Identifiable {
-    case all
-    case withPhotos
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .all: "ALL"
-        case .withPhotos: "WITH PHOTOS"
+    @ViewBuilder
+    private var avatar: some View {
+        if let url = review.reviewerAvatarURL {
+            AsyncImage(url: url) { phase in
+                if case .success(let image) = phase {
+                    image.resizable().aspectRatio(contentMode: .fill)
+                } else {
+                    avatarPlaceholder
+                }
+            }
+            .frame(width: 38, height: 38)
+            .clipShape(Circle())
+        } else {
+            avatarPlaceholder
+                .frame(width: 38, height: 38)
         }
     }
 
-    var showsCamera: Bool { self == .withPhotos }
+    private var avatarPlaceholder: some View {
+        Circle()
+            .fill(Color(.systemGray5))
+            .overlay {
+                Image(systemName: "person.fill")
+                    .font(.system(size: 17))
+                    .foregroundStyle(.secondary)
+            }
+    }
+}
+
+/// Chips over the list (Figma "Reviewed"): ALL, 📷 WITH PHOTOS, then one chip
+/// per confirmed tag with its review count — "RAMP (3)".
+private enum ReviewFilter: Hashable, Identifiable {
+    case all
+    case withPhotos
+    case tag(String)
+
+    var id: String {
+        switch self {
+        case .all: "all"
+        case .withPhotos: "withPhotos"
+        case .tag(let tag): "tag-\(tag)"
+        }
+    }
 }
 
 struct FacilityReviewsList: View {
@@ -85,10 +132,28 @@ struct FacilityReviewsList: View {
         let initialID: UUID
     }
 
+    /// Distinct tags across the reviews, most common first, with counts.
+    private var tagCounts: [(tag: String, count: Int)] {
+        var counts: [String: Int] = [:]
+        for review in reviews {
+            for tag in Set(review.providedTags) where tag != "NOT AVAILABLE" {
+                counts[tag, default: 0] += 1
+            }
+        }
+        return counts
+            .sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }
+            .map { (tag: $0.key, count: $0.value) }
+    }
+
+    private var filters: [ReviewFilter] {
+        [.all, .withPhotos] + tagCounts.map { .tag($0.tag) }
+    }
+
     private var filtered: [PlaceFacilityReview] {
         switch selectedFilter {
         case .all: reviews
         case .withPhotos: reviews.filter { !$0.photoURLs.isEmpty }
+        case .tag(let tag): reviews.filter { $0.providedTags.contains(tag) }
         }
     }
 
@@ -96,14 +161,15 @@ struct FacilityReviewsList: View {
         VStack(alignment: .leading, spacing: 16) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(ReviewFilter.allCases) { filter in
+                    ForEach(filters) { filter in
                         filterChip(filter)
                     }
                 }
             }
+            .scrollClipDisabled()
 
             if filtered.isEmpty {
-                Text("No reviews match this filter")
+                Text("No reviews match this filter".localized)
                     .font(.subheadline)
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity)
@@ -129,28 +195,53 @@ struct FacilityReviewsList: View {
         }
     }
 
+    private func chipLabel(_ filter: ReviewFilter) -> String {
+        switch filter {
+        case .all: "ALL".localized
+        case .withPhotos: "WITH PHOTOS".localized
+        case .tag(let tag):
+            if let count = tagCounts.first(where: { $0.tag == tag })?.count {
+                "\(tag.localized) (\(count))"
+            } else {
+                tag.localized
+            }
+        }
+    }
+
     private func filterChip(_ filter: ReviewFilter) -> some View {
         let isSelected = selectedFilter == filter
         return Button { selectedFilter = filter } label: {
             HStack(spacing: 6) {
-                if filter.showsCamera {
+                if filter == .withPhotos {
                     Image(systemName: "camera").font(.caption)
                 }
-                Text(filter.title)
+                Text(chipLabel(filter))
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
             }
-            .foregroundStyle(isSelected ? Color.white : Color.secondary)
+            .foregroundStyle(isSelected ? Color.white : Color.primary)
             .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(Capsule().fill(isSelected ? Color.accentColor : Color(.systemGray5)))
+            .padding(.vertical, 9)
+            .background(Capsule().fill(isSelected ? Color.accentColor : Color.mockSectionBackground))
         }
         .buttonStyle(.plain)
     }
 }
 
 #Preview {
-    FacilityReviewsList(reviews: [])
-        .padding()
-        .background(Color.white)
+    FacilityReviewsList(reviews: [
+        PlaceFacilityReview(
+            id: UUID(),
+            reviewId: UUID(),
+            kind: .entrance,
+            createdAt: .now,
+            bodyText: "The entrance is quite hard to find. When I went there, there's a lot of stairs and it is very hard too see the signage and need to ask the security.",
+            providedTags: ["RAMP", "HANDRAIL", "AUTOMATIC DOORS"],
+            photoURLs: [],
+            reviewerName: "Aarief M.",
+            reviewerRole: "Wheelchair User"
+        )
+    ])
+    .padding()
+    .background(Color.white)
 }

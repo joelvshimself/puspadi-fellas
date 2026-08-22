@@ -276,34 +276,151 @@ struct WhatProvidedCard: View {
     }
 }
 
-/// Floating "CONTRIBUTE" pill that sits above the bottom edge of the screen.
+/// Floating "CONTRIBUTE" pill that sits above the bottom edge of the screen —
+/// real Liquid Glass (same treatment as the home screen's buttons), so the
+/// content scrolling beneath it refracts through the capsule.
 struct ContributeFloatingButton: View {
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
+            // Explicit black/white, not .primary: the glass surface applies
+            // vibrancy to semantic colors, which washed the design's solid
+            // black plus-circle down to grey.
             HStack(spacing: 10) {
                 Image(systemName: "plus")
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(Color(.systemBackground))
+                    .foregroundStyle(Color.white)
                     .frame(width: 26, height: 26)
-                    .background(Color.primary, in: Circle())
+                    .background(Color.black, in: Circle())
                 Text("Contribute".localized.uppercased())
                     .font(.system(size: 13, weight: .semibold))
                     .tracking(0.3)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Color.black)
             }
             .padding(.leading, 8)
             .padding(.trailing, 18)
             .frame(height: 44)
-            .background {
-                Capsule().fill(Color(.systemBackground).opacity(0.75))
-                Capsule().fill(.ultraThinMaterial)
-                Capsule().strokeBorder(Color(.separator).opacity(0.35), lineWidth: 0.5)
-            }
+            .contentShape(Capsule())
+            .homeGlass(in: Capsule(), tint: .white.opacity(0.30))
             .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Soft blue glow rising from the screen bottom behind the CONTRIBUTE pill
+/// (the design's Ellipse 8 treatment, same one the home sheet sits on).
+struct ContributeGlow: View {
+    var body: some View {
+        Ellipse()
+            .fill(SheetPalette.glow)
+            .frame(width: SheetMetrics.glowWidth, height: SheetMetrics.glowHeight)
+            .blur(radius: SheetMetrics.glowBlur)
+            .opacity(SheetMetrics.glowOpacity)
+            .offset(y: SheetMetrics.glowOffsetY)
+            .allowsHitTesting(false)
+            .ignoresSafeArea()
+    }
+}
+
+/// Loading twin of the tabbed content — shimmering stand-ins for the tab bar,
+/// chip row, and cards, so "still fetching" never looks like "nothing here".
+/// The real layout (full or empty) is only chosen once the store resolves.
+struct PlaceDetailLoadingSkeleton: View {
+    @State private var shimmer = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            HStack(spacing: 24) {
+                bar(width: 90)
+                bar(width: 90)
+                bar(width: 70)
+            }
+            HStack(spacing: 10) {
+                block(width: 108, height: 48, radius: 12)
+                block(width: 108, height: 48, radius: 12)
+                block(width: 90, height: 48, radius: 12)
+            }
+            block(width: nil, height: 110, radius: 12)
+            block(width: nil, height: 140, radius: 12)
+        }
+        .opacity(shimmer ? 0.55 : 1)
+        .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: shimmer)
+        .onAppear { shimmer = true }
+        .accessibilityLabel("Loading place details".localized)
+    }
+
+    private func bar(width: CGFloat) -> some View {
+        Capsule().fill(Color.mockSectionBackground).frame(width: width, height: 14)
+    }
+
+    private func block(width: CGFloat?, height: CGFloat, radius: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: radius, style: .continuous)
+            .fill(Color.mockSectionBackground)
+            .frame(maxWidth: width ?? .infinity)
+            .frame(height: height)
+    }
+}
+
+/// First-visit spotlight on the CONTRIBUTE pill (Figma "Intro to contribute"):
+/// the screen dims, a white callout explains why contributions matter, and a
+/// pointer aims at the pill — which stays bright above the dim.
+struct ContributeIntroOverlay: View {
+    let onDismiss: () -> Void
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            LinearGradient(
+                colors: [.black.opacity(0.45), Color.accentColor.opacity(0.55)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onDismiss)
+
+            VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "lightbulb.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 22, height: 22)
+                            .background(Circle().fill(Color.orange))
+                        Text("Share what you know".localized)
+                            .font(.system(size: 16, weight: .bold))
+                    }
+                    Text("Help others know what to expect by adding accessibility information.".localized)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                }
+                .padding(16)
+                .frame(maxWidth: 280)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color(.systemBackground))
+                )
+
+                Triangle()
+                    .fill(Color(.systemBackground))
+                    .frame(width: 18, height: 9)
+            }
+            // Sits just above the CONTRIBUTE pill (44pt pill + 20pt inset).
+            .padding(.bottom, 76)
+        }
+    }
+
+    private struct Triangle: Shape {
+        func path(in rect: CGRect) -> Path {
+            var path = Path()
+            path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+            path.closeSubpath()
+            return path
+        }
     }
 }
 

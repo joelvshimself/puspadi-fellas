@@ -19,14 +19,30 @@ struct MockPlaceDetailView: View {
     @State private var saveToast: String?
     @State private var saveError: String?
     @State private var showSignIn = false
+    /// What the user was doing when the sign-in gate interrupted, resumed
+    /// after a successful login. EVERY authenticated action gates up front —
+    /// Save already did, but Contribute/review entry points used to open
+    /// their flow first and pop a login a beat later, which read as two
+    /// competing prompts.
+    private enum AuthGatedAction { case save, review }
+    @State private var pendingAuthAction: AuthGatedAction?
     @State private var heroPage: Int? = 0
     @State private var showReviewWizard = false
     @State private var resumeScreenIndex = 0
+    /// First-visit "Share what you know" spotlight (Figma "Intro to
+    /// contribute") — shown once per install, ever.
+    @AppStorage("hasSeenContributeIntro") private var hasSeenContributeIntro = false
+    @State private var showContributeIntro = false
+    /// "Your review submitted!" row at the top of Reviews after the wizard
+    /// posts (Figma "Reviewed" state, with its bigger-then-settle reveal).
+    @State private var showSubmittedBanner = false
+    @State private var reviewJustSubmitted = false
+    @State private var showMyReview = false
 
     @State private var selectedSection: PlaceDetailSection = .overview
     @State private var selectedFacility: FacilityKind = .entrance
     @State private var contentWidth: CGFloat = 0
-    @State private var isAddingPhotos = false
+    @State private var photoSource: PhotoComposerSource?
     @State private var lightbox: LightboxSelection?
 
     private let heroHeight: CGFloat = 253
@@ -80,13 +96,37 @@ struct MockPlaceDetailView: View {
         }
         .background(Color(.systemBackground))
         .ignoresSafeArea(edges: .top)
+        // Dim UNDER the pill overlay below, so the pill stays bright —
+        // that's the spotlight.
+        .overlay {
+            if showContributeIntro {
+                ContributeIntroOverlay { dismissContributeIntro() }
+                    .transition(.opacity)
+            }
+        }
         .overlay(alignment: .bottom) {
-            ContributeFloatingButton { startReview() }
-                .padding(.bottom, 20)
+            // The empty state carries its own filled Contribute button; a
+            // floating pill on top of it would be the same CTA twice. And no
+            // pill over the loading skeleton — it may resolve into that state.
+            if !isEmptyState && !isInitialLoading {
+                ZStack(alignment: .bottom) {
+                    ContributeGlow()
+                    ContributeFloatingButton {
+                        dismissContributeIntro()
+                        startReview()
+                    }
+                    .padding(.bottom, 20)
+                }
+            }
         }
         .task {
             await store.load()
             store.startWatching()
+            if !hasSeenContributeIntro && !isEmptyState {
+                try? await Task.sleep(for: .milliseconds(600))
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeOut(duration: 0.3)) { showContributeIntro = true }
+            }
         }
         // Warm the rest of the carousel while the first slide is being looked
         // at. AsyncImage only fetches a page when it comes into view, so every
@@ -123,11 +163,18 @@ struct MockPlaceDetailView: View {
             LoginView(
                 onSuccess: {
                     showSignIn = false
-                    // Finish what the tap was for, now that there is a user to
-                    // attach the row to.
-                    Task { await toggleSave() }
+                    // Finish what the tap was for, now that there is a user.
+                    switch pendingAuthAction {
+                    case .save: Task { await toggleSave() }
+                    case .review: openReviewWizard()
+                    case nil: break
+                    }
+                    pendingAuthAction = nil
                 },
-                onCancel: { showSignIn = false }
+                onCancel: {
+                    showSignIn = false
+                    pendingAuthAction = nil
+                }
             )
             .environmentObject(auth)
         }
@@ -135,10 +182,20 @@ struct MockPlaceDetailView: View {
             ContributeReviewFlowView(
                 place: place,
                 startingFacility: selectedFacility,
-                initialScreenIndex: resumeScreenIndex
+                initialScreenIndex: resumeScreenIndex,
+                onSubmitted: { reviewJustSubmitted = true }
             ) {
                 showReviewWizard = false
                 UnfinishedReviewStore.clear(for: place)
+                if reviewJustSubmitted {
+                    reviewJustSubmitted = false
+                    // Land on Reviews with the "submitted!" row revealing a
+                    // little bigger first, then settling (design dev note).
+                    selectedSection = .reviews
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.65)) {
+                        showSubmittedBanner = true
+                    }
+                }
                 Task {
                     // Drop the cached grade first or load() republishes the
                     // pre-review grade and the banner only updates if the
@@ -148,12 +205,12 @@ struct MockPlaceDetailView: View {
                 }
             }
         }
-        // Add Photos goes straight to the source dialog and then the composer
+        // Add Photos goes straight to the source menu and then the composer
         // (Figma "Photos - Adding Photo" → "Photos - Confirm photos"). It used
         // to open a second gallery screen with its own dead Overview/Reviews
         // tabs and a second Add Photos button before the picker ever appeared.
         .photoComposerFlow(
-            isSourcePresented: $isAddingPhotos,
+            source: $photoSource,
             place: place,
             facility: selectedFacility,
             onUploaded: { _ in
@@ -163,6 +220,9 @@ struct MockPlaceDetailView: View {
         )
         .fullScreenCover(item: $lightbox) { selection in
             FacilityPhotoDetailView(photos: selection.photos, initialID: selection.initialID)
+        }
+        .fullScreenCover(isPresented: $showMyReview) {
+            MockMyReviewView()
         }
     }
 
@@ -267,6 +327,7 @@ struct MockPlaceDetailView: View {
         case .removed:
             showToast("Removed from your saved places".localized)
         case .needsSignIn:
+            pendingAuthAction = .save
             showSignIn = true
         case .failed(let message):
             saveError = message
@@ -382,25 +443,59 @@ struct MockPlaceDetailView: View {
         }
     }
 
+    /// Still fetching with nothing cached to show. Distinct from the empty
+    /// state on purpose: "loading" gets a skeleton; "empty" is a settled fact.
+    private var isInitialLoading: Bool {
+        store.isLoading
+    }
+
+    /// No community contributions yet — no reviews and no photos. The design
+    /// collapses the whole tab apparatus into one "Know something about the
+    /// place?" ask (frame "Empty") instead of three tabs of empty cards; the
+    /// banner above still shows whatever grade enrichment derived.
+    private var isEmptyState: Bool {
+        !isInitialLoading
+            && store.enrichResolved
+            && store.reviewsResolved
+            && !store.hasAnyReviews()
+            && store.reviewPhotos.isEmpty
+    }
+
     private var contentSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             titleBlock
                 .padding(.horizontal, 22)
                 .padding(.top, 18)
 
-            PlaceDetailTabBar(
-                selection: $selectedSection,
-                reviewCount: facilityReviews.count
-            )
-            .padding(.top, 18)
-
-            FacilityChipRow(selection: $selectedFacility)
+            if isInitialLoading {
+                PlaceDetailLoadingSkeleton()
+                    .padding(.horizontal, 22)
+                    .padding(.top, 24)
+                    .padding(.bottom, 96)
+            } else if isEmptyState {
+                emptyStateContent
+                    .padding(.horizontal, 22)
+                    .padding(.top, 26)
+                    .padding(.bottom, 40)
+            } else {
+                PlaceDetailTabBar(
+                    selection: $selectedSection,
+                    reviewCount: allReviews.count
+                )
                 .padding(.top, 18)
 
-            sectionContent
-                .padding(.top, 22)
-                // Clears the floating CONTRIBUTE pill.
-                .padding(.bottom, 96)
+                // Reviews replaces the facility chips with its own filter
+                // chips (ALL / WITH PHOTOS / tags) — see FacilityReviewsList.
+                if selectedSection != .reviews {
+                    FacilityChipRow(selection: $selectedFacility)
+                        .padding(.top, 18)
+                }
+
+                sectionContent
+                    .padding(.top, 22)
+                    // Clears the floating CONTRIBUTE pill.
+                    .padding(.bottom, 96)
+            }
         }
         .background {
             GeometryReader { geo in
@@ -425,8 +520,39 @@ struct MockPlaceDetailView: View {
         }
     }
 
+    private var emptyStateContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Hairline between the action pills and the ask, per the design.
+            Divider()
+                .padding(.bottom, 4)
+
+            Text("Know something about the place?".localized)
+                .font(.system(size: 17, weight: .semibold))
+
+            Button { startReview() } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 17, weight: .semibold))
+                    Text("Contribute Information".localized)
+                        .font(.system(size: 17, weight: .semibold))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 48)
+                .background(Color.accentColor, in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
     private var facilityReviews: [PlaceFacilityReview] {
         store.reviews(for: selectedFacility)
+    }
+
+    /// The Reviews tab lists every facility's reviews together (the design's
+    /// count is the place total, not the selected facility's).
+    private var allReviews: [PlaceFacilityReview] {
+        store.facilityReviews.sorted { $0.createdAt > $1.createdAt }
     }
 
     /// Every tag the community confirmed for this facility, newest review
@@ -477,13 +603,16 @@ struct MockPlaceDetailView: View {
                     Text("Find something different?".localized)
                         .font(.system(size: 20, weight: .bold))
 
+                    // Quiet capsule, blue label — the design reserves the
+                    // filled blue button for first contributions; editing
+                    // existing info is the secondary treatment.
                     Button { startReview() } label: {
                         Text(reviewCTATitle.localized)
                             .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(PhotoPalette.brandBlue)
                             .frame(maxWidth: .infinity)
                             .frame(height: 48)
-                            .background(Color.accentColor, in: Capsule())
+                            .background(Color.mockSectionBackground, in: Capsule())
                     }
                     .buttonStyle(.plain)
                 }
@@ -493,43 +622,84 @@ struct MockPlaceDetailView: View {
 
     private var reviewCTATitle: String {
         if UnfinishedReviewStore.hasUnfinished(for: place) { return "Unfinished review" }
-        return store.hasAnyReviews() ? "Add New Review" : "Be the first reviewer"
+        return store.hasAnyReviews() ? "Edit Accessibility Information" : "Be the first reviewer"
+    }
+
+    /// "🗨 Your review submitted!" — tappable row above the reviews list,
+    /// opening the My Review screen (Figma "Reviewed" → "My Review").
+    private var submittedBanner: some View {
+        Button { showMyReview = true } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "text.bubble.fill")
+                    .font(.system(size: 15))
+                    .foregroundStyle(PhotoPalette.brandBlue)
+                Text("Your review submitted!".localized)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(PhotoPalette.brandBlue.opacity(0.10))
+            )
+        }
+        .buttonStyle(.plain)
+        .transition(.scale(scale: 1.1).combined(with: .opacity))
+    }
+
+    private func dismissContributeIntro() {
+        hasSeenContributeIntro = true
+        guard showContributeIntro else { return }
+        withAnimation(.easeIn(duration: 0.2)) { showContributeIntro = false }
+    }
+
+    // One explicit container, NOT a bare @ViewBuilder tuple: SwiftUI
+    // distributes modifiers over tuples, so the section's top/bottom padding
+    // was being applied to the banner AND the list separately — ~130pt of
+    // phantom space opened up between them.
+    private var reviewsContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if showSubmittedBanner {
+                submittedBanner
+                    .padding(.bottom, 16)
+            }
+            reviewsList
+        }
     }
 
     @ViewBuilder
-    private var reviewsContent: some View {
-        if facilityReviews.isEmpty {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("No one review this place yet".localized)
-                    .font(.system(size: 15))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Button { startReview() } label: {
-                    Text("Be the first reviewer".localized)
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
-                        .background(Color.accentColor, in: Capsule())
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.mockSectionBackground)
-            )
+    private var reviewsList: some View {
+        if allReviews.isEmpty {
+            // The design's "No Review Yet" frame is exactly this: quiet text,
+            // no card, no button — the floating CONTRIBUTE pill is the CTA.
+            Text("No Review Yet".localized)
+                .font(.system(size: 15))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            FacilityReviewsList(reviews: facilityReviews)
+            FacilityReviewsList(reviews: allReviews)
         }
     }
 
     private var photosContent: some View {
         let photos = store.facilityPhotos(for: selectedFacility)
         return VStack(spacing: 16) {
-            Button { isAddingPhotos = true } label: {
+            // The design's "Click add photo" state is a small MENU next to the
+            // button (Choose Existing / Take New Photo), not an action sheet.
+            Menu {
+                Button { photoSource = .library } label: {
+                    Label("Choose Existing".localized, systemImage: "photo.on.rectangle")
+                }
+                Button { photoSource = .camera } label: {
+                    Label("Take New Photo".localized, systemImage: "camera")
+                }
+                .disabled(!CameraPicker.isAvailable)
+            } label: {
                 HStack(spacing: PhotoMetrics.addPhotosSpacing) {
                     Image(systemName: "photo.badge.plus.fill")
                         .font(.system(size: 20))
@@ -565,8 +735,18 @@ struct MockPlaceDetailView: View {
     }
 
     /// Opens the contribute flow on the facility the user is looking at,
-    /// resuming an unfinished draft when there is one.
+    /// resuming an unfinished draft when there is one. Asks for sign-in
+    /// FIRST — never after the wizard is already on screen.
     private func startReview() {
+        guard auth.isSignedIn else {
+            pendingAuthAction = .review
+            showSignIn = true
+            return
+        }
+        openReviewWizard()
+    }
+
+    private func openReviewWizard() {
         resumeScreenIndex = UnfinishedReviewStore.snapshot(for: place)?.screenIndex ?? 0
         showReviewWizard = true
     }

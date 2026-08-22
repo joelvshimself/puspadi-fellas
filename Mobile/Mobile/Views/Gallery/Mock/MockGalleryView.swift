@@ -36,7 +36,7 @@ struct MockGalleryView: View {
     }
 
     @State private var selectedFilter: Filter = .all
-    @State private var isAddingPhotos = false
+    @State private var photoSource: PhotoComposerSource?
     @State private var lightbox: LightboxSelection?
     /// Uploads from this session, shown ahead of the backend list so they are
     /// visible the moment the composer closes.
@@ -76,7 +76,7 @@ struct MockGalleryView: View {
             .navigationTitle("GALLERY".localized.capitalized)
             .navigationBarTitleDisplayMode(.inline)
             .photoComposerFlow(
-                isSourcePresented: $isAddingPhotos,
+                source: $photoSource,
                 place: place,
                 facility: selectedFilter.facilityKind ?? .entrance,
                 onUploaded: { submitted in
@@ -139,7 +139,15 @@ struct MockGalleryView: View {
     }
 
     private var addPhotosButton: some View {
-        Button { isAddingPhotos = true } label: {
+        Menu {
+            Button { photoSource = .library } label: {
+                Label("Choose Existing".localized, systemImage: "photo.on.rectangle")
+            }
+            Button { photoSource = .camera } label: {
+                Label("Take New Photo".localized, systemImage: "camera")
+            }
+            .disabled(!CameraPicker.isAvailable)
+        } label: {
             HStack(spacing: 10) {
                 Image(systemName: "photo.badge.plus")
                     .font(.system(size: 16, weight: .medium))

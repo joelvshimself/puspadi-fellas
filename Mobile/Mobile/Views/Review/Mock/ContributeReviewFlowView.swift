@@ -5,6 +5,11 @@ struct ContributeReviewFlowView: View {
     let place: Place
     let startingFacility: FacilityKind?
     let initialScreenIndex: Int
+    /// Fired the moment the backend accepts the review — BEFORE the user taps
+    /// Done on the confirmation screen — so the presenting page can stage its
+    /// "Your review submitted!" state. `onFinished` alone can't tell a
+    /// submission from a cancel.
+    let onSubmitted: (() -> Void)?
     let onFinished: () -> Void
 
     @StateObject private var draft: ReviewDraft
@@ -25,11 +30,13 @@ struct ContributeReviewFlowView: View {
         place: Place,
         startingFacility: FacilityKind? = nil,
         initialScreenIndex: Int = 0,
+        onSubmitted: (() -> Void)? = nil,
         onFinished: @escaping () -> Void
     ) {
         self.place = place
         self.startingFacility = startingFacility
         self.initialScreenIndex = initialScreenIndex
+        self.onSubmitted = onSubmitted
         self.onFinished = onFinished
 
         let draft = ReviewDraft(appleMapsId: place.id.uuidString, coordinate: place.coordinate, name: place.name)
@@ -116,11 +123,12 @@ struct ContributeReviewFlowView: View {
                     .task { await submit() }
             }
         }
-        .onAppear {
-            if !auth.isSignedIn {
-                showLogin = true
-            }
-        }
+        // No sign-in gate on appear: every entry point (Contribute, Be the
+        // first reviewer, Edit Accessibility Information) asks for login
+        // BEFORE presenting this flow — same pattern as Save. Landing on the
+        // wizard and being interrupted by a login popup a beat later read as
+        // two competing prompts. `showLogin` remains for one case only: a
+        // session that lapsed mid-flow, surfaced by a failed submit.
         .fullScreenCover(isPresented: $showLogin) {
             LoginView(
                 onSuccess: { showLogin = false },
@@ -317,6 +325,7 @@ struct ContributeReviewFlowView: View {
             try await ReviewService.shared.submit(draft)
             UnfinishedReviewStore.clear(for: place)
             isSubmitted = true
+            onSubmitted?()
         } catch {
             print("[ContributeReviewFlow] Submit failed: \(error)")
             submitError = Self.submitErrorMessage(for: error)

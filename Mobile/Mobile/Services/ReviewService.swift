@@ -401,6 +401,10 @@ final class ReviewService {
         let toiletReviewText: String?
         let toiletPhotoUrls: [String]?
         let reviewEntrances: [DBReviewEntranceRow]?
+        /// Joined server-side by place-reviews; nil for legacy anonymous rows.
+        let reviewerName: String?
+        let reviewerRole: String?
+        let reviewerAvatarUrl: String?
 
         enum CodingKeys: String, CodingKey {
             case id
@@ -415,30 +419,38 @@ final class ReviewService {
             case toiletReviewText = "toilet_review_text"
             case toiletPhotoUrls = "toilet_photo_urls"
             case reviewEntrances = "review_entrances"
+            case reviewerName = "reviewer_name"
+            case reviewerRole = "reviewer_role"
+            case reviewerAvatarUrl = "reviewer_avatar_url"
         }
     }
 
-    /// Loads flattened review rows + entrance children for one canonical place.
+    private struct PlaceReviewsResponse: Decodable {
+        let status: String
+        let reviews: [DBPlaceReviewRow]
+    }
+
+    private struct PlaceReviewsRequestBody: Encodable {
+        let placeId: String
+    }
+
+    /// Loads flattened review rows + entrance children + reviewer identity for
+    /// one canonical place, via the `place-reviews` Edge Function.
     ///
-    /// Takes the place_id rather than a coordinate on purpose: this queries
-    /// `reviews` directly, so unlike the Edge Functions it cannot resolve
-    /// identity itself. The caller (PlaceReviewStore) passes the id enrich()
+    /// An Edge Function rather than a direct table query, because reviewer
+    /// names live in `profiles` and RLS only lets a user read their own row —
+    /// the service role joins them server-side. Takes the place_id enrich()
     /// resolved, which is the one the backend actually filed reviews under.
     func fetchPlaceReviews(placeId: String) async throws -> [PlaceFacilityReview] {
-        let rows: [DBPlaceReviewRow] = try await client.from("reviews")
-            .select("""
-                id, created_at, notes,
-                elevator_exists, elevator_wheelchair_accessible, elevator_blockers,
-                elevator_review_text, elevator_photo_urls,
-                has_disabled_toilet, toilet_review_text, toilet_photo_urls,
-                review_entrances(location, has_dropoff_ramp, has_rails, door_type, is_wide_enough, review_text, photo_urls)
-            """)
-            .eq("place_id", value: placeId)
-            .order("created_at", ascending: false)
-            .execute()
-            .value
-
-        return Self.mapReviews(rows)
+        // Rows come back snake_case and DBPlaceReviewRow's CodingKeys already
+        // spell that out — the class-level convertFromSnakeCase decoder would
+        // fight them, so this call uses a plain decoder.
+        let response: PlaceReviewsResponse = try await client.functions.invoke(
+            "place-reviews",
+            options: FunctionInvokeOptions(body: PlaceReviewsRequestBody(placeId: placeId)),
+            decoder: JSONDecoder()
+        )
+        return Self.mapReviews(response.reviews)
     }
 
     private static let isoFormatter: ISO8601DateFormatter = {
@@ -457,11 +469,22 @@ final class ReviewService {
         var results: [PlaceFacilityReview] = []
         for row in rows {
             let date = parseDate(row.createdAt)
+            /// Same reviewer on every facility row this review fans out into.
+            func withReviewer(_ review: PlaceFacilityReview) -> PlaceFacilityReview {
+                var copy = review
+                copy.reviewerName = row.reviewerName
+                copy.reviewerRole = row.reviewerRole
+                copy.reviewerAvatarURL = row.reviewerAvatarUrl.flatMap(URL.init(string:))
+                return copy
+            }
             if let entrances = row.reviewEntrances {
                 for entrance in entrances {
-                    let body = entrance.reviewText?.trimmingCharacters(in: .whitespacesAndNewlines)
-                        ?? row.notes?.trimmingCharacters(in: .whitespacesAndNewlines)
-                        ?? ""
+                    // The entrance's OWN text only — never the review-level
+                    // `notes` aggregate: that column is every facility's text
+                    // joined with internal "[entrance:basement]" prefixes, and
+                    // falling back to it rendered a phantom duplicate row for
+                    // the entrance the user did NOT review.
+                    let body = entrance.reviewText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                     let hasFacilityData =
                         entrance.hasDropoffRamp != nil
                         || entrance.hasRails != nil
@@ -470,7 +493,7 @@ final class ReviewService {
                     guard !body.isEmpty || !(entrance.photoUrls ?? []).isEmpty || hasFacilityData else {
                         continue
                     }
-                    results.append(PlaceFacilityReview(
+                    results.append(withReviewer(PlaceFacilityReview(
                         id: UUID(),
                         reviewId: row.id,
                         kind: .entrance,
@@ -478,14 +501,14 @@ final class ReviewService {
                         bodyText: body.isEmpty ? "Community review" : body,
                         providedTags: entranceTags(from: entrance),
                         photoURLs: entrance.photoUrls ?? []
-                    ))
+                    )))
                 }
             }
             if row.elevatorExists != nil || row.elevatorWheelchairAccessible != nil
                 || !(row.elevatorReviewText ?? "").isEmpty
                 || !(row.elevatorPhotoUrls ?? []).isEmpty {
                 let body = row.elevatorReviewText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                results.append(PlaceFacilityReview(
+                results.append(withReviewer(PlaceFacilityReview(
                     id: UUID(),
                     reviewId: row.id,
                     kind: .elevator,
@@ -493,10 +516,10 @@ final class ReviewService {
                     bodyText: body.isEmpty ? "Community review" : body,
                     providedTags: elevatorTags(from: row),
                     photoURLs: row.elevatorPhotoUrls ?? []
-                ))
+                )))
             }
             if row.hasDisabledToilet == false {
-                results.append(PlaceFacilityReview(
+                results.append(withReviewer(PlaceFacilityReview(
                     id: UUID(),
                     reviewId: row.id,
                     kind: .toilet,
@@ -504,12 +527,12 @@ final class ReviewService {
                     bodyText: row.toiletReviewText ?? "No accessible toilet reported",
                     providedTags: ["NOT AVAILABLE"],
                     photoURLs: row.toiletPhotoUrls ?? []
-                ))
+                )))
             } else if row.hasDisabledToilet == true
                         || !(row.toiletReviewText ?? "").isEmpty
                         || !(row.toiletPhotoUrls ?? []).isEmpty {
                 let body = row.toiletReviewText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                results.append(PlaceFacilityReview(
+                results.append(withReviewer(PlaceFacilityReview(
                     id: UUID(),
                     reviewId: row.id,
                     kind: .toilet,
@@ -517,7 +540,7 @@ final class ReviewService {
                     bodyText: body.isEmpty ? "Community review" : body,
                     providedTags: toiletTags(from: row),
                     photoURLs: row.toiletPhotoUrls ?? []
-                ))
+                )))
             }
         }
         return results

@@ -12,6 +12,11 @@ final class PlaceReviewStore: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var enrichResolved = false
     @Published private(set) var reviewPhotosLoadFailed = false
+    /// True once the reviews fetch has SUCCEEDED at least once. An empty
+    /// `facilityReviews` only means "no reviews" when this is set — before
+    /// that it may just mean the fetch failed, which must never render as
+    /// the "Know something about the place?" empty state.
+    @Published private(set) var reviewsResolved = false
 
     let place: Place
     /// Which place_id this venue actually lives under.
@@ -106,6 +111,7 @@ final class PlaceReviewStore: ObservableObject {
         }
         if let reviewRows {
             facilityReviews = reviewRows
+            reviewsResolved = true
             print("[PlaceReviewStore] Loaded \(reviewRows.count) facility review(s) for \(placeId)")
         }
 

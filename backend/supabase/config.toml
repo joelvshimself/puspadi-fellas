@@ -60,3 +60,11 @@ verify_jwt = false
 
 [functions.my-reviews]
 verify_jwt = false
+
+# Public share-link redirect — recipients have no session by definition.
+[functions.place-link]
+verify_jwt = false
+
+# Public review reads with display-safe reviewer identity.
+[functions.place-reviews]
+verify_jwt = false

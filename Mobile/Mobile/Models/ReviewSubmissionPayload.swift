@@ -108,15 +108,26 @@ extension ReviewDraft {
             hasDisabledToilet: toilet.hasDisabledToilet,
             review: toilet.review.asReview(photoUrls: photoUrls.toilet)
         )
+        // Only entrances the user actually answered. Sending both
+        // unconditionally wrote an all-null row for the untouched one, which
+        // then surfaced as a phantom review in Place Details.
+        func hasContent(_ report: ReviewSubmissionPayload.EntranceReport) -> Bool {
+            if report.hasDropoffRamp != nil { return true }
+            if report.hasRails != nil { return true }
+            if report.doorType != nil { return true }
+            if report.isWideEnough != nil { return true }
+            return report.review != nil
+        }
+        let lobbyReport = lobby.asReport(photoUrls: photoUrls.lobby)
+        let basementReport = basement.asReport(photoUrls: photoUrls.basement)
+        let entranceReports = [lobbyReport, basementReport].filter(hasContent)
+
         return ReviewSubmissionPayload(
             appleMapsId: appleMapsId,
             lat: coordinate.latitude,
             lng: coordinate.longitude,
             name: name,
-            entrances: [
-                lobby.asReport(photoUrls: photoUrls.lobby),
-                basement.asReport(photoUrls: photoUrls.basement),
-            ],
+            entrances: entranceReports.isEmpty ? nil : entranceReports,
             elevator: elevatorReport,
             toilet: toiletReport
         )

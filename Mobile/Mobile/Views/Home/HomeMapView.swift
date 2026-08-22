@@ -170,7 +170,13 @@ struct HomeMapView: View {
                         switch route {
                         case .place(let place):
                             // Place Details is a full page, not sheet content.
+                            // `.id` ties the view's identity to the place:
+                            // replacing the top of the stack in one transaction
+                            // (a share link opened while another place is up)
+                            // otherwise reuses the view and its @StateObject
+                            // store keeps showing the PREVIOUS place's data.
                             MockPlaceDetailView(place: place)
+                                .id(place.id)
                                 .enableSwipeBack()
                         case .saved:
                             SavedView()
