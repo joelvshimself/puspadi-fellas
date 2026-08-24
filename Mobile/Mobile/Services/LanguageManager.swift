@@ -121,6 +121,19 @@ final class LanguageManager: ObservableObject {
             .indonesia: "Temukan mal aksesibel, simpan favorit, atau tulis ulasan untuk membantu orang lain."
         ],
         "Explore Malls": [.english: "Explore Malls", .indonesia: "Jelajahi Mal"],
+        "Know before you go": [.english: "Know before you go", .indonesia: "Ketahui sebelum berangkat"],
+        "Find malls you can roll into and see real facilities, checked and confirmed by people who've actually been there.": [
+            .english: "Find malls you can roll into and see real facilities, checked and confirmed by people who've actually been there.",
+            .indonesia: "Temukan mal yang bisa Anda masuki dan lihat fasilitas nyata, diperiksa dan dikonfirmasi oleh orang yang benar-benar pernah ke sana."
+        ],
+        "Your visit might be their answer": [
+            .english: "Your visit might be their answer",
+            .indonesia: "Kunjungan Anda bisa jadi jawaban mereka"
+        ],
+        "A photo, a few tags, and a quick note. That's all it takes to help the next person roll everywhere with ease.": [
+            .english: "A photo, a few tags, and a quick note. That's all it takes to help the next person roll everywhere with ease.",
+            .indonesia: "Sebuah foto, beberapa tanda, dan catatan singkat. Itu saja yang dibutuhkan untuk membantu orang berikutnya menjelajah dengan mudah."
+        ],
         "Photos you add to reviews will show up here.": [
             .english: "Photos you add to reviews will show up here.",
             .indonesia: "Foto yang Anda tambahkan ke ulasan akan muncul di sini."

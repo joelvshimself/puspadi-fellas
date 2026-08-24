@@ -10,8 +10,9 @@ enum UnfinishedReviewStore {
         let startingFacility: String?
         let screenIndex: Int
         let selectedFacilities: [String]
-        let entranceLocation: String?
-        let entranceTags: [String]
+        let entranceLocations: [String]
+        let lobbyEntranceTags: [String]
+        let basementEntranceTags: [String]
         let elevatorTags: [String]
         let toiletTags: [String]
         let lobbyNote: String
@@ -28,8 +29,9 @@ enum UnfinishedReviewStore {
         startingFacility: FacilityKind?,
         screenIndex: Int,
         selectedFacilities: Set<FacilityKind>,
-        entranceLocation: EntranceLocation?,
-        entranceTags: Set<ContributeTagOption>,
+        entranceLocations: Set<EntranceLocation>,
+        lobbyEntranceTags: Set<ContributeTagOption>,
+        basementEntranceTags: Set<ContributeTagOption>,
         elevatorTags: Set<ContributeTagOption>,
         toiletTags: Set<ContributeTagOption>,
         draft: ReviewDraft
@@ -44,8 +46,9 @@ enum UnfinishedReviewStore {
             startingFacility: startingFacility?.rawValue,
             screenIndex: screenIndex,
             selectedFacilities: selectedFacilities.map(\.rawValue),
-            entranceLocation: entranceLocation?.rawValue,
-            entranceTags: entranceTags.map(\.label),
+            entranceLocations: entranceLocations.map(\.rawValue),
+            lobbyEntranceTags: lobbyEntranceTags.map(\.label),
+            basementEntranceTags: basementEntranceTags.map(\.label),
             elevatorTags: elevatorTags.map(\.label),
             toiletTags: toiletTags.map(\.label),
             lobbyNote: draft.lobby.review.text,
@@ -73,6 +76,11 @@ enum UnfinishedReviewStore {
 
     static func restoreTags(_ labels: [String], for kind: FacilityKind) -> Set<ContributeTagOption> {
         let catalog = ContributeReviewTags.tags(for: kind)
+        return Set(labels.compactMap { label in catalog.first { $0.label == label } })
+    }
+
+    static func restoreTags(_ labels: [String], forEntrance location: EntranceLocation) -> Set<ContributeTagOption> {
+        let catalog = ContributeReviewTags.tags(forEntrance: location)
         return Set(labels.compactMap { label in catalog.first { $0.label == label } })
     }
 

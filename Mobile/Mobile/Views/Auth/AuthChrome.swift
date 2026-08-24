@@ -18,7 +18,6 @@ enum AuthRoute: Hashable {
     case verifyEmail(email: String, password: String, displayName: String, mobilityAids: [String])
     case name(email: String, password: String)
     case mobility(email: String, password: String, displayName: String)
-    case allSet
 }
 
 struct AuthGradientBackground: View {

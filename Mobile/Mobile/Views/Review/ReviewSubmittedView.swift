@@ -4,45 +4,65 @@ import SwiftUI
 /// lives on PlaceDetailView's existing Accessibility Grade card, computed
 /// later by the backend from this submission.
 struct ReviewSubmittedView: View {
-    let placeName: String
+    var placeName: String = ""
     let onDone: () -> Void
 
-    var body: some View {
-        VStack(spacing: 20) {
-            ZStack {
-                Circle()
-                    .fill(Color.accentColor.opacity(0.12))
-                    .frame(width: 96, height: 96)
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 44, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
-            }
+    @State private var isHovering = false
 
-            VStack(spacing: 8) {
-                Text("Thank You!")
-                    .font(.title2.bold())
-                Text("Your review helps make \(placeName) more accessible for everyone.")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.horizontal, 32)
+    var body: some View {
+        VStack {
+            Spacer()
+
+            Image("Thank You Asset")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(maxWidth: .infinity)
+                .scaleEffect(1.08)
+                .offset(y: isHovering ? -8 : 6)
+                .frame(height: 245)
+                .onAppear {
+                    withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
+                        isHovering = true
+                    }
+                }
+
+            Text("Review Submitted!".localized)
+                .font(.system(size: 26, weight: .bold))
+                .padding(.top, 24)
+
+            Text("Thank you for helping out!".localized)
+                .font(.system(size: 16))
+                .foregroundStyle(.secondary)
+                .padding(.top, 8)
 
             Spacer()
 
             Button(action: onDone) {
-                Text("Done")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                Text("Back to Home".localized)
+                    .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(Color.accentColor, in: Capsule())
             }
             .buttonStyle(.plain)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
         }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemBackground))
+        .background {
+            LinearGradient(
+                colors: [
+                    Color(red: 148 / 255, green: 202 / 255, blue: 247 / 255),
+                    Color(.systemBackground),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 260)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .background(Color(.systemBackground))
+            .ignoresSafeArea()
+        }
     }
 }
 

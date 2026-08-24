@@ -18,45 +18,88 @@ extension EntranceLocation: Identifiable, CaseIterable {
     }
 }
 
-/// "Where did you enter?" — Lobby/Basement single-select, shown before
-/// Entrance's tag-question screen (the mockup's Entrance Form Q1).
+/// "Which entrances did you use?" — Lobby/Basement multi-select, shown as
+/// the first question of the flow (replaces the old category-picker start).
 struct ContributeEntranceLocationStepView: View {
     let facilityName: String
     let progress: (current: Int, total: Int)
-    @Binding var selection: EntranceLocation?
+    @Binding var selection: Set<EntranceLocation>
     let onBack: () -> Void
     let onContinue: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
             PhotoFlowHeader(title: "Entrances".localized, onBack: onBack)
-            ReviewProgressBar(currentIndex: progress.current, totalSteps: progress.total)
-                .padding(.horizontal, PhotoMetrics.toolbarHorizontalPadding)
-                .padding(.top, 4)
+            ContributeStepProgressBar(currentStep: 1)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    ContributeFacilityIllustration(kind: .entrance)
+                    Image("Entrance Mall Asset")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: .infinity)
+                        .scaleEffect(1.05)
+                        .frame(height: 180)
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Where did you enter?".localized)
+                        Text("Which entrances did you use?".localized)
                             .font(.title2.bold())
+                        Text("You can select multiple answers".localized)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                    SelectionPills(
-                        options: EntranceLocation.allCases,
-                        label: \.displayLabel,
-                        selection: $selection
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(spacing: 12) {
+                        ForEach(EntranceLocation.allCases) { location in
+                            entranceRow(location)
+                        }
+                    }
                 }
                 .padding(20)
             }
 
-            ContributeContinueButton(isEnabled: selection != nil, action: onContinue)
+            ContributeContinueButton(isEnabled: !selection.isEmpty, action: onContinue)
         }
         .background(Color(.systemBackground))
+    }
+
+    private func entranceRow(_ location: EntranceLocation) -> some View {
+        let isSelected = selection.contains(location)
+        return Button {
+            withAnimation(.snappy(duration: 0.2)) {
+                if isSelected {
+                    selection.remove(location)
+                } else {
+                    selection.insert(location)
+                }
+            }
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "door.right.hand.open")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(isSelected ? Color.accentColor : .primary)
+                    .frame(width: 24)
+
+                Text(location.displayLabel)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(isSelected ? Color.accentColor : .primary)
+
+                Spacer()
+
+                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
+                    .font(.system(size: 20))
+                    .foregroundStyle(isSelected ? Color.accentColor : Color(.tertiaryLabel))
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
+            .background(Color(.secondarySystemBackground), in: Capsule())
+            .overlay {
+                Capsule()
+                    .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -69,21 +112,44 @@ struct ContributeFacilityQuestionStepView: View {
     let questionTitle: String
     let progress: (current: Int, total: Int)
     @Binding var selection: Set<ContributeTagOption>
+    /// Overrides for entrance's per-location screens (distinct illustration
+    /// + chip catalog per Lobby/Basement) — nil for elevator/toilet, which
+    /// still fall back to `ContributeFacilityIllustration`/`ContributeReviewTags.tags(for:)`.
+    var illustrationAssetName: String?
+    var optionsOverride: [ContributeTagOption]?
+    var subStepProgress: CGFloat = 0.35
     let onBack: () -> Void
     let onContinue: () -> Void
-
-    private var options: [ContributeTagOption] { ContributeReviewTags.tags(for: kind) }
+    private var options: [ContributeTagOption] { optionsOverride ?? ContributeReviewTags.tags(for: kind) }
+    private var stepNumber: Int {
+        switch kind {
+        case .entrance: 1
+        case .elevator: 2
+        case .toilet: 3
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            PhotoFlowHeader(title: navTitle.localized, onBack: onBack)
-            ReviewProgressBar(currentIndex: progress.current, totalSteps: progress.total)
-                .padding(.horizontal, PhotoMetrics.toolbarHorizontalPadding)
-                .padding(.top, 4)
+            VStack(spacing: 0) {
+                PhotoFlowHeader(title: navTitle.localized, onBack: onBack)
+                ContributeStepProgressBar(currentStep: stepNumber, subStepProgress: subStepProgress)
+            }
+            .background(Color(.systemBackground))
+            .zIndex(1)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    ContributeFacilityIllustration(kind: kind)
+                    if let assetName = illustrationAssetName {
+                        Image(assetName)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxWidth: .infinity)
+                            .scaleEffect(1.05)
+                            .frame(height: 180)
+                    } else {
+                        ContributeFacilityIllustration(kind: kind)
+                    }
 
                     VStack(alignment: .leading, spacing: 6) {
                         Text(questionTitle.localized)
@@ -140,7 +206,7 @@ struct ContributeTagChip: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                Image(systemName: option.symbol)
+                tagIcon
                     .font(.system(size: 12, weight: .medium))
                 Text(option.label.localized.capitalized)
                     .font(.system(size: 14, weight: .medium))
@@ -158,6 +224,19 @@ struct ContributeTagChip: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
+    }
+
+    @ViewBuilder
+    private var tagIcon: some View {
+        if option.isSystemSymbol {
+            Image(systemName: option.symbol)
+        } else {
+            Image(option.symbol)
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 12, height: 12)
+        }
     }
 }
 
@@ -181,7 +260,8 @@ struct ContributeFacilityIllustration: View {
             .resizable()
             .aspectRatio(contentMode: .fit)
             .frame(maxWidth: .infinity)
-            .frame(height: 220)
+            .scaleEffect(1.05)
+            .frame(height: 180)
     }
 }
 
@@ -201,13 +281,14 @@ struct ContributeContinueButton: View {
                 .frame(height: 52)
                 .background(
                     isEnabled ? Color.accentColor : Color(.systemGray4),
-                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    in: Capsule()
                 )
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
+        .background(Color(.systemBackground))
     }
 }
 

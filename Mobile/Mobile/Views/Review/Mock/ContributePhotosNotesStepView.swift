@@ -16,17 +16,19 @@ struct ContributePhotosNotesStepView: View {
     let onContinue: () -> Void
 
     @State private var photoPickerItems: [PhotosPickerItem] = []
-    @State private var showSourceDialog = false
     @State private var showPhotosPicker = false
     @State private var showCamera = false
+    @State private var selectedPhotoForCaption: ReviewPhotoDraft? = nil
     @FocusState private var notesFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
-            PhotoFlowHeader(title: navTitle, onBack: onBack)
-            ReviewProgressBar(currentIndex: progress.current, totalSteps: progress.total)
-                .padding(.horizontal, PhotoMetrics.toolbarHorizontalPadding)
-                .padding(.top, 4)
+            VStack(spacing: 0) {
+                PhotoFlowHeader(title: navTitle.localized, onBack: onBack)
+                ContributeStepProgressBar(currentStep: 4)
+            }
+            .background(Color(.systemBackground))
+            .zIndex(1)
 
             ScrollViewReader { proxy in
                 ScrollView {
@@ -49,7 +51,7 @@ struct ContributePhotosNotesStepView: View {
             }
 
             ContributeContinueButton(
-                title: isLastStep ? "Submit Review" : "Continue",
+                title: "Submit".localized,
                 isEnabled: true,
                 action: onContinue
             )
@@ -59,12 +61,6 @@ struct ContributePhotosNotesStepView: View {
         .contentShape(Rectangle())
         .onTapGesture {
             UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        }
-        .confirmationDialog("Add Photo".localized, isPresented: $showSourceDialog, titleVisibility: .visible) {
-            Button("Choose Existing".localized) { showPhotosPicker = true }
-            if CameraPicker.isAvailable {
-                Button("Take New Photo".localized) { showCamera = true }
-            }
         }
         .photosPicker(
             isPresented: $showPhotosPicker,
@@ -89,25 +85,38 @@ struct ContributePhotosNotesStepView: View {
             )
             .ignoresSafeArea()
         }
+        .fullScreenCover(item: $selectedPhotoForCaption) { photo in
+            PhotoCaptionEditorView(
+                photo: photo,
+                onSave: { newCaption in
+                    note.updatePhotoCaption(id: photo.id, caption: newCaption)
+                },
+                onDismiss: {
+                    selectedPhotoForCaption = nil
+                }
+            )
+        }
     }
 
     private var photosSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 4) {
-                Text("\("Photos of".localized) \(facilityName.localized)")
+                Text("Photos".localized)
                     .font(.system(size: 18, weight: .bold))
                 Text("(Optional)".localized)
                     .font(.system(size: 14))
                     .foregroundStyle(.secondary)
             }
 
-            if note.canAddMorePhotos {
-                addPhotosBox
-            }
-
-            if !note.photos.isEmpty {
+            if note.photos.isEmpty {
+                addPhotoButtonTile(isWide: true)
+            } else {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 12) {
+                        if note.canAddMorePhotos {
+                            addPhotoButtonTile(isWide: false)
+                        }
+
                         ForEach(note.photos) { photo in
                             photoThumbnail(photo)
                         }
@@ -117,22 +126,24 @@ struct ContributePhotosNotesStepView: View {
         }
     }
 
-    private var addPhotosBox: some View {
+    @State private var showPhotoOptions = false
+
+    private func addPhotoButtonTile(isWide: Bool) -> some View {
         Button {
-            if note.canAddMorePhotos {
-                showSourceDialog = true
-            }
+            showPhotoOptions.toggle()
         } label: {
             VStack(spacing: 8) {
                 Image(systemName: "photo.badge.plus")
                     .font(.system(size: 28))
                     .foregroundStyle(Color.accentColor)
-                Text(note.photos.isEmpty ? "Add Photos".localized : "Add More Photos".localized)
-                    .font(.system(size: 15, weight: .medium))
+                Text("Add Photos".localized)
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Color.accentColor)
+                    .lineLimit(1)
+                    .fixedSize()
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 120)
+            .frame(width: isWide ? nil : 120, height: 120)
+            .frame(maxWidth: isWide ? .infinity : nil)
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(Color(.secondarySystemBackground))
@@ -145,26 +156,83 @@ struct ContributePhotosNotesStepView: View {
         .buttonStyle(.plain)
         .disabled(!note.canAddMorePhotos)
         .opacity(note.canAddMorePhotos ? 1 : 0.4)
+        .popover(isPresented: $showPhotoOptions, attachmentAnchor: .point(.center), arrowEdge: .top) {
+            VStack(alignment: .leading, spacing: 16) {
+                Button {
+                    showPhotoOptions = false
+                    showPhotosPicker = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "photo.on.rectangle")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundStyle(.primary)
+                        Text("Choose Existing".localized)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.primary)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                if CameraPicker.isAvailable {
+                    Button {
+                        showPhotoOptions = false
+                        showCamera = true
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "camera")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundStyle(.primary)
+                            Text("Take New Photo".localized)
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundStyle(.primary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(16)
+            .presentationCompactAdaptation(.popover)
+        }
     }
 
     private func photoThumbnail(_ photo: ReviewPhotoDraft) -> some View {
         ZStack(alignment: .topTrailing) {
-            Image(uiImage: photo.image)
-                .resizable()
-                .scaledToFill()
-                .frame(width: 100, height: 100)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
             Button {
-                note.removePhoto(id: photo.id)
+                selectedPhotoForCaption = photo
             } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.title3)
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(.white, .black.opacity(0.55))
+                ZStack(alignment: .bottomLeading) {
+                    Image(uiImage: photo.image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 120, height: 120)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                    if !photo.caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Image(systemName: "text.bubble.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(6)
+                            .background(Color.black.opacity(0.65), in: Circle())
+                            .padding(6)
+                    }
+                }
             }
             .buttonStyle(.plain)
-            .padding(4)
+
+            Button {
+                withAnimation(.snappy(duration: 0.18)) {
+                    note.removePhoto(id: photo.id)
+                }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.black)
+                    .frame(width: 24, height: 24)
+                    .background(Color.white, in: Circle())
+                    .shadow(color: .black.opacity(0.18), radius: 3, x: 0, y: 1)
+            }
+            .buttonStyle(.plain)
+            .padding(6)
             .accessibilityLabel("Remove photo")
         }
     }

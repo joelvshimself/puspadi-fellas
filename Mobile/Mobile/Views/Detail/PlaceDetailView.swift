@@ -66,7 +66,14 @@ struct PlaceDetailView: View {
                 _ = await (gradeLoad, photosLoad)
             }
         }) {
-            ReviewWizardView(place: place) { showReviewWizard = false }
+            ContributeReviewFlowView(
+                place: place,
+                startingFacility: nil,
+                initialScreenIndex: 0,
+                onSubmitted: {}
+            ) {
+                showReviewWizard = false
+            }
         }
         .fullScreenCover(isPresented: $showPhotos) {
             FacilityPhotosView(facilityName: place.name, onBack: { showPhotos = false })
