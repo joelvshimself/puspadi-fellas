@@ -90,7 +90,7 @@ struct FacilityReviewedOverview: View {
             FacilityPhotoDetailView(photos: selection.photos, initialID: selection.initialID)
         }
         .fullScreenCover(isPresented: $showContributeFlow) {
-            ContributeReviewFlowView(place: place, startingFacility: kind) {
+            ContributeReviewFlowView(place: place) {
                 showContributeFlow = false
                 Task { await store.load() }
             }

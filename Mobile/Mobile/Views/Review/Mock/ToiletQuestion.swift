@@ -26,36 +26,84 @@ enum ToiletQuestion: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
-    var title: String {
+    func title(for persona: ReviewPersona) -> String {
         switch self {
-        case .initial: "Does the mall have accessible toilets?"
-        case .doorKind: "What kind of door does the toilet have?"
-        case .seat: "Is the toilet seat easy to transfer to from your wheelchair?"
-        case .grabBars: "Are the grab bars within reach of the toilet?"
-        case .space: "Could you turn your wheelchair freely inside?"
-        case .sink: "Could you reach the sink?"
-        case .emergency: "Could you reach the emergency button from your wheelchair or fallen position?"
-        case .locationNote: "Where is the accessible toilet?"
+        case .initial:
+            ReviewQuestionCopy.toiletInitialQuestion
+        case .doorKind:
+            "What kind of door does the toilet have?"
+        case .seat:
+            switch persona {
+            case .wheelchair:
+                "Is the toilet seat easy to transfer to from your wheelchair?"
+            case .everyone:
+                "Is the toilet seat easy to transfer to from a wheelchair?"
+            }
+        case .grabBars:
+            "Are the grab bars within reach of the toilet?"
+        case .space:
+            switch persona {
+            case .wheelchair:
+                "Could you turn your wheelchair freely inside?"
+            case .everyone:
+                "Could someone turn their wheelchair freely inside?"
+            }
+        case .sink:
+            switch persona {
+            case .wheelchair:
+                "Could you reach the sink?"
+            case .everyone:
+                "Could someone in a wheelchair reach the sink?"
+            }
+        case .emergency:
+            switch persona {
+            case .wheelchair:
+                "Could you reach the emergency button from your wheelchair or fallen position?"
+            case .everyone:
+                "Could someone reach the emergency button from a seated or fallen position?"
+            }
+        case .locationNote:
+            "Where is the accessible toilet?"
         }
     }
 
-    var options: [String] {
+    func options(for persona: ReviewPersona) -> [String] {
         switch self {
-        case .initial: ["Yes", "No", "Not sure"]
-        case .doorKind: ["Manual", "Sliding", "Automatic"]
-        case .seat: ["Yes", "Too low", "Too high", "Not sure"]
-        case .grabBars: ["Yes", "Positioned awkwardly", "No", "Not sure"]
-        case .space: ["Yes", "No", "Not sure"]
-        case .sink: ["Yes", "No", "Not sure"]
-        case .emergency: ["Yes", "No", "Not sure", "There is no emergency button"]
-        case .locationNote: []
+        case .initial:
+            ReviewQuestionCopy.toiletInitialOptions
+        case .doorKind:
+            ["Manual", "Sliding", "Automatic"]
+        case .seat:
+            switch persona {
+            case .wheelchair:
+                ["Yes", "No", "Not sure"]
+            case .everyone:
+                ["Yes", "Too low", "Too high", "Not sure"]
+            }
+        case .grabBars:
+            switch persona {
+            case .wheelchair:
+                ["Yes", "Positioned awkwardly", "No"]
+            case .everyone:
+                ["Yes", "Positioned awkwardly", "Not sure"]
+            }
+        case .space, .sink:
+            ["Yes", "No", "Not sure"]
+        case .emergency:
+            ["Yes", "No", "Not sure", "There is no emergency button"]
+        case .locationNote:
+            []
         }
     }
 
-    var photoRevealOption: String? {
+    func photoRevealOption(for persona: ReviewPersona) -> String? {
         switch self {
-        case .seat, .grabBars, .space, .sink, .emergency: "Not sure"
-        default: nil
+        case .seat, .space, .sink, .emergency:
+            "Not sure"
+        case .grabBars:
+            persona == .everyone ? "Not sure" : nil
+        default:
+            nil
         }
     }
 }

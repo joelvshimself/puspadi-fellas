@@ -38,11 +38,20 @@ enum ElevatorQuestion: String, CaseIterable {
         }
     }
 
-    var title: String {
-        switch self {
-        case .wideEntrance: "Could you enter the elevator?"
-        case .spaceToManeuver: "Could you turn your wheelchair freely inside?"
-        case .reachableButtons: "Could you reach the buttons from your wheelchair?"
+    func title(for persona: ReviewPersona) -> String {
+        switch (self, persona) {
+        case (.wideEntrance, .wheelchair):
+            "Could you enter the elevator?"
+        case (.wideEntrance, .everyone):
+            "Could someone in a wheelchair enter the elevator?"
+        case (.spaceToManeuver, .wheelchair):
+            "Could you turn your wheelchair freely inside?"
+        case (.spaceToManeuver, .everyone):
+            "Could someone turn their wheelchair freely inside?"
+        case (.reachableButtons, .wheelchair):
+            "Could you reach the buttons from your wheelchair?"
+        case (.reachableButtons, .everyone):
+            "Could someone in a wheelchair reach the buttons?"
         }
     }
 
@@ -60,17 +69,10 @@ enum ContributeReviewTags {
     /// Lobby and Basement each get their own chip catalog — Basement adds
     /// "Elevator"/"Disabled Parking" (things you'd only meet coming from a
     /// parking level) and drops the door/wheelchair chips Lobby has.
-    static func tags(forEntrance location: EntranceLocation) -> [ContributeTagOption] {
+    static func tags(forEntrance location: EntranceLocation, persona: ReviewPersona = .wheelchair) -> [ContributeTagOption] {
         switch location {
         case .lobby:
-            [
-                ContributeTagOption(symbol: "Ramp Icon", label: "RAMP", isSystemSymbol: false),
-                ContributeTagOption(symbol: "Handrail Icon", label: "HANDRAIL", isSystemSymbol: false),
-                ContributeTagOption(symbol: "Review - Elevators", label: "AUTOMATIC DOORS", isSystemSymbol: false),
-                ContributeTagOption(symbol: "door.left.hand.open", label: "MANUAL DOORS"),
-                ContributeTagOption(symbol: "Review - Security Assistance", label: "SECURITY ASSISTANCE", isSystemSymbol: false),
-                ContributeTagOption(symbol: "Review - Wheelchair Available", label: "WHEELCHAIRS AVAILABLE", isSystemSymbol: false),
-            ]
+            lobbyTags(for: persona)
         case .basement:
             [
                 ContributeTagOption(symbol: "Review - Elevators", label: "ELEVATOR", isSystemSymbol: false),
@@ -80,6 +82,25 @@ enum ContributeReviewTags {
                 ContributeTagOption(symbol: "Review - Security Assistance", label: "SECURITY ASSISTANCE", isSystemSymbol: false),
             ]
         }
+    }
+
+    private static func lobbyTags(for persona: ReviewPersona) -> [ContributeTagOption] {
+        var tags: [ContributeTagOption] = [
+            ContributeTagOption(symbol: "Ramp Icon", label: "RAMP", isSystemSymbol: false),
+            ContributeTagOption(symbol: "Handrail Icon", label: "HANDRAIL", isSystemSymbol: false),
+            ContributeTagOption(symbol: "Review - Elevators", label: "AUTOMATIC DOORS", isSystemSymbol: false),
+        ]
+        switch persona {
+        case .wheelchair:
+            tags.append(ContributeTagOption(symbol: "door.left.hand.open", label: "MANUAL DOORS"))
+        case .everyone:
+            tags.append(ContributeTagOption(symbol: "Review - Elevators", label: "ELEVATOR/ESCALATOR", isSystemSymbol: false))
+        }
+        tags.append(contentsOf: [
+            ContributeTagOption(symbol: "Review - Security Assistance", label: "SECURITY ASSISTANCE", isSystemSymbol: false),
+            ContributeTagOption(symbol: "Review - Wheelchair Available", label: "WHEELCHAIRS AVAILABLE", isSystemSymbol: false),
+        ])
+        return tags
     }
 
     static func tags(for kind: FacilityKind) -> [ContributeTagOption] {

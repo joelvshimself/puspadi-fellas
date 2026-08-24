@@ -110,8 +110,18 @@ struct ProfileReviewsView: View {
                 .presentationDragIndicator(.visible)
         }
         .navigationDestination(item: $reviewToOpen) { review in
-            MockPlaceDetailView(place: place(for: review))
-                .enableSwipeBack()
+            MockMyReviewView(
+                place: place(for: review),
+                reviewId: review.id,
+                userName: review.userName,
+                avatarURL: review.userAvatarURL,
+                userRole: review.userRole,
+                dateLabel: review.dateLabel,
+                notes: review.notes,
+                providedTags: review.providedTags,
+                photoURLs: review.photoURLs
+            )
+            .enableSwipeBack()
         }
     }
 

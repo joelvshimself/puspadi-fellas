@@ -37,7 +37,8 @@ struct MockPlaceDetailView: View {
     /// posts (Figma "Reviewed" state, with its bigger-then-settle reveal).
     @State private var showSubmittedBanner = false
     @State private var reviewJustSubmitted = false
-    @State private var showMyReview = false
+    @State private var lastSubmittedReviewId: UUID?
+    @State private var myReviewPresentation: MyReviewPresentation?
 
     @State private var selectedSection: PlaceDetailSection = .overview
     @State private var selectedFacility: FacilityKind = .entrance
@@ -51,6 +52,19 @@ struct MockPlaceDetailView: View {
         let id = UUID()
         let photos: [FacilityPhoto]
         let initialID: UUID
+    }
+
+    private struct MyReviewPresentation: Identifiable {
+        let id = UUID()
+        let place: Place
+        let reviewId: UUID
+        let userName: String
+        let avatarURL: URL?
+        let userRole: String
+        let dateLabel: String
+        let notes: String
+        let providedTags: [String]
+        let photoURLs: [URL]
     }
 
     init(place: Place) {
@@ -182,9 +196,11 @@ struct MockPlaceDetailView: View {
         .fullScreenCover(isPresented: $showReviewWizard) {
             ContributeReviewFlowView(
                 place: place,
-                startingFacility: selectedFacility,
                 initialScreenIndex: resumeScreenIndex,
-                onSubmitted: { reviewJustSubmitted = true }
+                onSubmitted: { reviewId in
+                    reviewJustSubmitted = true
+                    lastSubmittedReviewId = reviewId
+                }
             ) {
                 showReviewWizard = false
                 UnfinishedReviewStore.clear(for: place)
@@ -222,8 +238,18 @@ struct MockPlaceDetailView: View {
         .fullScreenCover(item: $lightbox) { selection in
             FacilityPhotoDetailView(photos: selection.photos, initialID: selection.initialID)
         }
-        .fullScreenCover(isPresented: $showMyReview) {
-            MockMyReviewView()
+        .fullScreenCover(item: $myReviewPresentation) { presentation in
+            MockMyReviewView(
+                place: presentation.place,
+                reviewId: presentation.reviewId,
+                userName: presentation.userName,
+                avatarURL: presentation.avatarURL,
+                userRole: presentation.userRole,
+                dateLabel: presentation.dateLabel,
+                notes: presentation.notes,
+                providedTags: presentation.providedTags,
+                photoURLs: presentation.photoURLs
+            )
         }
     }
 
@@ -630,7 +656,9 @@ struct MockPlaceDetailView: View {
     /// "🗨 Your review submitted!" — tappable row above the reviews list,
     /// opening the My Review screen (Figma "Reviewed" → "My Review").
     private var submittedBanner: some View {
-        Button { showMyReview = true } label: {
+        Button {
+            Task { await openMyReview() }
+        } label: {
             HStack(spacing: 10) {
                 Image(systemName: "text.bubble.fill")
                     .font(.system(size: 15))
@@ -652,6 +680,46 @@ struct MockPlaceDetailView: View {
         }
         .buttonStyle(.plain)
         .transition(.scale(scale: 1.1).combined(with: .opacity))
+    }
+
+    private func openMyReview() async {
+        do {
+            let response = try await ReviewService.shared.fetchMyReviews()
+            let profile = try await ProfileService.shared.fetchCurrent()
+            let resolvedName = response.userName?.isEmpty == false
+                ? response.userName!
+                : (profile?.displayName?.isEmpty == false ? profile!.displayName! : "You")
+            let resolvedAvatar = response.profileImageUrl.flatMap(URL.init(string:))
+                ?? profile?.avatarUrl.flatMap(URL.init(string:))
+            let resolvedRole = response.userRole?.localized
+                ?? MobilityProfile.from(aids: profile?.mobilityAids)?.titleKey.localized
+                ?? ""
+
+            let placeId = store.placeId
+            let reviewRow: ReviewService.MyReviewItem?
+            if let lastSubmittedReviewId {
+                reviewRow = response.reviews.first { $0.id == lastSubmittedReviewId }
+            } else {
+                reviewRow = response.reviews.first { $0.placeId == placeId }
+            }
+            guard let row = reviewRow else { return }
+
+            await MainActor.run {
+                myReviewPresentation = MyReviewPresentation(
+                    place: place,
+                    reviewId: row.id,
+                    userName: resolvedName,
+                    avatarURL: resolvedAvatar,
+                    userRole: resolvedRole,
+                    dateLabel: ReviewService.profileDateLabel(row.createdAt),
+                    notes: row.reviewText,
+                    providedTags: row.providedFeatures,
+                    photoURLs: row.photoURLs
+                )
+            }
+        } catch {
+            print("[MockPlaceDetailView] Failed to load my review: \(error)")
+        }
     }
 
     private func dismissContributeIntro() {
