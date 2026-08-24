@@ -49,7 +49,8 @@ struct ReviewWizardView: View {
         .fullScreenCover(isPresented: $showLogin) {
             LoginView(
                 onSuccess: { showLogin = false },
-                onCancel: { onFinished() }
+                onCancel: { onFinished() },
+                onExploreMalls: { showLogin = false }
             )
             .environmentObject(auth)
         }

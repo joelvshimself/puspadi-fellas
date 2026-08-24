@@ -174,7 +174,8 @@ struct MockPlaceDetailView: View {
                 onCancel: {
                     showSignIn = false
                     pendingAuthAction = nil
-                }
+                },
+                onExploreMalls: { showSignIn = false }
             )
             .environmentObject(auth)
         }

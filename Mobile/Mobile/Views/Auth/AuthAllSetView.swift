@@ -22,9 +22,10 @@ struct AuthAllSetView: View {
                     .frame(width: 40, height: 5)
                     .padding(.top, 10)
 
-                Image(systemName: "building.2.fill")
-                    .font(.system(size: 56))
-                    .foregroundStyle(AuthPalette.brandBlue)
+                Image("All Set Mall")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 285.49, height: 135)
                     .padding(.top, 8)
 
                 Text("You're all set!".localized)

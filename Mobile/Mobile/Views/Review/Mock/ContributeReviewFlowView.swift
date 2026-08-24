@@ -132,7 +132,8 @@ struct ContributeReviewFlowView: View {
         .fullScreenCover(isPresented: $showLogin) {
             LoginView(
                 onSuccess: { showLogin = false },
-                onCancel: { onFinished() }
+                onCancel: { onFinished() },
+                onExploreMalls: { showLogin = false }
             )
             .environmentObject(auth)
         }

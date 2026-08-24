@@ -236,6 +236,14 @@ struct HomeMapView: View {
                                     onCancel: {
                                         homeCover = nil
                                         pendingProfileTab = nil
+                                    },
+                                    onExploreMalls: {
+                                        homeCover = nil
+                                        pendingProfileTab = nil
+                                        if !path.isEmpty {
+                                            path = NavigationPath()
+                                        }
+                                        isSearchActive = false
                                     }
                                 )
                                 .environmentObject(auth)
