@@ -45,7 +45,8 @@ struct LoginView: View {
                         password: password,
                         displayName: displayName,
                         mobilityAids: mobilityAids,
-                        path: $path
+                        path: $path,
+                        onSuccess: onSuccess
                     )
                 case .name(let email, let password):
                     AuthNameView(
@@ -61,10 +62,9 @@ struct LoginView: View {
                         pendingAppleSignIn: $pendingAppleSignIn,
                         mobilityAids: $mobilityAids,
                         displayName: displayName,
-                        path: $path
+                        path: $path,
+                        onSuccess: onSuccess
                     )
-                case .allSet:
-                    AuthAllSetView(onExplore: onSuccess)
                 }
             }
         }

@@ -6,6 +6,9 @@ struct AuthVerifyEmailView: View {
     let displayName: String
     let mobilityAids: [String]
     @Binding var path: [AuthRoute]
+    /// Signup is complete — the auth cover closes and HomeMapView takes over
+    /// (showing the one-time onboarding intro sheet if it hasn't been seen).
+    var onSuccess: () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var auth: AuthSessionStore
@@ -97,7 +100,7 @@ struct AuthVerifyEmailView: View {
                 displayName: displayName,
                 mobilityAids: mobilityAids
             )
-            path.append(.allSet)
+            onSuccess()
         } catch {
             errorMessage = "Please tap the link in your email first, then try again.".localized
         }
