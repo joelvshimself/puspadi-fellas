@@ -28,6 +28,9 @@ struct ReviewSubmissionPayload: Encodable {
     let appleMapsId: String
     let lat: Double
     let lng: Double
+    /// Lets the backend map (lat, lng, name) onto an existing place_id rather
+    /// than minting one from the coordinate — see ReviewDraft.name.
+    let name: String?
     let entrances: [EntranceReport]?
     let elevator: ElevatorReport?
     let toilet: ToiletReport?
@@ -105,14 +108,26 @@ extension ReviewDraft {
             hasDisabledToilet: toilet.hasDisabledToilet,
             review: toilet.review.asReview(photoUrls: photoUrls.toilet)
         )
+        // Only entrances the user actually answered. Sending both
+        // unconditionally wrote an all-null row for the untouched one, which
+        // then surfaced as a phantom review in Place Details.
+        func hasContent(_ report: ReviewSubmissionPayload.EntranceReport) -> Bool {
+            if report.hasDropoffRamp != nil { return true }
+            if report.hasRails != nil { return true }
+            if report.doorType != nil { return true }
+            if report.isWideEnough != nil { return true }
+            return report.review != nil
+        }
+        let lobbyReport = lobby.asReport(photoUrls: photoUrls.lobby)
+        let basementReport = basement.asReport(photoUrls: photoUrls.basement)
+        let entranceReports = [lobbyReport, basementReport].filter(hasContent)
+
         return ReviewSubmissionPayload(
             appleMapsId: appleMapsId,
             lat: coordinate.latitude,
             lng: coordinate.longitude,
-            entrances: [
-                lobby.asReport(photoUrls: photoUrls.lobby),
-                basement.asReport(photoUrls: photoUrls.basement),
-            ],
+            name: name,
+            entrances: entranceReports.isEmpty ? nil : entranceReports,
             elevator: elevatorReport,
             toilet: toiletReport
         )

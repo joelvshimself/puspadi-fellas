@@ -12,12 +12,35 @@ final class PlaceReviewStore: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var enrichResolved = false
     @Published private(set) var reviewPhotosLoadFailed = false
+    /// True once the reviews fetch has SUCCEEDED at least once. An empty
+    /// `facilityReviews` only means "no reviews" when this is set — before
+    /// that it may just mean the fetch failed, which must never render as
+    /// the "Know something about the place?" empty state.
+    @Published private(set) var reviewsResolved = false
+    /// True once the reviews fetch has COMPLETED at least once, success or
+    /// not. Until then the page is still loading — a cached grade makes
+    /// `isLoading` false immediately, but rendering the tabs before the
+    /// reviews land flashed empty cards for a second on every open.
+    @Published private(set) var reviewsAttempted = false
 
     let place: Place
-    let placeId: String
+    /// Which place_id this venue actually lives under.
+    ///
+    /// Starts as the coordinate-derived guess and is replaced by the canonical
+    /// id the moment enrich() reports one. They differ whenever MapKit handed
+    /// us a drifted reading of a place the backend already knows — which is
+    /// most of the time for map pins — and reviews, photos and cache
+    /// invalidation all have to follow the canonical id, not the guess, or
+    /// they address a row nothing else points at.
+    private(set) var placeId: String
 
     private var watchTask: Task<Void, Never>?
     private var loadGeneration = 0
+    /// Bounded so a place whose claim is stuck (a worker killed mid-flight
+    /// holds it for REFRESH_CLAIM_TTL_MS) cannot turn into a polling loop.
+    private var provisionalRetries = 0
+    private static let maxProvisionalRetries = 2
+    private var provisionalTask: Task<Void, Never>?
 
     init(place: Place) {
         self.place = place
@@ -26,6 +49,7 @@ final class PlaceReviewStore: ObservableObject {
 
     deinit {
         watchTask?.cancel()
+        provisionalTask?.cancel()
     }
 
     func load() async {
@@ -37,14 +61,15 @@ final class PlaceReviewStore: ObservableObject {
         // one of three requests below, and they resolve together — so a place
         // opened before still sat on a spinner while the review and photo
         // calls finished, even though its grade was already on disk.
-        let cacheKey = PlaceCacheStore.key(
+        if let cached = await PlaceCacheStore.shared.get(
             lat: place.coordinate.latitude,
-            lng: place.coordinate.longitude
-        )
-        if let cached = await PlaceCacheStore.shared.get(cacheKey) {
+            lng: place.coordinate.longitude,
+            name: place.name
+        ) {
             featureGrades = cached.grade ?? []
             imageAttribution = cached.place?.imageAttribution
             streetImageURL = cached.place?.imageUrl.flatMap(URL.init(string:))
+            if let known = cached.place?.placeId { placeId = known }
             enrichResolved = true
         }
 
@@ -57,24 +82,33 @@ final class PlaceReviewStore: ObservableObject {
             }
         }
 
-        async let enriched = try? AccessibilityService.shared.enrich(
+        // enrich() runs FIRST rather than alongside the other two, because it
+        // is what tells us the canonical place_id — and querying `reviews` for
+        // the coordinate-derived guess returns nothing when the backend filed
+        // them under a resolved id. It is a cache hit in the common case, so
+        // this costs no real latency, and the grade above is already on screen.
+        let enrichResponse = try? await AccessibilityService.shared.enrich(
             lat: place.coordinate.latitude,
             lng: place.coordinate.longitude,
-            name: place.name
+            name: place.name,
+            userInitiated: true
         )
-        async let reviews = loadFacilityReviews()
-
-        let (enrichResponse, reviewRows, photoResponse) = await (
-            enriched,
-            reviews,
-            loadReviewPhotos()
-        )
+        if let resolved = enrichResponse?.place?.placeId { placeId = resolved }
 
         guard generation == loadGeneration else {
             print("[PlaceReviewStore] Discarding stale refresh for \(placeId)")
             return
         }
 
+        async let reviews = loadFacilityReviews(placeId: placeId)
+        let (reviewRows, photoResponse) = await (reviews, loadReviewPhotos())
+
+        guard generation == loadGeneration else {
+            print("[PlaceReviewStore] Discarding stale refresh for \(placeId)")
+            return
+        }
+
+        reviewsAttempted = true
         featureGrades = enrichResponse?.grade ?? []
         imageAttribution = enrichResponse?.place?.imageAttribution
         streetImageURL = enrichResponse?.place?.imageUrl.flatMap(URL.init(string:))
@@ -83,16 +117,44 @@ final class PlaceReviewStore: ObservableObject {
         }
         if let reviewRows {
             facilityReviews = reviewRows
+            reviewsResolved = true
             print("[PlaceReviewStore] Loaded \(reviewRows.count) facility review(s) for \(placeId)")
+        }
+
+        scheduleProvisionalRefresh(for: enrichResponse)
+    }
+
+    /// The Edge Function answers before its background task has fetched OSM
+    /// tags and downloaded the Mapillary photo, so the first look at a place
+    /// legitimately has no image. Rather than leaving the screen empty until
+    /// the user comes back, ask again once the work has had time to land.
+    private func scheduleProvisionalRefresh(for response: PlaceAccessibilityResponse?) {
+        guard response?.place?.refreshClaimedAt != nil else {
+            provisionalRetries = 0
+            return
+        }
+        guard provisionalRetries < Self.maxProvisionalRetries else { return }
+        provisionalRetries += 1
+
+        provisionalTask?.cancel()
+        provisionalTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled, let self else { return }
+            // The cached copy is the provisional one — drop it or enrich()
+            // hands back the same image-less answer. Both keys: the response is
+            // filed under the coordinate key we asked with and mirrored under
+            // whatever canonical id the server resolved it to.
+            await PlaceCacheStore.shared.remove(self.placeId)
+            if let resolved = response?.place?.placeId, resolved != self.placeId {
+                await PlaceCacheStore.shared.remove(resolved)
+            }
+            await self.load()
         }
     }
 
-    private func loadFacilityReviews() async -> [PlaceFacilityReview]? {
+    private func loadFacilityReviews(placeId: String) async -> [PlaceFacilityReview]? {
         do {
-            return try await ReviewService.shared.fetchPlaceReviews(
-                lat: place.coordinate.latitude,
-                lng: place.coordinate.longitude
-            )
+            return try await ReviewService.shared.fetchPlaceReviews(placeId: placeId)
         } catch {
             print("[PlaceReviewStore] Facility review fetch FAILED for \(placeId): \(error)")
             return nil
@@ -104,7 +166,8 @@ final class PlaceReviewStore: ObservableObject {
         do {
             let response = try await ReviewService.shared.fetchReviewPhotos(
                 lat: place.coordinate.latitude,
-                lng: place.coordinate.longitude
+                lng: place.coordinate.longitude,
+                name: place.name
             )
             reviewPhotosLoadFailed = false
             return response

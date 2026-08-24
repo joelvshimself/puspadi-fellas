@@ -6,6 +6,9 @@ struct MockGalleryView: View {
     var streetImageURL: URL? = nil
     var reviewPhotos: [ReviewPhoto] = []
     var place: Place
+    /// Lets the owning screen refetch its stores after an upload, so the new
+    /// photos are also there when the user navigates back.
+    var onPhotosChanged: (() -> Void)? = nil
 
     private enum Filter: String, CaseIterable {
         case all = "ALL"
@@ -32,18 +35,12 @@ struct MockGalleryView: View {
         }
     }
 
-    private enum Screen { case gallery, composer }
-
     @State private var selectedFilter: Filter = .all
-    @State private var screen: Screen = .gallery
-    @State private var isLibraryPresented = false
-    @State private var isCameraPresented = false
-    @State private var librarySelection: [PhotosPickerItem] = []
-    @State private var stagedPhotos: [FacilityPhoto] = []
+    @State private var photoSource: PhotoComposerSource?
     @State private var lightbox: LightboxSelection?
+    /// Uploads from this session, shown ahead of the backend list so they are
+    /// visible the moment the composer closes.
     @State private var localPhotos: [FacilityPhoto] = []
-    @State private var isUploading = false
-    @State private var reloadToken = UUID()
 
     private struct LightboxSelection: Identifiable {
         let id = UUID()
@@ -74,55 +71,26 @@ struct MockGalleryView: View {
     }
 
     var body: some View {
-        ZStack {
-            switch screen {
-            case .gallery:
-                galleryContent
-            case .composer:
-                AddPhotosView(
-                    initialPhotos: stagedPhotos,
-                    onSubmit: { submitted in Task { await submitPhotos(submitted) } },
-                    onBack: { withAnimation { screen = .gallery } }
-                )
-            }
-        }
-        .background(Color(.systemBackground))
-        .navigationTitle("GALLERY".localized.capitalized)
-        .navigationBarTitleDisplayMode(.inline)
-        .photosPicker(
-            isPresented: $isLibraryPresented,
-            selection: $librarySelection,
-            maxSelectionCount: AddPhotosView.maxPhotos,
-            matching: .images
-        )
-        .onChange(of: librarySelection) { _, newItems in
-            guard !newItems.isEmpty else { return }
-            Task {
-                await stagePickedPhotos(newItems)
-                librarySelection = []
-            }
-        }
-        .fullScreenCover(isPresented: $isCameraPresented) {
-            CameraPicker(
-                onCapture: { image in
-                    isCameraPresented = false
-                    stage([FacilityPhoto(image: image)])
-                },
-                onCancel: { isCameraPresented = false }
+        galleryContent
+            .background(Color(.systemBackground))
+            .navigationTitle("GALLERY".localized.capitalized)
+            .navigationBarTitleDisplayMode(.inline)
+            .photoComposerFlow(
+                source: $photoSource,
+                place: place,
+                facility: selectedFilter.facilityKind ?? .entrance,
+                onUploaded: { submitted in
+                    // Show the upload NOW and let the owner refetch. This used
+                    // to bump an `.id()` token right after inserting, which
+                    // reset the view's state and wiped the photos it had just
+                    // added — the upload "vanished" until the next full visit.
+                    localPhotos.insert(contentsOf: submitted, at: 0)
+                    onPhotosChanged?()
+                }
             )
-            .ignoresSafeArea()
-        }
-        .fullScreenCover(item: $lightbox) { selection in
-            FacilityPhotoDetailView(photos: selection.photos, initialID: selection.initialID)
-        }
-        .overlay {
-            if isUploading {
-                ProgressView("Uploading…")
-                    .padding()
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .fullScreenCover(item: $lightbox) { selection in
+                FacilityPhotoDetailView(photos: selection.photos, initialID: selection.initialID)
             }
-        }
-        .id(reloadToken)
     }
 
     private var galleryContent: some View {
@@ -172,11 +140,11 @@ struct MockGalleryView: View {
 
     private var addPhotosButton: some View {
         Menu {
-            Button { isLibraryPresented = true } label: {
-                Label("Choose Existing", systemImage: "photo.on.rectangle")
+            Button { photoSource = .library } label: {
+                Label("Choose Existing".localized, systemImage: "photo.on.rectangle")
             }
-            Button { isCameraPresented = true } label: {
-                Label("Take New Photo", systemImage: "camera")
+            Button { photoSource = .camera } label: {
+                Label("Take New Photo".localized, systemImage: "camera")
             }
             .disabled(!CameraPicker.isAvailable)
         } label: {
@@ -192,44 +160,6 @@ struct MockGalleryView: View {
             .background(Color(.secondarySystemBackground), in: Capsule())
         }
         .buttonStyle(.plain)
-    }
-
-    @MainActor
-    private func stagePickedPhotos(_ items: [PhotosPickerItem]) async {
-        var picked: [FacilityPhoto] = []
-        for item in items where picked.count < AddPhotosView.maxPhotos {
-            if let data = try? await item.loadTransferable(type: Data.self),
-               let image = UIImage(data: data) {
-                picked.append(FacilityPhoto(image: image))
-            }
-        }
-        stage(picked)
-    }
-
-    private func stage(_ photos: [FacilityPhoto]) {
-        guard !photos.isEmpty else { return }
-        stagedPhotos = photos
-        withAnimation { screen = .composer }
-    }
-
-    @MainActor
-    private func submitPhotos(_ submitted: [FacilityPhoto]) async {
-        let kind = selectedFilter.facilityKind ?? .entrance
-        isUploading = true
-        defer { isUploading = false }
-        do {
-            try await ReviewService.shared.submitGalleryPhotos(
-                place: place,
-                facility: kind,
-                localPhotos: submitted
-            )
-            localPhotos.insert(contentsOf: submitted, at: 0)
-            withAnimation { screen = .gallery }
-            reloadToken = UUID()
-        } catch {
-            localPhotos.insert(contentsOf: submitted, at: 0)
-            withAnimation { screen = .gallery }
-        }
     }
 }
 

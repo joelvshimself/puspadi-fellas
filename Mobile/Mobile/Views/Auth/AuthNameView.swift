@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct AuthNameView: View {
+    let email: String
+    let password: String
     @Binding var displayName: String
     @Binding var path: [AuthRoute]
 
@@ -33,7 +35,12 @@ struct AuthNameView: View {
                     title: "Continue".localized,
                     enabled: !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ) {
-                    path.append(.mobility)
+                    let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    AuthDebug.log(
+                        "Name continue email=\(email.isEmpty ? "empty" : email) "
+                        + "passwordLen=\(password.count) name=\(trimmed)"
+                    )
+                    path.append(.mobility(email: email, password: password, displayName: trimmed))
                 }
                 .padding(.bottom, 12)
             }

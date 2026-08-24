@@ -8,4 +8,8 @@ import Foundation
 enum SupabaseConfig {
     static let url = URL(string: "https://svztcykgmlgjiqfqpimc.supabase.co")!
     static let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN2enRjeWtnbWxnamlxZnFwaW1jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0ODM3NzAsImV4cCI6MjEwMjA1OTc3MH0.NMAxUShXELBIURXih5ChTHxHRggEN65kojVVqbDfN7A"
+
+    /// Deep link opened after the user taps the email confirmation link.
+    /// Must match Dashboard → Authentication → URL Configuration (Site URL + Redirect URLs).
+    static let authRedirectURL = URL(string: "puspadi://auth/callback")!
 }

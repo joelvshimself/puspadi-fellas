@@ -5,6 +5,11 @@ struct ContributeReviewFlowView: View {
     let place: Place
     let startingFacility: FacilityKind?
     let initialScreenIndex: Int
+    /// Fired the moment the backend accepts the review — BEFORE the user taps
+    /// Done on the confirmation screen — so the presenting page can stage its
+    /// "Your review submitted!" state. `onFinished` alone can't tell a
+    /// submission from a cancel.
+    let onSubmitted: (() -> Void)?
     let onFinished: () -> Void
 
     @StateObject private var draft: ReviewDraft
@@ -41,14 +46,16 @@ struct ContributeReviewFlowView: View {
         place: Place,
         startingFacility: FacilityKind? = nil,
         initialScreenIndex: Int = 0,
+        onSubmitted: (() -> Void)? = nil,
         onFinished: @escaping () -> Void
     ) {
         self.place = place
         self.startingFacility = startingFacility
         self.initialScreenIndex = initialScreenIndex
+        self.onSubmitted = onSubmitted
         self.onFinished = onFinished
 
-        let draft = ReviewDraft(appleMapsId: place.id.uuidString, coordinate: place.coordinate)
+        let draft = ReviewDraft(appleMapsId: place.id.uuidString, coordinate: place.coordinate, name: place.name)
         var startIndex = initialScreenIndex
         // Category picker is skipped in this flow, so every facility is
         // always walked (unless entering from one facility's own "Add
@@ -176,6 +183,19 @@ struct ContributeReviewFlowView: View {
                     .overlay { ProgressView() }
                     .task { await submit() }
             }
+        }
+        // No sign-in gate on appear: every entry point (Contribute, Be the
+        // first reviewer, Edit Accessibility Information) asks for login
+        // BEFORE presenting this flow — same pattern as Save. Landing on the
+        // wizard and being interrupted by a login popup a beat later read as
+        // two competing prompts. `showLogin` remains for one case only: a
+        // session that lapsed mid-flow, surfaced by a failed submit.
+        .fullScreenCover(isPresented: $showLogin) {
+            LoginView(
+                onSuccess: { showLogin = false },
+                onCancel: { onFinished() }
+            )
+            .environmentObject(auth)
         }
         .alert(
             "Couldn't submit review",
@@ -683,9 +703,36 @@ struct ContributeReviewFlowView: View {
             try await ReviewService.shared.submit(draft)
             UnfinishedReviewStore.clear(for: place)
             isSubmitted = true
+            onSubmitted?()
         } catch {
-            submitError = "Check your connection and try again."
+            print("[ContributeReviewFlow] Submit failed: \(error)")
+            submitError = Self.submitErrorMessage(for: error)
+            // A session that lapsed mid-flow is the one failure the user can
+            // actually clear, and the draft is already persisted — send them
+            // to sign-in rather than leaving them to guess.
+            if Self.isAuthFailure(error) {
+                showLogin = true
+            }
         }
+    }
+
+    /// `submit-accessibility-review` answers 401 "sign in required" without a
+    /// user JWT, and Storage rejects the photo upload that precedes it with a
+    /// row-level-security error. Both used to surface as "check your
+    /// connection", which sends the user to fix the one thing that is fine.
+    private static func isAuthFailure(_ error: Error) -> Bool {
+        let text = "\(error)".lowercased()
+        return text.contains("sign in required")
+            || text.contains("row-level security")
+            || text.contains("unauthorized")
+            || text.contains("401")
+            || text.contains("403")
+    }
+
+    private static func submitErrorMessage(for error: Error) -> String {
+        isAuthFailure(error)
+            ? "You need to be signed in to post a review. Sign in and submit again — your answers are saved."
+            : "Check your connection and try again."
     }
 }
 

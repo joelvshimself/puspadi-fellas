@@ -3,6 +3,8 @@ import SwiftUI
 struct AuthVerifyEmailView: View {
     let email: String
     let password: String
+    let displayName: String
+    let mobilityAids: [String]
     @Binding var path: [AuthRoute]
 
     @Environment(\.dismiss) private var dismiss
@@ -21,7 +23,7 @@ struct AuthVerifyEmailView: View {
                 AuthBackButton { dismiss() }
                     .padding(.top, 4)
 
-                AuthProgressBar(progress: 0.18)
+                AuthProgressBar(progress: 0.88)
                     .padding(.vertical, 8)
 
                 Text("Confirm your email".localized)
@@ -76,6 +78,10 @@ struct AuthVerifyEmailView: View {
             .padding(.horizontal, 24)
         }
         .navigationBarBackButtonHidden(true)
+        .onChange(of: auth.isSignedIn) { _, signedIn in
+            guard signedIn, !isLoading else { return }
+            Task { await continueAfterConfirm() }
+        }
     }
 
     private func continueAfterConfirm() async {
@@ -84,8 +90,14 @@ struct AuthVerifyEmailView: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            try await auth.signInAfterEmailConfirmed(email: email, password: password)
-            path.append(.name)
+            if !auth.isSignedIn {
+                try await auth.signInAfterEmailConfirmed(email: email, password: password)
+            }
+            try await auth.finishEmailOnboardingAfterConfirm(
+                displayName: displayName,
+                mobilityAids: mobilityAids
+            )
+            path.append(.allSet)
         } catch {
             errorMessage = "Please tap the link in your email first, then try again.".localized
         }

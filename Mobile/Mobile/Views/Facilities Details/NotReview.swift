@@ -376,7 +376,6 @@ struct NotReviewView: View {
 
             NotesFromReviewsSection(
                 snippets: [],
-                onBeFirstReviewer: { showContributeFlow = true },
                 onOpenReviews: { selectedTab = .reviews }
             )
         }

@@ -9,7 +9,10 @@ enum SupabaseClientProvider {
         supabaseURL: SupabaseConfig.url,
         supabaseKey: SupabaseConfig.anonKey,
         options: SupabaseClientOptions(
-            auth: .init(emitLocalSessionAsInitialSession: true)
+            auth: .init(
+                redirectToURL: SupabaseConfig.authRedirectURL,
+                emitLocalSessionAsInitialSession: true
+            )
         )
     )
 }

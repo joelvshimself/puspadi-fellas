@@ -51,6 +51,12 @@ struct PlaceCacheRow: Codable {
     /// nil when there's no coverage. See backend tryCacheMapillaryImage.
     let imageUrl: String?
     let imageAttribution: String?
+    /// Non-nil while the Edge Function is still enriching this place in the
+    /// background (Google → OSM → the Mapillary image download). A response
+    /// read during that window is a snapshot of work in progress — most
+    /// importantly it has no `imageUrl` yet — so the device cache must not
+    /// hold onto it for a full day. See `PlaceCacheStore.isFresh`.
+    let refreshClaimedAt: String?
 }
 
 /// Response shape of `place-accessibility` (see
