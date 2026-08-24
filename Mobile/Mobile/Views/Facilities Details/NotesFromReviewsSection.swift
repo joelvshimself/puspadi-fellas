@@ -1,9 +1,11 @@
 import SwiftUI
 
-/// Notes from reviews card — empty CTA or latest review snippets.
+/// Notes from reviews card — latest review snippets, or a quiet per-facility
+/// empty line. (The big blue CTA that used to live here is gone: a place with
+/// no contributions at all shows the dedicated "Know something about the
+/// place?" state instead, and the floating CONTRIBUTE pill covers the rest.)
 struct NotesFromReviewsSection: View {
     let snippets: [String]
-    var onBeFirstReviewer: () -> Void
     var onOpenReviews: () -> Void
 
     var body: some View {
@@ -12,28 +14,15 @@ struct NotesFromReviewsSection: View {
                 .font(.system(size: 17, weight: .semibold))
 
             if snippets.isEmpty {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("No one review this place yet".localized)
-                        .font(.system(size: 15))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    Button(action: onBeFirstReviewer) {
-                        Text("Be the first reviewer".localized)
-                            .font(.system(size: 17, weight: .semibold))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 48)
-                            .background(Color.accentColor, in: Capsule())
-                            .foregroundStyle(.white)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.mockSectionBackground)
-                )
+                Text("No notes for this facility yet".localized)
+                    .font(.system(size: 15))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.mockSectionBackground)
+                    )
             } else {
                 // TODO(ai): cluster note topics and show an AI summary above the three snippets
                 VStack(spacing: 0) {
@@ -52,6 +41,10 @@ struct NotesFromReviewsSection: View {
                             }
                             .padding(.horizontal, 16)
                             .padding(.vertical, 14)
+                            // Whole row tappable: without this only the text
+                            // and chevron pixels hit — the transparent Spacer
+                            // stretch in the middle was a dead zone.
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     }
@@ -66,14 +59,13 @@ struct NotesFromReviewsSection: View {
 }
 
 #Preview("Empty") {
-    NotesFromReviewsSection(snippets: [], onBeFirstReviewer: {}, onOpenReviews: {})
+    NotesFromReviewsSection(snippets: [], onOpenReviews: {})
         .padding()
 }
 
 #Preview("With snippets") {
     NotesFromReviewsSection(
         snippets: ["The entrance is quite hard to find.", "Buttons were too high."],
-        onBeFirstReviewer: {},
         onOpenReviews: {}
     )
     .padding()

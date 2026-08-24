@@ -443,10 +443,12 @@ struct MockPlaceDetailView: View {
         }
     }
 
-    /// Still fetching with nothing cached to show. Distinct from the empty
-    /// state on purpose: "loading" gets a skeleton; "empty" is a settled fact.
+    /// Still fetching, with nothing meaningful to lay out yet. Distinct from
+    /// the empty state on purpose: "loading" gets a skeleton; "empty" is a
+    /// settled fact. A cached grade alone is NOT enough — the tabs need the
+    /// reviews, so the skeleton holds until that fetch has completed once.
     private var isInitialLoading: Bool {
-        store.isLoading
+        store.isLoading || !store.reviewsAttempted
     }
 
     /// No community contributions yet — no reviews and no photos. The design
@@ -591,7 +593,6 @@ struct MockPlaceDetailView: View {
 
             NotesFromReviewsSection(
                 snippets: notes,
-                onBeFirstReviewer: { startReview() },
                 onOpenReviews: { withAnimation(.snappy(duration: 0.22)) { selectedSection = .reviews } }
             )
 

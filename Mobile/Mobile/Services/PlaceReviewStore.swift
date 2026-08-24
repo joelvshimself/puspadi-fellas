@@ -17,6 +17,11 @@ final class PlaceReviewStore: ObservableObject {
     /// that it may just mean the fetch failed, which must never render as
     /// the "Know something about the place?" empty state.
     @Published private(set) var reviewsResolved = false
+    /// True once the reviews fetch has COMPLETED at least once, success or
+    /// not. Until then the page is still loading — a cached grade makes
+    /// `isLoading` false immediately, but rendering the tabs before the
+    /// reviews land flashed empty cards for a second on every open.
+    @Published private(set) var reviewsAttempted = false
 
     let place: Place
     /// Which place_id this venue actually lives under.
@@ -103,6 +108,7 @@ final class PlaceReviewStore: ObservableObject {
             return
         }
 
+        reviewsAttempted = true
         featureGrades = enrichResponse?.grade ?? []
         imageAttribution = enrichResponse?.place?.imageAttribution
         streetImageURL = enrichResponse?.place?.imageUrl.flatMap(URL.init(string:))
