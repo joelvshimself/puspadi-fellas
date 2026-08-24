@@ -7,6 +7,9 @@ struct AuthMobilityView: View {
     @Binding var mobilityAids: Set<String>
     var displayName: String
     @Binding var path: [AuthRoute]
+    /// Signup is complete — the auth cover closes and HomeMapView takes over
+    /// (showing the one-time onboarding intro sheet if it hasn't been seen).
+    var onSuccess: () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var auth: AuthSessionStore
@@ -128,8 +131,8 @@ struct AuthMobilityView: View {
                     displayName: trimmedName,
                     mobilityAids: aids
                 )
-                AuthDebug.log("Mobility completeAppleSignup success → allSet")
-                path.append(.allSet)
+                AuthDebug.log("Mobility completeAppleSignup success → done")
+                onSuccess()
             } else if !password.isEmpty {
                 AuthDebug.log("Mobility branch: registerEmailAccount")
                 switch try await auth.registerEmailAccount(
@@ -139,8 +142,8 @@ struct AuthMobilityView: View {
                     mobilityAids: aids
                 ) {
                 case .ready:
-                    AuthDebug.log("Mobility registerEmailAccount → allSet")
-                    path.append(.allSet)
+                    AuthDebug.log("Mobility registerEmailAccount → done")
+                    onSuccess()
                 case .needsEmailConfirmation:
                     AuthDebug.log("Mobility registerEmailAccount → verifyEmail")
                     path.append(
@@ -158,8 +161,8 @@ struct AuthMobilityView: View {
                     displayName: trimmedName,
                     mobilityAids: aids
                 )
-                AuthDebug.log("Mobility updateOnboardingProfile success → allSet")
-                path.append(.allSet)
+                AuthDebug.log("Mobility updateOnboardingProfile success → done")
+                onSuccess()
             } else {
                 AuthDebug.log(
                     "Mobility branch: NO CREDENTIALS — password empty, not signed in, no pending Apple"

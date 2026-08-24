@@ -34,6 +34,11 @@ struct HomeMapView: View {
     @ObservedObject private var deepLinks = DeepLinkRouter.shared
     @State private var homeCover: HomeFullScreenCover?
     @State private var pendingProfileTab: ProfileTab?
+    /// One-time intro sheet after signup. The flag persists so it is shown
+    /// exactly once per device; the sheet stacks over the search sheet so it
+    /// takes the same Liquid Glass treatment.
+    @AppStorage("hasSeenOnboardingIntro") private var hasSeenOnboardingIntro = false
+    @State private var showOnboardingIntro = false
     @State private var cameraPosition: MapCameraPosition = .region(baliRegion)
     @State private var visibleRegion = baliRegion
     /// `visibleRegion` as of the last SETTLED camera position.
@@ -212,6 +217,19 @@ struct HomeMapView: View {
 
                         .presentationDragIndicator(.hidden)
                         .interactiveDismissDisabled()
+                        // The one-time intro stacks over the search sheet the
+                        // same way the auth cover does, so the search sheet
+                        // never has to dismiss/re-present around it. A custom
+                        // fraction (not .large) keeps the Liquid Glass look.
+                        .sheet(isPresented: $showOnboardingIntro) {
+                            OnboardingIntroSheet(onExplore: {
+                                hasSeenOnboardingIntro = true
+                                showOnboardingIntro = false
+                            })
+                            .presentationDetents([.fraction(0.81)])
+                            .presentationDragIndicator(.hidden)
+                            .interactiveDismissDisabled()
+                        }
                         // The cover is presented FROM the sheet, not from the map
                         // underneath it. Presenting it below the sheet forced a
                         // dismiss/re-present cycle around every login, and a sheet
@@ -231,6 +249,14 @@ struct HomeMapView: View {
                                         if let tab = pendingProfileTab {
                                             pendingProfileTab = nil
                                             path.append(HomeRoute.profile(tab))
+                                        } else if !hasSeenOnboardingIntro {
+                                            // Wait out the cover's dismiss
+                                            // animation — presenting while it
+                                            // is still animating drops the
+                                            // sheet.
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                                                showOnboardingIntro = true
+                                            }
                                         }
                                     },
                                     onCancel: {
@@ -283,6 +309,14 @@ struct HomeMapView: View {
                         // direct call here ran two identical nearby searches
                         // side by side on every launch.
                         scheduleNearbyPlacesLoad()
+                        #if DEBUG
+                        // `xcrun simctl launch <sim> com.puspadifellas.app -previewOnboarding`
+                        // forces the one-time intro sheet for design review.
+                        if ProcessInfo.processInfo.arguments.contains("-previewOnboarding") {
+                            try? await Task.sleep(nanoseconds: 800_000_000)
+                            showOnboardingIntro = true
+                        }
+                        #endif
                     }
                     .onDisappear {
                         nearbyLoadTask?.cancel()
