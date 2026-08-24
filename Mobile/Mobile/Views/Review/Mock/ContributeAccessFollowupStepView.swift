@@ -1,67 +1,124 @@
 import PhotosUI
 import SwiftUI
 
-/// Photos + Notes step — matches the mockup's dashed "Add Photos" box with
-/// a Choose-Existing/Take-New-Photo action sheet, thumbnail strip, and a
-/// Notes textarea. Fresh UI (not a reuse of ReviewAddNoteStepView, per
-/// explicit choice), but binds to the real `ReviewNoteDraft` struct so it
-/// plugs straight into `ReviewDraft` with no conversion.
-struct ContributePhotosNotesStepView: View {
-    let facilityName: String
+/// Single-select follow-up question — entrance's Ramp/Handrail screens
+/// (shown only when that chip was picked) and every elevator question.
+/// Single-select rows (not the usual multi-select chips), and picking
+/// `photoRevealOption` ("Not sure") reveals an inline Add Photos box, same
+/// visual as ContributePhotosNotesStepView's but scoped to this question.
+struct ContributeAccessFollowupStepView: View {
     let navTitle: String
+    let illustrationAssetName: String
+    let eyebrow: String
+    let questionTitle: String
     let progress: (current: Int, total: Int)
+    let options: [String]
+    /// Which option (last one, "Not sure") reveals the Add Photos box.
+    let photoRevealOption: String
+    @Binding var selection: String?
     @Binding var note: ReviewNoteDraft
-    var isLastStep: Bool = false
+    var stepNumber: Int = 1
+    var subStepProgress: CGFloat = 0.35
     let onBack: () -> Void
     let onContinue: () -> Void
 
+    private static let topSectionID = "topSection"
+    private static let photosSectionID = "photosSection"
+    private static let bottomSpacerID = "bottomSpacer"
+
+    @State private var showPhotosSection = false
     @State private var photoPickerItems: [PhotosPickerItem] = []
     @State private var showPhotosPicker = false
     @State private var showCamera = false
-    @State private var selectedPhotoForCaption: ReviewPhotoDraft? = nil
-    @FocusState private var notesFocused: Bool
+    @State private var scrollTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
                 PhotoFlowHeader(title: navTitle.localized, onBack: onBack)
-                ContributeStepProgressBar(currentStep: 4)
+                ContributeStepProgressBar(currentStep: stepNumber, subStepProgress: subStepProgress)
             }
             .background(Color(.systemBackground))
             .zIndex(1)
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        photosSection
-                        notesSection
-                            .id("notesSection")
+                    VStack(alignment: .leading, spacing: 20) {
+                        Image(illustrationAssetName)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxWidth: .infinity)
+                            .scaleEffect(1.05)
+                            .frame(height: 180)
+                            .id(Self.topSectionID)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(eyebrow.localized)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Text(questionTitle.localized)
+                                .font(.title2.bold())
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        VStack(spacing: 12) {
+                            ForEach(options, id: \.self) { option in
+                                optionRow(option)
+                            }
+                        }
+
+                        if showPhotosSection {
+                            addPhotosBox
+                                .id(Self.photosSectionID)
+                                .transition(.opacity)
+
+                            Spacer()
+                                .frame(height: 40)
+                                .id(Self.bottomSpacerID)
+                        }
                     }
                     .padding(20)
-                    .padding(.bottom, 8)
                 }
-                .scrollDismissesKeyboard(.interactively)
-                .onChange(of: notesFocused) { _, focused in
-                    if focused {
-                        withAnimation {
-                            proxy.scrollTo("notesSection", anchor: .bottom)
+                .onAppear {
+                    showPhotosSection = (selection == photoRevealOption)
+                }
+                .onChange(of: selection) { oldVal, newVal in
+                    scrollTask?.cancel()
+                    scrollTask = Task { @MainActor in
+                        let isShortForm = options.count <= 3
+
+                        if newVal == photoRevealOption {
+                            showPhotosSection = true
+                            try? await Task.sleep(nanoseconds: 30_000_000)
+                            guard !Task.isCancelled else { return }
+                            withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) {
+                                proxy.scrollTo(Self.bottomSpacerID, anchor: .bottom)
+                            }
+                        } else if oldVal == photoRevealOption {
+                            if isShortForm {
+                                withAnimation(.snappy(duration: 0.32)) {
+                                    showPhotosSection = false
+                                }
+                            } else {
+                                withAnimation(.easeInOut(duration: 0.35)) {
+                                    proxy.scrollTo(Self.topSectionID, anchor: .top)
+                                }
+                                try? await Task.sleep(nanoseconds: 360_000_000)
+                                guard !Task.isCancelled else { return }
+                                if selection != photoRevealOption {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        showPhotosSection = false
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
 
-            ContributeContinueButton(
-                title: "Submit".localized,
-                isEnabled: true,
-                action: onContinue
-            )
-            .padding(.bottom, 8)
+            ContributeContinueButton(isEnabled: selection != nil, action: onContinue)
         }
         .background(Color(.systemBackground))
-        .contentShape(Rectangle())
-        .onTapGesture {
-            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        }
         .photosPicker(
             isPresented: $showPhotosPicker,
             selection: $photoPickerItems,
@@ -98,15 +155,34 @@ struct ContributePhotosNotesStepView: View {
         }
     }
 
-    private var photosSection: some View {
+    @State private var showPhotoOptions = false
+    @State private var selectedPhotoForCaption: ReviewPhotoDraft? = nil
+
+    private func optionRow(_ option: String) -> some View {
+        let isSelected = selection == option
+        return Button {
+            selection = option
+        } label: {
+            Text(option.localized)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(isSelected ? Color.accentColor : .primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 16)
+                .background(Color(.secondarySystemBackground), in: Capsule())
+                .overlay {
+                    Capsule()
+                        .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
+                }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var addPhotosBox: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 4) {
-                Text("Photos".localized)
-                    .font(.system(size: 18, weight: .bold))
-                Text("(Optional)".localized)
-                    .font(.system(size: 14))
-                    .foregroundStyle(.secondary)
-            }
+            Text("(Optional)".localized)
+                .font(.system(size: 14))
+                .foregroundStyle(.secondary)
 
             if note.photos.isEmpty {
                 addPhotoButtonTile(isWide: true)
@@ -125,8 +201,6 @@ struct ContributePhotosNotesStepView: View {
             }
         }
     }
-
-    @State private var showPhotoOptions = false
 
     private func addPhotoButtonTile(isWide: Bool) -> some View {
         Button {
@@ -233,29 +307,6 @@ struct ContributePhotosNotesStepView: View {
             }
             .buttonStyle(.plain)
             .padding(6)
-            .accessibilityLabel("Remove photo")
-        }
-    }
-
-    private var notesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 4) {
-                Text("Notes".localized)
-                    .font(.system(size: 18, weight: .bold))
-                Text("(Optional)".localized)
-                    .font(.system(size: 14))
-                    .foregroundStyle(.secondary)
-            }
-
-            TextField("Tell us more about your experience …".localized, text: $note.text, axis: .vertical)
-                .font(.subheadline)
-                .lineLimit(4...8)
-                .focused($notesFocused)
-                .padding(14)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Color(.secondarySystemBackground))
-                )
         }
     }
 
@@ -272,10 +323,15 @@ struct ContributePhotosNotesStepView: View {
 }
 
 #Preview {
-    ContributePhotosNotesStepView(
-        facilityName: "Entrance",
+    ContributeAccessFollowupStepView(
         navTitle: "Entrances",
-        progress: (3, 6),
+        illustrationAssetName: "Lobby Asset",
+        eyebrow: "Ramps",
+        questionTitle: "Could you push your wheelchair up the ramp without help?",
+        progress: (2, 6),
+        options: ["Yes", "With a push", "Too steep", "Not sure"],
+        photoRevealOption: "Not sure",
+        selection: .constant(nil),
         note: .constant(ReviewNoteDraft()),
         onBack: {},
         onContinue: {}

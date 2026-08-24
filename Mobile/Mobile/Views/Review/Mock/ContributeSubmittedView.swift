@@ -7,41 +7,28 @@ import SwiftUI
 struct ContributeSubmittedView: View {
     let onDone: () -> Void
 
+    @State private var isHovering = false
+
     var body: some View {
         VStack {
-            HStack {
-                Spacer()
-                Button(action: onDone) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .frame(width: 40, height: 40)
-                        .background(.regularMaterial, in: Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Close")
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 12)
-
             Spacer()
 
-            // Filled green disc with a white check drawn on top, rather
-            // than `checkmark.circle.fill` — the SF Symbol's ring is thin
-            // and its glyph small, where the design is a solid circle with
-            // a heavy white tick filling most of it.
-            ZStack {
-                Circle()
-                    .fill(Color(red: 76 / 255, green: 187 / 255, blue: 88 / 255))
-                    .frame(width: 132, height: 132)
-                Image(systemName: "checkmark")
-                    .font(.system(size: 62, weight: .bold))
-                    .foregroundStyle(.white)
-            }
+            Image("Thank You Asset")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(maxWidth: .infinity)
+                .scaleEffect(1.08)
+                .offset(y: isHovering ? -8 : 6)
+                .frame(height: 245)
+                .onAppear {
+                    withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
+                        isHovering = true
+                    }
+                }
 
             Text("Review Submitted!".localized)
                 .font(.system(size: 26, weight: .bold))
-                .padding(.top, 28)
+                .padding(.top, 24)
 
             Text("Thank you for helping out!".localized)
                 .font(.system(size: 16))

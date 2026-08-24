@@ -125,11 +125,13 @@ struct ReviewPhotoDraft: Identifiable {
     let id: UUID
     let image: UIImage
     let jpegData: Data
+    var caption: String = ""
 
-    init(id: UUID = UUID(), image: UIImage, jpegData: Data) {
+    init(id: UUID = UUID(), image: UIImage, jpegData: Data, caption: String = "") {
         self.id = id
         self.image = image
         self.jpegData = jpegData
+        self.caption = caption
     }
 }
 
@@ -154,6 +156,12 @@ struct ReviewNoteDraft {
     mutating func removePhoto(id: UUID) {
         photos.removeAll { $0.id == id }
     }
+
+    mutating func updatePhotoCaption(id: UUID, caption: String) {
+        if let idx = photos.firstIndex(where: { $0.id == id }) {
+            photos[idx].caption = caption
+        }
+    }
 }
 
 // MARK: - Wizard steps
@@ -175,5 +183,102 @@ enum ReviewStep: Int, CaseIterable {
     /// Steps counted by the progress bar (submission confirmation excluded).
     static var answerableSteps: [ReviewStep] {
         allCases.filter { $0 != .submitted }
+    }
+}
+
+// MARK: - Photo Caption Editor Component
+
+/// Full-screen photo viewer and caption editor for the review flow —
+/// matches the design mockup's "Photo Clicked to view" → "caption field goes up with keyboard"
+/// → "Photo caption added, button activated" → "Added caption shows caption icon" screens.
+struct PhotoCaptionEditorView: View {
+    let photo: ReviewPhotoDraft
+    let onSave: (String) -> Void
+    let onDismiss: () -> Void
+
+    @State private var captionText: String
+    @FocusState private var isCaptionFocused: Bool
+
+    init(photo: ReviewPhotoDraft, onSave: @escaping (String) -> Void, onDismiss: @escaping () -> Void) {
+        self.photo = photo
+        self.onSave = onSave
+        self.onDismiss = onDismiss
+        self._captionText = State(initialValue: photo.caption)
+    }
+
+    private var isModified: Bool {
+        let trimmedNew = captionText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedOld = photo.caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedNew != trimmedOld || !trimmedNew.isEmpty
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Top Navigation Bar (Back button < and Checkmark ✓ button)
+            HStack {
+                Button(action: onDismiss) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 40, height: 40)
+                        .background(Color(.secondarySystemBackground), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Back")
+
+                Spacer()
+
+                Button {
+                    onSave(captionText)
+                    onDismiss()
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(isModified ? Color.accentColor : Color(.secondarySystemBackground))
+                            .frame(width: 40, height: 40)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(isModified ? .white : Color(.tertiaryLabel))
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Save Caption")
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+
+            Spacer(minLength: 12)
+
+            // Center Full Photo Display
+            Image(uiImage: photo.image)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal, 16)
+
+            Spacer(minLength: 12)
+
+            // Bottom Caption Text Input
+            VStack(spacing: 0) {
+                HStack {
+                    TextField("Add a caption ...".localized, text: $captionText)
+                        .font(.system(size: 15))
+                        .focused($isCaptionFocused)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color(.secondarySystemBackground))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(isCaptionFocused ? Color.accentColor : Color.clear, lineWidth: 1.5)
+                )
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
+        }
+        .background(Color(.systemBackground).ignoresSafeArea())
     }
 }

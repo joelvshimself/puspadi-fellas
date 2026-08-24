@@ -73,9 +73,9 @@ struct ContributeCategoryStepView: View {
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 16)
-            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(Color(.secondarySystemBackground), in: Capsule())
             .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                Capsule()
                     .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
             }
         }
@@ -105,11 +105,12 @@ struct ContributeCategoryStepView: View {
 /// Mall Asset illustration used only on the category-picker screen.
 struct ContributeMallIllustration: View {
     var body: some View {
-        Image("Mall Asset")
+        Image("Entrance Mall Asset")
             .resizable()
             .aspectRatio(contentMode: .fit)
             .frame(maxWidth: .infinity)
-            .frame(height: 220)
+            .scaleEffect(1.05)
+            .frame(height: 180)
     }
 }
 
