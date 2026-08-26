@@ -41,7 +41,7 @@ struct ProfilePhotosView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    .padding(.horizontal, PhotoMetrics.gutter)
+                    .padding(.horizontal, 20)
                     .padding(.top, 16)
 
                     if photos.isEmpty {
@@ -81,7 +81,7 @@ struct ProfilePhotosView: View {
                                 .buttonStyle(.plain)
                             }
                         }
-                        .padding(.horizontal, PhotoMetrics.gutter)
+                        .padding(.horizontal, 20)
                     }
                 }
                 .padding(.bottom, 40)
