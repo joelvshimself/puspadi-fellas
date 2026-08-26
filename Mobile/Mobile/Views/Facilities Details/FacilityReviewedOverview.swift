@@ -58,9 +58,13 @@ struct FacilityReviewedOverview: View {
                     }
 
                     FacilityReviewRow(review: latest) { photo in
-                        let siblings = latest.photoURLs.compactMap { url -> FacilityPhoto? in
-                            guard let remote = URL(string: url) else { return nil }
-                            return FacilityPhoto(source: .remote(remote), reviewId: latest.reviewId)
+                        let siblings = latest.photoURLs.enumerated().compactMap { index, urlString -> FacilityPhoto? in
+                            guard let remote = URL(string: urlString) else { return nil }
+                            return FacilityPhoto(
+                                source: .remote(remote),
+                                reviewId: latest.reviewId,
+                                caption: latest.caption(forPhotoAt: index)
+                            )
                         }
                         lightbox = LightboxSelection(photos: siblings, initialID: photo.id)
                     }

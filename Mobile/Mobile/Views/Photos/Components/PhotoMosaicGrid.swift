@@ -75,8 +75,14 @@ struct PhotoMosaicGrid: View {
         Button {
             onSelect(photo)
         } label: {
-            FacilityPhotoImage(photo: photo, cornerRadius: cornerRadius)
-                .frame(width: size, height: size)
+            ZStack(alignment: .bottom) {
+                FacilityPhotoImage(photo: photo, cornerRadius: cornerRadius)
+                if let caption = photo.caption {
+                    PhotoCaptionOverlay(caption: caption)
+                }
+            }
+            .frame(width: size, height: size)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Photo")
