@@ -274,13 +274,14 @@ struct ContributeAccessFollowupStepView: View {
             Button {
                 selectedPhotoForCaption = photo
             } label: {
-                ZStack(alignment: .bottom) {
+                ZStack(alignment: .bottomLeading) {
                     Image(uiImage: photo.image)
                         .resizable()
                         .scaledToFill()
 
                     if !photo.caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        PhotoCaptionOverlay(caption: photo.caption)
+                        PhotoCaptionBadge()
+                            .padding(6)
                     }
                 }
                 .frame(width: 120, height: 120)

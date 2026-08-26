@@ -25,3 +25,19 @@ struct PhotoCaptionOverlay: View {
             )
     }
 }
+
+/// Small white circle indicating a photo has a caption — used on thumbnails
+/// and lightbox instead of showing caption text inline.
+struct PhotoCaptionBadge: View {
+    var size: CGFloat = 28
+    var iconSize: CGFloat = 13
+
+    var body: some View {
+        Image(systemName: "text.bubble.fill")
+            .font(.system(size: iconSize, weight: .semibold))
+            .foregroundStyle(.black)
+            .frame(width: size, height: size)
+            .background(Color.white, in: Circle())
+            .shadow(color: .black.opacity(0.18), radius: 3, x: 0, y: 1)
+    }
+}

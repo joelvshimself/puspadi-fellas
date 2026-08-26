@@ -11,6 +11,9 @@ struct ContributePhotosNotesStepView: View {
     let navTitle: String
     let progress: (current: Int, total: Int)
     @Binding var note: ReviewNoteDraft
+    /// When set, caps how many more photos can be added (Final Review uses
+    /// toilet's remaining slots while still displaying all prior photos).
+    var remainingPhotoSlots: Int? = nil
     var isLastStep: Bool = false
     let onBack: () -> Void
     let onContinue: () -> Void
@@ -20,6 +23,20 @@ struct ContributePhotosNotesStepView: View {
     @State private var showCamera = false
     @State private var selectedPhotoForCaption: ReviewPhotoDraft? = nil
     @FocusState private var notesFocused: Bool
+
+    private var effectiveCanAddMorePhotos: Bool {
+        if let remainingPhotoSlots {
+            return remainingPhotoSlots > 0
+        }
+        return note.canAddMorePhotos
+    }
+
+    private var effectiveRemainingPhotoSlots: Int {
+        if let remainingPhotoSlots {
+            return max(remainingPhotoSlots, 0)
+        }
+        return max(ReviewNoteDraft.maxPhotos - note.photos.count, 0)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -65,7 +82,7 @@ struct ContributePhotosNotesStepView: View {
         .photosPicker(
             isPresented: $showPhotosPicker,
             selection: $photoPickerItems,
-            maxSelectionCount: ReviewNoteDraft.maxPhotos - note.photos.count,
+            maxSelectionCount: effectiveRemainingPhotoSlots,
             matching: .images
         )
         .onChange(of: photoPickerItems) { _, newItems in
@@ -78,7 +95,7 @@ struct ContributePhotosNotesStepView: View {
         .fullScreenCover(isPresented: $showCamera) {
             CameraPicker(
                 onCapture: { image in
-                    note.addPhoto(from: image)
+                    addPhoto(from: image)
                     showCamera = false
                 },
                 onCancel: { showCamera = false }
@@ -113,7 +130,7 @@ struct ContributePhotosNotesStepView: View {
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
-                        if note.canAddMorePhotos {
+                        if effectiveCanAddMorePhotos {
                             addPhotoButtonTile(isWide: false)
                         }
 
@@ -154,8 +171,8 @@ struct ContributePhotosNotesStepView: View {
             }
         }
         .buttonStyle(.plain)
-        .disabled(!note.canAddMorePhotos)
-        .opacity(note.canAddMorePhotos ? 1 : 0.4)
+        .disabled(!effectiveCanAddMorePhotos)
+        .opacity(effectiveCanAddMorePhotos ? 1 : 0.4)
         .popover(isPresented: $showPhotoOptions, attachmentAnchor: .point(.center), arrowEdge: .top) {
             VStack(alignment: .leading, spacing: 16) {
                 Button {
@@ -200,13 +217,14 @@ struct ContributePhotosNotesStepView: View {
             Button {
                 selectedPhotoForCaption = photo
             } label: {
-                ZStack(alignment: .bottom) {
+                ZStack(alignment: .bottomLeading) {
                     Image(uiImage: photo.image)
                         .resizable()
                         .scaledToFill()
 
                     if !photo.caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        PhotoCaptionOverlay(caption: photo.caption)
+                        PhotoCaptionBadge()
+                            .padding(6)
                     }
                 }
                 .frame(width: 120, height: 120)
@@ -257,11 +275,25 @@ struct ContributePhotosNotesStepView: View {
     @MainActor
     private func loadPhotos(from items: [PhotosPickerItem]) async {
         for item in items {
-            guard note.canAddMorePhotos else { break }
+            guard effectiveCanAddMorePhotos else { break }
             if let data = try? await item.loadTransferable(type: Data.self),
                let image = UIImage(data: data) {
-                note.addPhoto(from: image)
+                addPhoto(from: image)
             }
+        }
+    }
+
+    private func addPhoto(from image: UIImage) {
+        guard effectiveCanAddMorePhotos,
+              let jpegData = image.jpegData(compressionQuality: ReviewNoteDraft.jpegQuality)
+        else { return }
+
+        if remainingPhotoSlots != nil {
+            var updated = note
+            updated.photos.append(ReviewPhotoDraft(image: image, jpegData: jpegData))
+            note = updated
+        } else {
+            note.addPhoto(from: image)
         }
     }
 }

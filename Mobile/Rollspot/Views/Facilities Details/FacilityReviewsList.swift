@@ -104,10 +104,11 @@ struct FacilityReviewRow: View {
                     HStack(spacing: 8) {
                         ForEach(photos) { photo in
                             Button { onSelectPhoto(photo) } label: {
-                                ZStack(alignment: .bottom) {
+                                ZStack(alignment: .bottomLeading) {
                                     FacilityPhotoImage(photo: photo, cornerRadius: 10)
-                                    if let caption = photo.caption {
-                                        PhotoCaptionOverlay(caption: caption)
+                                    if photo.caption != nil {
+                                        PhotoCaptionBadge()
+                                            .padding(6)
                                     }
                                 }
                                 .frame(width: 88, height: 88)

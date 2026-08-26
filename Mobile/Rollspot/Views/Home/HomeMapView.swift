@@ -298,6 +298,10 @@ struct HomeMapView: View {
                         // direct call here ran two identical nearby searches
                         // side by side on every launch.
                         scheduleNearbyPlacesLoad()
+                        if !hasSeenOnboardingIntro {
+                            try? await Task.sleep(nanoseconds: 700_000_000)
+                            showOnboardingIntro = true
+                        }
                         #if DEBUG
                         // `xcrun simctl launch <sim> com.puspadifellas.app -previewOnboarding`
                         // forces the one-time intro sheet for design review.

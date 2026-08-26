@@ -98,7 +98,7 @@ private struct ZoomableFacilityPhotoPage: View {
     @State private var finishedLoading = false
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        ZStack(alignment: .bottomLeading) {
             Group {
                 if let image {
                     ZoomablePhotoContainer(image: image, isZoomed: $isZoomed)
@@ -114,15 +114,10 @@ private struct ZoomableFacilityPhotoPage: View {
                 }
             }
 
-            if let caption = photo.caption, !isZoomed {
-                PhotoCaptionOverlay(
-                    caption: caption,
-                    fontSize: 15,
-                    lineLimit: 4,
-                    horizontalPadding: 20,
-                    verticalPadding: 20
-                )
-                .transition(.opacity)
+            if photo.caption != nil, !isZoomed {
+                PhotoCaptionBadge()
+                    .padding(16)
+                    .transition(.opacity)
             }
         }
         .task(id: photo.id) {
