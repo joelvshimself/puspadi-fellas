@@ -6,7 +6,7 @@
 // Auth: caller must send a Supabase user JWT. user_id is taken from that session.
 //
 // Request:  POST (empty body)
-// Response: { status, userName, userRole, profileImageUrl, reviews: [...] }
+// Response: { status, userName, userRole, profileImageUrl, reviews: [{ ..., photoUrls, photoCaptions }] }
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -25,6 +25,7 @@ interface ReviewEntranceRow {
   is_wide_enough: boolean | null;
   review_text: string | null;
   photo_urls: string[] | null;
+  photo_captions: string[] | null;
   sort_order: number;
 }
 
@@ -38,9 +39,11 @@ interface ReviewRow {
   elevator_blockers: string[] | null;
   elevator_review_text: string | null;
   elevator_photo_urls: string[] | null;
+  elevator_photo_captions: string[] | null;
   has_disabled_toilet: boolean | null;
   toilet_review_text: string | null;
   toilet_photo_urls: string[] | null;
+  toilet_photo_captions: string[] | null;
 }
 
 interface ProfileRow {
@@ -57,6 +60,7 @@ interface MyReviewItem {
   reviewText: string;
   providedFeatures: string[];
   photoUrls: string[];
+  photoCaptions: string[];
 }
 
 Deno.serve(async (req: Request) => {
@@ -85,8 +89,8 @@ Deno.serve(async (req: Request) => {
     .select(`
       id, place_id, created_at, notes,
       elevator_exists, elevator_wheelchair_accessible, elevator_blockers,
-      elevator_review_text, elevator_photo_urls,
-      has_disabled_toilet, toilet_review_text, toilet_photo_urls
+      elevator_review_text, elevator_photo_urls, elevator_photo_captions,
+      has_disabled_toilet, toilet_review_text, toilet_photo_urls, toilet_photo_captions
     `)
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
@@ -105,7 +109,7 @@ Deno.serve(async (req: Request) => {
       .from("review_entrances")
       .select(`
         review_id, location, has_dropoff_ramp, has_rails, door_type,
-        is_wide_enough, review_text, photo_urls, sort_order
+        is_wide_enough, review_text, photo_urls, photo_captions, sort_order
       `)
       .in("review_id", reviewIds)
       .order("sort_order", { ascending: true });
@@ -144,6 +148,7 @@ Deno.serve(async (req: Request) => {
 
   const items: MyReviewItem[] = reviewRows.map((row) => {
     const entrances = entrancesByReview.get(row.id) ?? [];
+    const photos = allPhotos(row, entrances);
     return {
       id: row.id,
       placeId: row.place_id,
@@ -151,7 +156,8 @@ Deno.serve(async (req: Request) => {
       createdAt: row.created_at,
       reviewText: primaryNotes(row, entrances),
       providedFeatures: providedFeatures(row, entrances),
-      photoUrls: allPhotoUrls(row, entrances),
+      photoUrls: photos.urls,
+      photoCaptions: photos.captions,
     };
   });
 
@@ -208,14 +214,35 @@ function primaryNotes(row: ReviewRow, entrances: ReviewEntranceRow[]): string {
   return "No review notes written.";
 }
 
-function allPhotoUrls(row: ReviewRow, entrances: ReviewEntranceRow[]): string[] {
-  const urls: string[] = [];
-  for (const entrance of entrances) {
-    urls.push(...((entrance.photo_urls ?? []).filter((u) => typeof u === "string" && u.length > 0)));
+function pushAlignedPhotos(
+  urls: string[] | null | undefined,
+  captions: string[] | null | undefined,
+  outUrls: string[],
+  outCaptions: string[],
+) {
+  const urlList = urls ?? [];
+  const captionList = captions ?? [];
+  for (let i = 0; i < urlList.length; i++) {
+    const url = urlList[i];
+    if (typeof url !== "string" || url.length === 0) continue;
+    outUrls.push(url);
+    const raw = typeof captionList[i] === "string" ? captionList[i].trim() : "";
+    outCaptions.push(raw);
   }
-  urls.push(...((row.elevator_photo_urls ?? []).filter((u) => typeof u === "string" && u.length > 0)));
-  urls.push(...((row.toilet_photo_urls ?? []).filter((u) => typeof u === "string" && u.length > 0)));
-  return urls;
+}
+
+function allPhotos(
+  row: ReviewRow,
+  entrances: ReviewEntranceRow[],
+): { urls: string[]; captions: string[] } {
+  const urls: string[] = [];
+  const captions: string[] = [];
+  for (const entrance of entrances) {
+    pushAlignedPhotos(entrance.photo_urls, entrance.photo_captions, urls, captions);
+  }
+  pushAlignedPhotos(row.elevator_photo_urls, row.elevator_photo_captions, urls, captions);
+  pushAlignedPhotos(row.toilet_photo_urls, row.toilet_photo_captions, urls, captions);
+  return { urls, captions };
 }
 
 async function requireUserId(req: Request): Promise<string | null> {

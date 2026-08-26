@@ -69,9 +69,18 @@ final class ReviewService {
         let reviewText: String
         let providedFeatures: [String]
         let photoUrls: [String]
+        let photoCaptions: [String]
 
         var photoURLs: [URL] {
             photoUrls.compactMap(URL.init(string:))
+        }
+
+        var facilityPhotos: [FacilityPhoto] {
+            photoUrls.enumerated().compactMap { index, urlString in
+                guard let url = URL(string: urlString) else { return nil }
+                let caption = index < photoCaptions.count ? photoCaptions[index] : nil
+                return FacilityPhoto(source: .remote(url), caption: caption)
+            }
         }
     }
 
