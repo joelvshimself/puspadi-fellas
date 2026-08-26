@@ -38,7 +38,7 @@ struct ReviewSubmittedView: View {
             Spacer()
 
             Button(action: onDone) {
-                Text("Back to Home".localized)
+                Text("Okey".localized)
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)

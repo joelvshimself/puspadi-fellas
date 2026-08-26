@@ -12,8 +12,8 @@ struct SplashScreenView: View {
     /// rotation always begins at 0°.
     @State private var startDate: Date?
 
-    private static let displayDuration: TimeInterval = 1
-    private static let rotationPeriod: TimeInterval = 1
+    private static let displayDuration: TimeInterval = 2
+    private static let rotationPeriod: TimeInterval = 3
 
     var body: some View {
         TimelineView(

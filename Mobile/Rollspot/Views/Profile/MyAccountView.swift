@@ -244,7 +244,7 @@ struct MyAccountView: View {
                         onBackToHome?()
                     }
                 } label: {
-                    Text("Back to Home".localized)
+                    Text("Okey".localized)
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)

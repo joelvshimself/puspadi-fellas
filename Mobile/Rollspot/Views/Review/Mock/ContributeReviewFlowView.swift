@@ -186,9 +186,10 @@ struct ContributeReviewFlowView: View {
             } else if let screen = screens[safe: screenIndex] {
                 screenView(screen)
             } else {
+                // screenIndex out of range — clamp on next layout pass; never
+                // auto-submit from here (that caused fail→goBack→toilet).
                 Color(.systemBackground)
-                    .overlay { ProgressView() }
-                    .task { await submit() }
+                    .onAppear { clampScreenIndex() }
             }
         }
         // No sign-in gate on appear: every entry point (Contribute, Be the
@@ -210,7 +211,7 @@ struct ContributeReviewFlowView: View {
             isPresented: Binding(get: { submitError != nil }, set: { if !$0 { submitError = nil } }),
             presenting: submitError
         ) { _ in
-            Button("OK") { submitError = nil; goBackOneStep() }
+            Button("OK") { submitError = nil }
         } message: { message in
             Text(message)
         }
@@ -226,7 +227,13 @@ struct ContributeReviewFlowView: View {
         } message: {
             Text("Your progress won't be saved if you leave now.")
         }
+        .onAppear { clampScreenIndex() }
         .onChange(of: screenIndex) { _, _ in persistIfNeeded() }
+        .onChange(of: toiletInitialAnswer) { _, _ in clampScreenIndex() }
+        .onChange(of: entranceLocations) { _, _ in clampScreenIndex() }
+        .onChange(of: lobbyEntranceTags) { _, _ in clampScreenIndex() }
+        .onChange(of: basementEntranceTags) { _, _ in clampScreenIndex() }
+        .onChange(of: elevatorAnswers) { _, _ in clampScreenIndex() }
         .task { await loadReviewPersona() }
     }
 
@@ -428,6 +435,16 @@ struct ContributeReviewFlowView: View {
     private func goNext() {
         persistIfNeeded()
         screenIndex += 1
+        clampScreenIndex()
+    }
+
+    /// Keeps `screenIndex` valid when `screens` shrinks (branching answers,
+    /// unfinished-draft restore missing toilet/elevator answers).
+    private func clampScreenIndex() {
+        let maxIndex = max(screens.count - 1, 0)
+        guard screenIndex > maxIndex else { return }
+        screenIndex = maxIndex
+        persistIfNeeded()
     }
 
     private func goBackOneStep() {
@@ -652,7 +669,7 @@ struct ContributeReviewFlowView: View {
         let answer = location == .lobby ? lobbyRampAnswer : basementRampAnswer
         let ease: EaseOfAccess? = switch answer {
         case "Yes": .easy
-        case "With a push", "With a guest": .needsAssistance
+        case "With a push", "With a push": .needsAssistance
         case "Too steep": .cantGoThrough
         default: nil
         }

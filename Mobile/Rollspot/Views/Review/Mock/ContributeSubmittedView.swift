@@ -1,8 +1,7 @@
 import SwiftUI
 
 /// "Contribution Submitted" screen — matches the mockup's green checkmark
-/// + "Review Submitted! Thank you for helping out!" + close-X + "Back to
-/// Home". Distinct from the real `ReviewSubmittedView` (different copy/
+/// + "Review Submitted! Thank you for helping out!" + close-X + "Okey". Distinct from the real `ReviewSubmittedView` (different copy/
 /// layout) per the decision to build this flow's UI fresh.
 struct ContributeSubmittedView: View {
     let onDone: () -> Void
@@ -38,7 +37,7 @@ struct ContributeSubmittedView: View {
             Spacer()
 
             Button(action: onDone) {
-                Text("Back to Home".localized)
+                Text("Okey".localized)
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
