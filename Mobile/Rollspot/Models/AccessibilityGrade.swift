@@ -67,6 +67,28 @@ struct PlaceAccessibilityResponse: Codable {
     let grade: [AccessibilityFeatureGrade]?
 }
 
+/// Collapses per-feature grades into the single badge shown on a pin or a
+/// detail header.
+///
+/// THE ONE RULE. The map pin and the detail page used to each collapse the
+/// same feature rows their own way — the pin took the worst verdict actually
+/// held (server-side, in places_directory_nearby), while the detail page
+/// required EVERY feature to be "yes", so one `unknown` feature quietly
+/// downgraded a place. The same mall was green on the map and "Moderately
+/// accessible" when you opened it. Both now call this.
+///
+/// `unknown` features are ignored rather than counted against the place: not
+/// knowing whether a restroom is accessible is not evidence that it is not,
+/// and treating it as such punishes exactly the under-documented places a
+/// contributor should be sent to.
+func collapseAccessibility(_ grades: [AccessibilityFeatureGrade]) -> OverallAccessibility {
+    let known = grades.filter { ["yes", "no", "limited"].contains($0.bestValue) }
+    guard !known.isEmpty else { return .noData }
+    if known.contains(where: { $0.bestValue == "no" }) { return .notAccessible }
+    if known.contains(where: { $0.bestValue == "limited" }) { return .partiallyAccessible }
+    return .accessible
+}
+
 /// Overall accessibility badge shown on the grade card (green/yellow/red).
 /// TODO(backend): mirrors the Boolean Grading Matrix (E/V/T →
 /// Fully/Partially/Not Accessible) conceptually, but is currently derived

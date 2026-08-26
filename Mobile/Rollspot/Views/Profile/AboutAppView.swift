@@ -7,8 +7,8 @@ struct AboutAppView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 aboutSection(
-                    title: "What is Roll-Spot?".localized,
-                    body: "About Roll-Spot summary".localized
+                    title: "What is Rollspot?".localized,
+                    body: "About Rollspot summary".localized
                 )
 
                 aboutSection(

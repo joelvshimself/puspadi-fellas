@@ -550,18 +550,6 @@ struct MockPlaceDetailView: View {
                     .foregroundStyle(.primary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                // A place with no community reviews yet is not a place we know
-                // nothing about — the directory row carries its street, its
-                // hours and its floor count. Showing none of that left a
-                // screen with a name and two buttons on it, which read as
-                // broken rather than as unreviewed.
-                if !place.address.isEmpty {
-                    Text(place.address)
-                        .font(.system(size: 15))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
                 if let hours = place.openingHours {
                     Label(hours, systemImage: "clock")
                         .font(.system(size: 14))

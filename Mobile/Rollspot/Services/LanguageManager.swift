@@ -56,7 +56,7 @@ final class LanguageManager: ObservableObject {
             .indonesia: "Gunakan Apple untuk menyimpan ulasan, foto, dan profil Anda."
         ],
         "Not now": [.english: "Not now", .indonesia: "Nanti saja"],
-        "Welcome to Roll-Spot": [.english: "Welcome to Roll-Spot", .indonesia: "Selamat datang di Roll-Spot"],
+        "Welcome to Rollspot": [.english: "Welcome to Rollspot", .indonesia: "Selamat datang di Rollspot"],
         "Sign in or create an account to save places and contribute to the community.": [
             .english: "Sign in or create an account to save places and contribute to the community.",
             .indonesia: "Masuk atau buat akun untuk menyimpan tempat dan berkontribusi ke komunitas."
@@ -165,10 +165,10 @@ final class LanguageManager: ObservableObject {
         "Language": [.english: "Language", .indonesia: "Bahasa"],
         "Notifications": [.english: "Notifications", .indonesia: "Notifikasi"],
         "About App": [.english: "About App", .indonesia: "Tentang Aplikasi"],
-        "What is Roll-Spot?": [.english: "What is Roll-Spot?", .indonesia: "Apa itu Roll-Spot?"],
-        "About Roll-Spot summary": [
-            .english: "Roll-Spot helps people with mobility disabilities make informed decisions by providing accessibility insights for places like malls, restaurants, and markets. It is a community-powered directory focused on wheelchair accessibility.",
-            .indonesia: "Roll-Spot membantu orang dengan disabilitas mobilitas membuat keputusan yang tepat dengan memberikan wawasan aksesibilitas untuk tempat seperti mal, restoran, dan pasar. Ini adalah direktori berbasis komunitas yang berfokus pada aksesibilitas kursi roda."
+        "What is Rollspot?": [.english: "What is Rollspot?", .indonesia: "Apa itu Rollspot?"],
+        "About Rollspot summary": [
+            .english: "Rollspot helps people with mobility disabilities make informed decisions by providing accessibility insights for places like malls, restaurants, and markets. It is a community-powered directory focused on wheelchair accessibility.",
+            .indonesia: "Rollspot membantu orang dengan disabilitas mobilitas membuat keputusan yang tepat dengan memberikan wawasan aksesibilitas untuk tempat seperti mal, restoran, dan pasar. Ini adalah direktori berbasis komunitas yang berfokus pada aksesibilitas kursi roda."
         ],
         "What the app does": [.english: "What the app does", .indonesia: "Apa yang dilakukan aplikasi"],
         "About app features summary": [
@@ -187,8 +187,8 @@ final class LanguageManager: ObservableObject {
         ],
         "What makes us different": [.english: "What makes us different", .indonesia: "Apa yang membuat kami berbeda"],
         "About differentiation summary": [
-            .english: "Roll-Spot combines community reviews with photos and facility-level detail, rather than only a generic accessible label or a simple map pin list.",
-            .indonesia: "Roll-Spot menggabungkan ulasan komunitas dengan foto dan detail tingkat fasilitas, bukan hanya label aksesibel generik atau daftar pin peta sederhana."
+            .english: "Rollspot combines community reviews with photos and facility-level detail, rather than only a generic accessible label or a simple map pin list.",
+            .indonesia: "Rollspot menggabungkan ulasan komunitas dengan foto dan detail tingkat fasilitas, bukan hanya label aksesibel generik atau daftar pin peta sederhana."
         ],
         "Give Feedback": [.english: "Give Feedback", .indonesia: "Beri Masukan"],
         "Sign Out": [.english: "Sign Out", .indonesia: "Keluar"],

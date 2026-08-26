@@ -50,7 +50,10 @@ final class PlaceDirectoryService {
         let distanceMeters: Int
         /// "yes" / "limited" / "no" / "unknown" — the worst verdict held for
         /// the place, already collapsed server-side.
-        let grade: String
+        /// Optional: worst_value is NULL when every graded feature is
+        /// 'unknown', and a non-optional decode there failed the WHOLE
+        /// response — losing every pin, not just this one place's grade.
+        let grade: String?
         let gradedFeatures: Int
         /// Every name this place is known by, straight from place_aliases.
         /// Used to recognise — and drop — the MapKit result that is this same
@@ -64,7 +67,7 @@ final class PlaceDirectoryService {
 
         var overallGrade: OverallAccessibility {
             guard gradedFeatures > 0 else { return .noData }
-            switch grade {
+            switch grade ?? "unknown" {
             case "yes": return .accessible
             case "limited": return .partiallyAccessible
             case "no": return .notAccessible

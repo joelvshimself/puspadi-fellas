@@ -14,15 +14,9 @@ enum ReviewProvenance: String, Hashable {
         self = ReviewProvenance(rawValue: raw ?? "") ?? .community
     }
 
-    /// Nil for community reviews — the ordinary case needs no badge, and
-    /// labelling every card would make the label invisible.
-    var badgeLabel: String? {
-        switch self {
-        case .community: nil
-        case .imported: "Imported data"
-        case .osm: "From OpenStreetMap"
-        }
-    }
+    /// Always nil — provenance is tracked in the database but no longer
+    /// surfaced as a badge on the review card.
+    var badgeLabel: String? { nil }
 }
 
 /// One community review row for a specific facility at a place.

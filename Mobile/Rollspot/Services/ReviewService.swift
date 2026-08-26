@@ -618,7 +618,12 @@ final class ReviewService {
                 ))))
             }
         }
-        return collapseRepeatVisits(results)
+        // A row carrying nothing but an uploaded image is not a review —
+        // there is no verdict in it to read. Photos on a review that DOES say
+        // something are untouched.
+        return collapseRepeatVisits(
+            results.filter { $0.review.hasBodyText || !$0.review.providedTags.isEmpty }
+        )
     }
 
     /// Identifies "this person's verdict on this specific facility". Nil when

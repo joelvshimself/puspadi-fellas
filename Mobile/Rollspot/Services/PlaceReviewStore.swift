@@ -282,9 +282,9 @@ final class PlaceReviewStore: ObservableObject {
     }
 
     var overallGrade: OverallAccessibility? {
-        if featureGrades.isEmpty { return place.grade ?? .noData }
-        if featureGrades.contains(where: { $0.bestValue == "no" }) { return .notAccessible }
-        if featureGrades.allSatisfy({ $0.bestValue == "yes" }) { return .accessible }
-        return .partiallyAccessible
+        // Nothing known yet — keep whatever the pin already showed rather
+        // than contradicting it with "no data".
+        let collapsed = collapseAccessibility(featureGrades)
+        return collapsed == .noData ? (place.grade ?? .noData) : collapsed
     }
 }

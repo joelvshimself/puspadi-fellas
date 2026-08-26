@@ -111,22 +111,15 @@ Deno.serve(async (req: Request) => {
       console.error("profiles query failed (continuing anonymous):", profilesError);
     }
     for (const p of profileRows ?? []) {
-      // Real name ONLY on an explicit opt-in. A missing pseudonym should not
-      // happen (a trigger assigns one at profile creation, and the migration
-      // backfilled the existing accounts), but if it ever does, falling back
-      // to the real name would leak exactly what this is here to protect —
-      // so the fallback is anonymity instead, and the client renders
-      // "Community".
-      const showReal = p.show_real_name === true;
+      // A signed-in contributor is credited by name. The pseudonym is now
+      // only the fallback for an account that never set a display name.
       const pseudonym = (p.pseudonym as string | null)?.trim() || null;
       const realName = (p.display_name as string | null)?.trim() || null;
       profiles.set(p.id as string, {
-        name: showReal ? realName : pseudonym,
+        name: realName ?? pseudonym,
         role: deriveUserRole((p.mobility_aids as string[] | null) ?? []),
-        // An avatar is a photograph of a person's face — publishing it beside
-        // a pseudonym would undo the pseudonym.
-        avatar: showReal ? ((p.avatar_url as string | null) ?? null) : null,
-        isPseudonym: !showReal && pseudonym !== null,
+        avatar: (p.avatar_url as string | null) ?? null,
+        isPseudonym: realName === null && pseudonym !== null,
       });
     }
   }

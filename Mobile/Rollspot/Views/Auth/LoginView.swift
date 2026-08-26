@@ -101,7 +101,7 @@ struct AuthWelcomeView: View {
                 }
                 .padding(.top, 8)
 
-                Text("Welcome to Roll-Spot".localized)
+                Text("Welcome to Rollspot".localized)
                     .font(.title.weight(.bold))
                     .foregroundStyle(AuthPalette.heading)
 

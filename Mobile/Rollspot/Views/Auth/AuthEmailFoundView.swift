@@ -45,7 +45,7 @@ struct AuthEmailFoundView: View {
                 AuthBackButton { dismiss() }
                     .padding(.top, 4)
 
-                Text("Welcome to Roll-Spot".localized)
+                Text("Welcome to Rollspot".localized)
                     .font(.title.weight(.bold))
 
                 Text("Sign in or create an account to save places and contribute to the community.".localized)

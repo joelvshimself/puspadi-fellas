@@ -407,10 +407,7 @@ struct HomeMapView: View {
     }
 
     private static func grade(from response: PlaceAccessibilityResponse?) -> OverallAccessibility {
-        guard let grades = response?.grade, !grades.isEmpty else { return .noData }
-        if grades.contains(where: { $0.bestValue == "no" }) { return .notAccessible }
-        if grades.allSatisfy({ $0.bestValue == "yes" }) { return .accessible }
-        return .partiallyAccessible
+        collapseAccessibility(response?.grade ?? [])
     }
 
     /// Fills in grades that are still unknown, without re-running the nearby
