@@ -27,19 +27,13 @@ struct PhotoComposerFlow: ViewModifier {
     /// refresh stores / show a toast here. Never called on failure.
     let onUploaded: ([FacilityPhoto]) -> Void
 
-    /// Camera and composer share ONE cover rather than owning one each.
-    /// Place Details already stacks four `fullScreenCover`s of its own; adding
-    /// two more put seven presentations on a single view chain, and SwiftUI
-    /// quietly drops one when several compete — which is how tapping Add
-    /// Photos ended up leaving you on the existing photo grid with nothing
-    /// presented. It also makes camera → composer a content swap inside the
-    /// same cover instead of a dismiss/re-present race.
-    private enum Stage: String, Identifiable {
-        case camera, composer
-        var id: String { rawValue }
-    }
-
-    @State private var stage: Stage?
+    // NOTE: these are deliberately two separate `isPresented` covers rather
+    // than one `item:` cover. Consolidating them put a second item-driven
+    // fullScreenCover next to Place Details' own lightbox cover, and tapping
+    // Add Photos then presented the lightbox's first photo instead of the
+    // composer. Keep them as they are.
+    @State private var isCameraPresented = false
+    @State private var isComposerPresented = false
     @State private var isLibraryPresented = false
     @State private var librarySelection: [PhotosPickerItem] = []
     @State private var stagedPhotos: [FacilityPhoto] = []
@@ -56,7 +50,7 @@ struct PhotoComposerFlow: ViewModifier {
                 source = nil
                 switch requested {
                 case .library: isLibraryPresented = true
-                case .camera: stage = .camera
+                case .camera: isCameraPresented = true
                 }
             }
             .photosPicker(
@@ -72,19 +66,18 @@ struct PhotoComposerFlow: ViewModifier {
                     librarySelection = []
                 }
             }
-            .fullScreenCover(item: $stage) { current in
-                switch current {
-                case .camera:
-                    CameraPicker(
-                        // Same cover, so this is a content swap — no dismissal
-                        // to wait out and nothing to race.
-                        onCapture: { image in stageFromCamera([FacilityPhoto(image: image)]) },
-                        onCancel: { stage = nil }
-                    )
-                    .ignoresSafeArea()
-                case .composer:
-                    composer
-                }
+            .fullScreenCover(isPresented: $isCameraPresented) {
+                CameraPicker(
+                    onCapture: { image in
+                        isCameraPresented = false
+                        stageFromCamera([FacilityPhoto(image: image)])
+                    },
+                    onCancel: { isCameraPresented = false }
+                )
+                .ignoresSafeArea()
+            }
+            .fullScreenCover(isPresented: $isComposerPresented) {
+                composer
             }
     }
 
@@ -95,7 +88,7 @@ struct PhotoComposerFlow: ViewModifier {
         AddPhotosView(
             initialPhotos: stagedPhotos,
             onSubmit: { submitted in Task { await upload(submitted) } },
-            onBack: { stage = nil }
+            onBack: { isComposerPresented = false }
         )
         .id(stagingToken)
         .overlay {
@@ -132,7 +125,10 @@ struct PhotoComposerFlow: ViewModifier {
         guard !photos.isEmpty else { return }
         stagedPhotos = photos
         stagingToken = UUID()
-        stage = .composer
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(550))
+            isComposerPresented = true
+        }
     }
 
     /// The library picker is its own presentation, so this one genuinely has a
@@ -144,8 +140,8 @@ struct PhotoComposerFlow: ViewModifier {
         stagedPhotos = photos
         stagingToken = UUID()
         Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(400))
-            stage = .composer
+            try? await Task.sleep(for: .milliseconds(550))
+            isComposerPresented = true
         }
     }
 
@@ -160,7 +156,7 @@ struct PhotoComposerFlow: ViewModifier {
                 facility: facility,
                 localPhotos: submitted
             )
-            stage = nil
+            isComposerPresented = false
             onUploaded(submitted)
         } catch {
             // The composer stays up with the photos still staged, so a retry

@@ -98,15 +98,20 @@ struct MockPlaceDetailView: View {
         heroSlides.map(\.url)
     }
 
-    /// Downloads the carousel's images ahead of the swipe, a couple at a time
-    /// so it does not compete with the first slide the user is actually
-    /// looking at.
+    /// Downloads the whole carousel as soon as its URLs are known, so a swipe
+    /// lands on an image that is already decoded.
+    ///
+    /// This used to run two at a time to avoid competing with the first slide.
+    /// It no longer needs to: ImageStore de-dupes in-flight requests, so the
+    /// visible slide and the prefetch share one download rather than racing,
+    /// and a wider window means the far end of a ten-photo strip is ready
+    /// before the user gets there.
     private func prefetchCarousel() async {
         guard !heroURLs.isEmpty else { return }
         // Into ImageStore, not just URLCache: the carousel reads decoded
         // images from there, so warming raw bytes alone would still leave the
         // first swipe to each page decoding from scratch.
-        _ = await mapWithLimit(heroURLs, limit: 2) { url in
+        _ = await mapWithLimit(heroURLs, limit: 4) { url in
             _ = await ImageStore.shared.remoteImage(for: url)
         }
     }

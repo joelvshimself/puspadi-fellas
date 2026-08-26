@@ -30,37 +30,35 @@ struct AddPhotosView: View {
     @State private var photos: [FacilityPhoto] = []
     @State private var browseSelection: [PhotosPickerItem] = []
     @State private var didSeed = false
+    @State private var containerInsets = EdgeInsets()
 
     var body: some View {
-        // The composer is presented in two very different containers: a
-        // fullScreenCover from Place Details, and inline inside the facility
-        // Photos tab. When it comes up over a picker that is still dismissing,
-        // UIKit hands the cover NO safe-area insets — the back button lands
-        // under the status-bar clock (invisible and untappable) and Submit
-        // under the home indicator. That was previously papered over with a
-        // 550ms sleep before presenting, which is a race, not a fix.
-        //
-        // So rather than trusting the inherited insets, fall back to the
-        // window's own whenever the container reports none.
-        GeometryReader { proxy in
-            let topInset = proxy.safeAreaInsets.top < 1 ? Self.windowInsets.top : 0
-            let bottomInset = proxy.safeAreaInsets.bottom < 1 ? Self.windowInsets.bottom : 0
+        VStack(spacing: 0) {
+            PhotoFlowHeader(title: "Add Photos", onBack: onBack)
+                .padding(.top, containerInsets.top < 1 ? Self.windowInsets.top : 0)
 
-            VStack(spacing: 0) {
-                PhotoFlowHeader(title: "Add Photos", onBack: onBack)
-                    .padding(.top, topInset)
-
-                ScrollView {
-                    grid
-                        .padding(.horizontal, PhotoMetrics.composerHorizontalPadding)
-                        .padding(.bottom, PhotoMetrics.submitTopSpacing)
-                }
-
-                submitButton
+            ScrollView {
+                grid
                     .padding(.horizontal, PhotoMetrics.composerHorizontalPadding)
-                    .padding(.bottom, 20 + bottomInset)
+                    .padding(.bottom, PhotoMetrics.submitTopSpacing)
             }
+
+            submitButton
+                .padding(.horizontal, PhotoMetrics.composerHorizontalPadding)
+                .padding(.bottom, 20 + (containerInsets.bottom < 1 ? Self.windowInsets.bottom : 0))
         }
+        // Read-only probe in the BACKGROUND, so the layout above is exactly
+        // what it always was. Presented over a still-dismissing picker, UIKit
+        // hands this cover no safe-area insets at all — the back button lands
+        // under the status-bar clock and Submit under the home indicator — so
+        // when the container reports none, fall back to the window's own.
+        .background(
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { containerInsets = proxy.safeAreaInsets }
+                    .onChange(of: proxy.safeAreaInsets) { _, new in containerInsets = new }
+            }
+        )
         .background(Color(.systemBackground))
         .onAppear {
             // Seed once — re-entering the cover shouldn't duplicate the tray.

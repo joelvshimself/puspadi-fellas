@@ -39,6 +39,23 @@ final class PlaceReviewStore: ObservableObject {
     /// they address a row nothing else points at.
     private(set) var placeId: String
 
+    /// What a place resolved to last time, kept for the life of the session.
+    ///
+    /// PlaceCacheStore already caches the grade, so a revisit painted its
+    /// badge instantly — but the carousel is built from `venuePhotos` and
+    /// `reviewPhotos`, which were re-fetched every single time. That is what
+    /// made a second visit sit on an empty hero: not the images (those are in
+    /// ImageStore), but the URLs of the images, which nothing remembered.
+    ///
+    /// Repainted immediately on re-entry, then refreshed behind the content
+    /// so it still converges on the server's answer.
+    private struct Snapshot {
+        var facilityReviews: [PlaceFacilityReview]
+        var reviewPhotos: [ReviewPhoto]
+        var venuePhotos: [PlacePhoto]
+    }
+    private static var snapshots: [String: Snapshot] = [:]
+
     private var watchTask: Task<Void, Never>?
     private var loadGeneration = 0
     /// Bounded so a place whose claim is stuck (a worker killed mid-flight
@@ -81,14 +98,29 @@ final class PlaceReviewStore: ObservableObject {
             enrichResolved = true
         }
 
+        // Same idea as the cached grade above, for everything the carousel and
+        // the tabs are built from.
+        if let snapshot = Self.snapshots[placeId] {
+            facilityReviews = snapshot.facilityReviews
+            reviewPhotos = snapshot.reviewPhotos
+            venuePhotos = snapshot.venuePhotos
+            reviewsResolved = true
+            reviewsAttempted = true
+        }
+
         // Only show loading if there is genuinely nothing to show yet.
-        isLoading = featureGrades.isEmpty
+        isLoading = featureGrades.isEmpty && reviewPhotos.isEmpty && venuePhotos.isEmpty
         defer {
             if generation == loadGeneration {
                 isLoading = false
                 enrichResolved = true
             }
         }
+
+        // The id this visit STARTED with. enrich() may replace `placeId` with
+        // the canonical one below, and the snapshot has to be findable under
+        // the id the next visit will arrive with — which is this one.
+        let requestedId = placeId
 
         // enrich() runs FIRST rather than alongside the other two, because it
         // is what tells us the canonical place_id — and querying `reviews` for
@@ -125,6 +157,14 @@ final class PlaceReviewStore: ObservableObject {
         if let photoResponse {
             reviewPhotos = photoResponse.photos
         }
+        let snapshot = Snapshot(
+            facilityReviews: reviewRows ?? facilityReviews,
+            reviewPhotos: photoResponse?.photos ?? reviewPhotos,
+            venuePhotos: venueRows
+        )
+        Self.snapshots[placeId] = snapshot
+        if requestedId != placeId { Self.snapshots[requestedId] = snapshot }
+
         if let reviewRows {
             facilityReviews = reviewRows
             reviewsResolved = true
