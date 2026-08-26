@@ -39,6 +39,7 @@ struct ContributeReviewFlowView: View {
     @State private var toiletLocationNote: String = ""
     @State private var toiletTags: Set<ContributeTagOption> = []
     @State private var isSubmitted = false
+    @State private var isSubmitting = false
     @State private var submitError: String?
     @State private var showExitConfirmation = false
     @EnvironmentObject private var auth: AuthSessionStore
@@ -413,8 +414,9 @@ struct ContributeReviewFlowView: View {
                 navTitle: "Final Review",
                 progress: progress(for: screen),
                 note: finalReviewNoteBinding(),
-                remainingPhotoSlots: ReviewNoteDraft.maxPhotos - draft.toilet.review.photos.count,
+                remainingPhotoSlots: max(0, ReviewNoteDraft.maxPhotos - draft.allReviewPhotos.count),
                 isLastStep: true,
+                isSubmitting: isSubmitting,
                 onBack: goBackOneStep,
                 onContinue: {
                     Task { await submit() }
@@ -744,6 +746,10 @@ struct ContributeReviewFlowView: View {
     }
 
     private func submit() async {
+        guard !isSubmitting else { return }
+        isSubmitting = true
+        defer { isSubmitting = false }
+
         #if DEBUG
         if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" {
             try? await Task.sleep(nanoseconds: 500_000_000)

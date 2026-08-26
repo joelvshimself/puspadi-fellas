@@ -269,11 +269,13 @@ final class ReviewService {
 
         for photo in photos {
             let path = "reviews/\(folder)/\(facility)/\(photo.id.uuidString).jpg"
-            try await storage.upload(
-                path,
-                data: photo.jpegData,
-                options: FileOptions(contentType: "image/jpeg", upsert: false)
-            )
+            try await NetworkRetry.run { () async throws -> Void in
+                try await storage.upload(
+                    path,
+                    data: photo.jpegData,
+                    options: FileOptions(contentType: "image/jpeg", upsert: true)
+                )
+            }
             let publicURL = try storage.getPublicURL(path: path)
             urls.append(publicURL.absoluteString)
         }

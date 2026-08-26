@@ -15,6 +15,7 @@ struct ContributePhotosNotesStepView: View {
     /// toilet's remaining slots while still displaying all prior photos).
     var remainingPhotoSlots: Int? = nil
     var isLastStep: Bool = false
+    var isSubmitting: Bool = false
     let onBack: () -> Void
     let onContinue: () -> Void
 
@@ -69,7 +70,8 @@ struct ContributePhotosNotesStepView: View {
 
             ContributeContinueButton(
                 title: "Submit".localized,
-                isEnabled: true,
+                isLoading: isSubmitting,
+                isEnabled: !isSubmitting,
                 action: onContinue
             )
             .padding(.bottom, 8)
@@ -213,24 +215,27 @@ struct ContributePhotosNotesStepView: View {
     }
 
     private func photoThumbnail(_ photo: ReviewPhotoDraft) -> some View {
-        ZStack(alignment: .topTrailing) {
-            Button {
-                selectedPhotoForCaption = photo
-            } label: {
-                ZStack(alignment: .bottomLeading) {
+        let hasCaption = !photo.caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        return ZStack(alignment: .topTrailing) {
+            ZStack(alignment: .bottomLeading) {
+                Button {
+                    selectedPhotoForCaption = photo
+                } label: {
                     Image(uiImage: photo.image)
                         .resizable()
                         .scaledToFill()
-
-                    if !photo.caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        PhotoCaptionBadge()
-                            .padding(6)
-                    }
+                        .frame(width: 120, height: 120)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
-                .frame(width: 120, height: 120)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .buttonStyle(.plain)
+
+                if hasCaption {
+                    PhotoCaptionBadge(size: 22, iconSize: 10)
+                        .padding(6)
+                }
             }
-            .buttonStyle(.plain)
+            .frame(width: 120, height: 120)
 
             Button {
                 withAnimation(.snappy(duration: 0.18)) {

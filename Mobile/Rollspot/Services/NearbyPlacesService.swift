@@ -126,7 +126,7 @@ enum NearbyPlacesService {
     /// Same normalisation the database applies in resolve_place_id: lowercase,
     /// every non-alphanumeric character dropped. Shared with Place.
     /// matchableNames so the client compares names exactly one way.
-    static func normalized(_ name: String) -> String {
+    nonisolated static func normalized(_ name: String) -> String {
         name.lowercased().filter { $0.isLetter || $0.isNumber }
     }
 

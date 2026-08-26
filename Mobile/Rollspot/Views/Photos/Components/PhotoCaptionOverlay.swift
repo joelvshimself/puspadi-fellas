@@ -27,7 +27,7 @@ struct PhotoCaptionOverlay: View {
 }
 
 /// Small white circle indicating a photo has a caption — used on thumbnails
-/// and lightbox instead of showing caption text inline.
+/// instead of showing caption text inline.
 struct PhotoCaptionBadge: View {
     var size: CGFloat = 28
     var iconSize: CGFloat = 13
@@ -39,5 +39,31 @@ struct PhotoCaptionBadge: View {
             .frame(width: size, height: size)
             .background(Color.white, in: Circle())
             .shadow(color: .black.opacity(0.18), radius: 3, x: 0, y: 1)
+    }
+}
+
+/// Full-width footer bar for the photo lightbox — bubble icon + caption text.
+struct PhotoCaptionFooterBar: View {
+    let caption: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "text.bubble.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 28, height: 28)
+                .background(Color.white.opacity(0.22), in: Circle())
+
+            Text(caption)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 14)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.black)
     }
 }
