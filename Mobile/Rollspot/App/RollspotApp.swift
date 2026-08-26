@@ -10,16 +10,14 @@ struct RollspotApp: App {
         WindowGroup {
             Group {
                 if showSplash {
-                    SplashScreenView()
+                    SplashScreenView {
+                        showSplash = false
+                    }
                 } else {
                     ContentView()
                         .environmentObject(languageManager)
                         .environmentObject(authSession)
                 }
-            }
-            .task {
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-                showSplash = false
             }
             .onOpenURL { url in
                 DeepLinkRouter.shared.handle(url)
