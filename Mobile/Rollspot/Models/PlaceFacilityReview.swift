@@ -107,6 +107,70 @@ struct PlaceFacilityReview: Identifiable, Hashable {
         }
         return trimmed
     }
+
+    /// Merges facility slices from the same DB review into one card for the
+    /// Reviews tab. `mapReviews` fans one submission into elevator / toilet /
+    /// entrance rows; grouping restores one card per contributor action.
+    static func groupedByReviewId(_ reviews: [PlaceFacilityReview]) -> [PlaceFacilityReview] {
+        var groups: [UUID: [PlaceFacilityReview]] = [:]
+        var order: [UUID] = []
+
+        for review in reviews {
+            if groups[review.reviewId] == nil {
+                order.append(review.reviewId)
+                groups[review.reviewId] = []
+            }
+            groups[review.reviewId]?.append(review)
+        }
+
+        return order.map { reviewId in
+            let slices = groups[reviewId]!
+            let primary = slices.max(by: { $0.createdAt < $1.createdAt })!
+
+            var photoURLs: [String] = []
+            var photoCaptions: [String] = []
+            for slice in slices {
+                for index in slice.photoURLs.indices {
+                    photoURLs.append(slice.photoURLs[index])
+                    let caption = index < slice.photoCaptions.count
+                        ? slice.photoCaptions[index]
+                        : ""
+                    photoCaptions.append(caption)
+                }
+            }
+
+            var seenTags = Set<String>()
+            var providedTags: [String] = []
+            for slice in slices {
+                for tag in slice.providedTags where seenTags.insert(tag).inserted {
+                    providedTags.append(tag)
+                }
+            }
+
+            let bodyParts = slices
+                .map { $0.bodyText.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            let bodyText = bodyParts.joined(separator: "\n")
+
+            return PlaceFacilityReview(
+                id: reviewId,
+                reviewId: reviewId,
+                kind: slices.first!.kind,
+                createdAt: primary.createdAt,
+                bodyText: bodyText,
+                providedTags: providedTags,
+                photoURLs: photoURLs,
+                photoCaptions: photoCaptions,
+                reviewerName: primary.reviewerName,
+                reviewerRole: primary.reviewerRole,
+                reviewerAvatarURL: primary.reviewerAvatarURL,
+                reviewerIsPseudonym: primary.reviewerIsPseudonym,
+                provenance: primary.provenance,
+                sourceURL: primary.sourceURL
+            )
+        }
+        .sorted { $0.createdAt > $1.createdAt }
+    }
 }
 
 /// The review state of a single facility on the place-detail card.

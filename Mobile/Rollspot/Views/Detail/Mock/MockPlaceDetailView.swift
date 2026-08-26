@@ -592,10 +592,11 @@ struct MockPlaceDetailView: View {
         store.reviews(for: selectedFacility)
     }
 
-    /// The Reviews tab lists every facility's reviews together (the design's
-    /// count is the place total, not the selected facility's).
+    /// The Reviews tab lists one card per submission (grouped by `reviewId`),
+    /// not one per facility slice. The count is the place total, not the
+    /// selected facility's.
     private var allReviews: [PlaceFacilityReview] {
-        store.facilityReviews.sorted { $0.createdAt > $1.createdAt }
+        PlaceFacilityReview.groupedByReviewId(store.facilityReviews)
     }
 
     /// Every tag the community confirmed for this facility, newest review
