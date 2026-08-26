@@ -412,7 +412,8 @@ struct ContributeReviewFlowView: View {
                 facilityName: "Review",
                 navTitle: "Final Review",
                 progress: progress(for: screen),
-                note: Binding(get: { draft.toilet.review }, set: { draft.toilet.review = $0 }),
+                note: finalReviewNoteBinding(),
+                remainingPhotoSlots: ReviewNoteDraft.maxPhotos - draft.toilet.review.photos.count,
                 isLastStep: true,
                 onBack: goBackOneStep,
                 onContinue: {
@@ -576,6 +577,41 @@ struct ContributeReviewFlowView: View {
         case .toilet:
             Binding(get: { draft.toilet.review }, set: { draft.toilet.review = $0 })
         }
+    }
+
+    /// Final Review shows every photo from earlier steps in one strip while
+    /// keeping per-facility ownership for submit. New photos still land on toilet.
+    private func finalReviewNoteBinding() -> Binding<ReviewNoteDraft> {
+        Binding(
+            get: {
+                var merged = ReviewNoteDraft()
+                merged.text = draft.toilet.review.text
+                merged.photos = draft.allReviewPhotos
+                return merged
+            },
+            set: { newValue in
+                let oldPhotos = draft.allReviewPhotos
+                let oldIDs = Set(oldPhotos.map(\.id))
+                let newIDs = Set(newValue.photos.map(\.id))
+
+                draft.toilet.review.text = newValue.text
+
+                for id in oldIDs.subtracting(newIDs) {
+                    draft.removeReviewPhoto(id: id)
+                }
+
+                for photo in newValue.photos {
+                    if let existing = oldPhotos.first(where: { $0.id == photo.id }),
+                       existing.caption != photo.caption {
+                        draft.updateReviewPhotoCaption(id: photo.id, caption: photo.caption)
+                    }
+                }
+
+                for photo in newValue.photos where !oldIDs.contains(photo.id) {
+                    draft.toilet.review.photos.append(photo)
+                }
+            }
+        )
     }
 
     private func applyMapping(for kind: FacilityKind) {

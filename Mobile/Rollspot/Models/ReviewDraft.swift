@@ -171,6 +171,32 @@ struct ReviewNoteDraft {
     }
 }
 
+// MARK: - Merged review photos (Final Review)
+
+extension ReviewDraft {
+    /// All photos captured across entrance, elevator, and toilet steps, in order.
+    var allReviewPhotos: [ReviewPhotoDraft] {
+        lobby.review.photos
+            + basement.review.photos
+            + elevator.review.photos
+            + toilet.review.photos
+    }
+
+    func removeReviewPhoto(id: UUID) {
+        lobby.review.removePhoto(id: id)
+        basement.review.removePhoto(id: id)
+        elevator.review.removePhoto(id: id)
+        toilet.review.removePhoto(id: id)
+    }
+
+    func updateReviewPhotoCaption(id: UUID, caption: String) {
+        lobby.review.updatePhotoCaption(id: id, caption: caption)
+        basement.review.updatePhotoCaption(id: id, caption: caption)
+        elevator.review.updatePhotoCaption(id: id, caption: caption)
+        toilet.review.updatePhotoCaption(id: id, caption: caption)
+    }
+}
+
 // MARK: - Wizard steps
 
 enum ReviewStep: Int, CaseIterable {
