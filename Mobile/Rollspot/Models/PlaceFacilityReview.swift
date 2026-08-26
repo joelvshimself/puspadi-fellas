@@ -56,6 +56,23 @@ struct PlaceFacilityReview: Identifiable, Hashable {
     /// card, because a machine-derived claim about a ramp must never be shown
     /// as somebody's first-hand report of one.
     var provenance: ReviewProvenance = .community
+    /// For an imported row, the page the claim was read on. Shown as the
+    /// byline and opened on tap — quoting somebody else's words without
+    /// pointing at them is the part that would not be defensible.
+    var sourceURL: URL? = nil
+
+    /// What to put where a reviewer's name goes.
+    ///
+    /// An imported row has no author in the app, and letting it fall through
+    /// to "Community" would credit a stranger's aside on a review site to this
+    /// app's contributors. The host is both the honest answer and the useful
+    /// one — a reader can weigh "tripadvisor.com" for themselves.
+    var bylineName: String? {
+        if provenance != .community {
+            return sourceURL?.host?.replacingOccurrences(of: "www.", with: "")
+        }
+        return reviewerName
+    }
 
     var providedList: String {
         providedTags.joined(separator: ", ")

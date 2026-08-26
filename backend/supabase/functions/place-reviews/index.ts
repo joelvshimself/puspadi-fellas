@@ -56,7 +56,7 @@ Deno.serve(async (req: Request) => {
   const { data: reviews, error: reviewsError } = await supabase
     .from("reviews")
     .select(`
-      id, user_id, created_at, notes, provenance,
+      id, user_id, created_at, notes, provenance, source_url,
       elevator_exists, elevator_wheelchair_accessible, elevator_blockers,
       elevator_review_text, elevator_photo_urls, elevator_photo_captions,
       has_disabled_toilet, toilet_review_text, toilet_photo_urls, toilet_photo_captions

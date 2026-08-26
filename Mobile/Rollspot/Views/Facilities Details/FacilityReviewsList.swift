@@ -31,7 +31,7 @@ struct FacilityReviewRow: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
-                        Text(review.reviewerName ?? "Community".localized)
+                        Text(review.bylineName ?? "Community".localized)
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(.primary)
                         // A handle like "Tidal Frangipani" reads as a real name
@@ -51,7 +51,21 @@ struct FacilityReviewRow: View {
                             .foregroundStyle(.secondary)
                     }
                     if let badge = review.provenance.badgeLabel {
-                        provenanceBadge(badge)
+                        if let source = review.sourceURL {
+                            // Tappable: the quote is somebody else's writing,
+                            // and a citation nobody can follow is not really a
+                            // citation.
+                            Link(destination: source) {
+                                HStack(spacing: 4) {
+                                    provenanceBadge(badge)
+                                    Image(systemName: "arrow.up.right.square")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        } else {
+                            provenanceBadge(badge)
+                        }
                     }
                 }
 

@@ -450,6 +450,7 @@ final class ReviewService {
         /// that predates the pseudonym/provenance migration still decodes.
         let reviewerIsPseudonym: Bool?
         let provenance: String?
+        let sourceUrl: String?
 
         enum CodingKeys: String, CodingKey {
             case id
@@ -471,6 +472,7 @@ final class ReviewService {
             case reviewerAvatarUrl = "reviewer_avatar_url"
             case reviewerIsPseudonym = "reviewer_is_pseudonym"
             case provenance
+            case sourceUrl = "source_url"
         }
     }
 
@@ -536,6 +538,7 @@ final class ReviewService {
                 copy.reviewerRole = row.reviewerRole
                 copy.reviewerIsPseudonym = row.reviewerIsPseudonym ?? false
                 copy.provenance = ReviewProvenance(rawValueOrCommunity: row.provenance)
+                copy.sourceURL = row.sourceUrl.flatMap(URL.init(string:))
                 copy.reviewerAvatarURL = row.reviewerAvatarUrl.flatMap(URL.init(string:))
                 return copy
             }
