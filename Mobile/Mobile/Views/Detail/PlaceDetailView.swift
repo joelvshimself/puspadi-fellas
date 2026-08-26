@@ -235,9 +235,33 @@ struct PlaceDetailView: View {
     }
 
     private var titleBlock: some View {
-        Text(place.name)
-            .font(.largeTitle.bold())
-            .padding(.top, -4)
+        VStack(alignment: .leading, spacing: 4) {
+            Text(place.name)
+                .font(.largeTitle.bold())
+                .padding(.top, -4)
+
+            if !place.address.isEmpty {
+                Text(place.address)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let hours = place.openingHours {
+                Label(hours, systemImage: "clock")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            // ODbL requires the credit to be shown wherever the data is, not
+            // just recorded in the database it came from.
+            if let attribution = place.dataAttribution {
+                Text(attribution)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .padding(.top, 2)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var liveReviewsSection: some View {

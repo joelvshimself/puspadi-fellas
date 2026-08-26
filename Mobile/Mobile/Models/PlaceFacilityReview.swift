@@ -1,5 +1,30 @@
 import Foundation
 
+/// Where a review came from. Mirrors the `review_provenance` enum in Postgres.
+enum ReviewProvenance: String, Hashable {
+    /// Written by a person using the app. The default, and the only value
+    /// submit-accessibility-review ever writes.
+    case community
+    /// Brought in from an external dataset.
+    case imported
+    /// Derived from OpenStreetMap tags.
+    case osm
+
+    init(rawValueOrCommunity raw: String?) {
+        self = ReviewProvenance(rawValue: raw ?? "") ?? .community
+    }
+
+    /// Nil for community reviews — the ordinary case needs no badge, and
+    /// labelling every card would make the label invisible.
+    var badgeLabel: String? {
+        switch self {
+        case .community: nil
+        case .imported: "Imported data"
+        case .osm: "From OpenStreetMap"
+        }
+    }
+}
+
 /// One community review row for a specific facility at a place.
 struct PlaceFacilityReview: Identifiable, Hashable {
     let id: UUID
@@ -15,14 +40,32 @@ struct PlaceFacilityReview: Identifiable, Hashable {
     /// `place-reviews` Edge Function (profiles are RLS-locked to their owner,
     /// so the client can never read them directly). All nil for legacy rows
     /// written before auth.
+    ///
+    /// `reviewerName` is a PSEUDONYM unless the account opted into showing its
+    /// real name — see the pseudonyms migration. It is stable per account, so
+    /// a reader can recognise a contributor across places.
     var reviewerName: String? = nil
     var reviewerRole: String? = nil
     var reviewerAvatarURL: URL? = nil
+    /// True when `reviewerName` is a handle rather than a person's real name.
+    /// Drives the small "handle" marker on the card — a made-up name presented
+    /// with no qualifier reads as a real one.
+    var reviewerIsPseudonym: Bool = false
+    /// Who authored the underlying review: a person using the app, or an
+    /// import from a data source. Anything but `.community` is labelled on the
+    /// card, because a machine-derived claim about a ramp must never be shown
+    /// as somebody's first-hand report of one.
+    var provenance: ReviewProvenance = .community
 
     var providedList: String {
         providedTags.joined(separator: ", ")
     }
 
+    /// Whether the contributor actually wrote something. False for the many
+    /// reviews that answered only the structured questions — those carry their
+    /// content in `providedTags` and have no prose to quote.
+    var hasBodyText: Bool {
+        !bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     /// Caption for the photo at `index` in `photoURLs`, if any.
     func caption(forPhotoAt index: Int) -> String? {
         guard index >= 0, index < photoCaptions.count else { return nil }

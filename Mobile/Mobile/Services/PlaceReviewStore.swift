@@ -9,6 +9,11 @@ final class PlaceReviewStore: ObservableObject {
     @Published private(set) var reviewPhotos: [ReviewPhoto] = []
     @Published private(set) var streetImageURL: URL?
     @Published private(set) var imageAttribution: String?
+    /// Curated photographs of the venue itself (see PlacePhotoService).
+    /// Preferred over the street-level image where they exist: a photo the
+    /// venue publishes of its own frontage beats whatever Mapillary happened
+    /// to drive past.
+    @Published private(set) var venuePhotos: [PlacePhoto] = []
     @Published private(set) var isLoading = false
     @Published private(set) var enrichResolved = false
     @Published private(set) var reviewPhotosLoadFailed = false
@@ -44,7 +49,10 @@ final class PlaceReviewStore: ObservableObject {
 
     init(place: Place) {
         self.place = place
-        self.placeId = Place.canonicalPlaceId(from: place.coordinate)
+        // A directory place already knows which row it is — no guess needed,
+        // and no chance of addressing a neighbouring id while enrich() is
+        // still in flight.
+        self.placeId = place.directoryPlaceId ?? Place.canonicalPlaceId(from: place.coordinate)
     }
 
     deinit {
@@ -101,7 +109,8 @@ final class PlaceReviewStore: ObservableObject {
         }
 
         async let reviews = loadFacilityReviews(placeId: placeId)
-        let (reviewRows, photoResponse) = await (reviews, loadReviewPhotos())
+        async let venue = PlacePhotoService.shared.photos(for: placeId)
+        let (reviewRows, photoResponse, venueRows) = await (reviews, loadReviewPhotos(), venue)
 
         guard generation == loadGeneration else {
             print("[PlaceReviewStore] Discarding stale refresh for \(placeId)")
@@ -109,6 +118,7 @@ final class PlaceReviewStore: ObservableObject {
         }
 
         reviewsAttempted = true
+        venuePhotos = venueRows
         featureGrades = enrichResponse?.grade ?? []
         imageAttribution = enrichResponse?.place?.imageAttribution
         streetImageURL = enrichResponse?.place?.imageUrl.flatMap(URL.init(string:))
@@ -226,8 +236,18 @@ final class PlaceReviewStore: ObservableObject {
         }
     }
 
+    /// Opening sentences of the most recent reviews that actually say
+    /// something, newest first.
+    ///
+    /// Filters BEFORE taking `limit`, not after. Most reviews answer only the
+    /// structured questions, so slicing the newest three and then dropping the
+    /// textless ones routinely left this empty while a real note sat fourth in
+    /// the list. Nothing is synthesised to pad it out: if nobody has written
+    /// about this facility the section says so, which is true and is also an
+    /// invitation to be the first.
     func noteSnippets(for kind: FacilityKind, limit: Int = 3) -> [String] {
         reviews(for: kind)
+            .filter(\.hasBodyText)
             .prefix(limit)
             .map(\.firstSentence)
             .filter { !$0.isEmpty }

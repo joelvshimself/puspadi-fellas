@@ -1,5 +1,6 @@
 import CoreLocation
 import SwiftUI
+import UIKit
 
 /// Primary place details screen — hero carousel, grade banner, and the
 /// Overview / Reviews / Photos sections scoped to one facility at a time
@@ -73,8 +74,28 @@ struct MockPlaceDetailView: View {
         _store = StateObject(wrappedValue: PlaceReviewStore(place: place))
     }
 
+    /// The hero carousel, in the order a reader benefits from most.
+    ///
+    /// A photograph the venue publishes of its own frontage comes first: it
+    /// shows the building, from the street, in good light. Mapillary's
+    /// street-level capture is next — real, but whatever the camera car drove
+    /// past. Contributors' facility photos last: a close-up of a lift button
+    /// is invaluable further down the page and unrecognisable as a hero.
+    private var heroSlides: [(url: URL, credit: String?)] {
+        var slides: [(URL, String?)] = store.venuePhotos.compactMap { photo in
+            photo.imageURL.map { ($0, photo.requiresCredit ? photo.credit : nil) }
+        }
+        if let street = store.streetImageURL {
+            slides.append((street, store.imageAttribution))
+        }
+        slides.append(contentsOf: store.reviewPhotos.compactMap { photo in
+            photo.imageURL.map { ($0, nil) }
+        })
+        return slides
+    }
+
     private var heroURLs: [URL] {
-        store.reviewPhotos.compactMap(\.imageURL)
+        heroSlides.map(\.url)
     }
 
     /// Downloads the carousel's images ahead of the swipe, a couple at a time
@@ -88,7 +109,7 @@ struct MockPlaceDetailView: View {
     }
 
     private var totalHeroCount: Int {
-        max(1, (store.streetImageURL != nil ? 1 : 0) + heroURLs.count)
+        max(1, heroSlides.count)
     }
 
     var body: some View {
@@ -295,48 +316,59 @@ struct MockPlaceDetailView: View {
 
     @ViewBuilder
     private func heroSlide(index: Int, width: CGFloat, height: CGFloat) -> some View {
-        if index == 0, let street = store.streetImageURL {
-            AsyncImage(url: street) { phase in
-                if case .success(let image) = phase {
-                    image.resizable().aspectRatio(contentMode: .fill)
-                } else {
-                    PlaceImageView(
-                        coordinate: place.coordinate,
-                        remoteImageURL: street,
-                        attribution: store.imageAttribution,
-                        resolved: store.enrichResolved,
-                        height: height,
-                        cornerRadius: 0
-                    )
-                }
-            }
-            .frame(width: width, height: height)
-            .clipped()
-        } else {
-            let photoIndex = store.streetImageURL != nil ? index - 1 : index
-            if photoIndex >= 0, photoIndex < heroURLs.count {
-                AsyncImage(url: heroURLs[photoIndex]) { phase in
+        let slides = heroSlides
+        if index >= 0, index < slides.count {
+            let slide = slides[index]
+            ZStack(alignment: .bottomLeading) {
+                AsyncImage(url: slide.url) { phase in
                     switch phase {
                     case .success(let image):
                         image.resizable().aspectRatio(contentMode: .fill)
+                    case .failure:
+                        // Only the first slide has somewhere sensible to fall
+                        // back to; a failed contributor photo is just a gap.
+                        if index == 0 {
+                            PlaceImageView(
+                                coordinate: place.coordinate,
+                                remoteImageURL: slide.url,
+                                attribution: store.imageAttribution,
+                                resolved: store.enrichResolved,
+                                height: height,
+                                cornerRadius: 0
+                            )
+                        } else {
+                            Color(.secondarySystemBackground)
+                        }
                     default:
                         Color(.secondarySystemBackground)
                     }
                 }
                 .frame(width: width, height: height)
                 .clipped()
-            } else {
-                PlaceImageView(
-                    coordinate: place.coordinate,
-                    remoteImageURL: nil,
-                    attribution: store.imageAttribution,
-                    resolved: store.enrichResolved,
-                    height: height,
-                    cornerRadius: 0
-                )
-                .frame(width: width, height: height)
-                .clipped()
+
+                // The credit is a condition of using the image, not a caption
+                // to drop when it is inconvenient.
+                if let credit = slide.credit {
+                    Text(credit)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.black.opacity(0.35), in: Capsule())
+                        .padding(10)
+                }
             }
+        } else {
+            PlaceImageView(
+                coordinate: place.coordinate,
+                remoteImageURL: nil,
+                attribution: store.imageAttribution,
+                resolved: store.enrichResolved,
+                height: height,
+                cornerRadius: 0
+            )
+            .frame(width: width, height: height)
+            .clipped()
         }
     }
 
@@ -423,6 +455,34 @@ struct MockPlaceDetailView: View {
                 }
                 .animation(.snappy(duration: 0.2), value: activePage)
             }
+
+            Spacer()
+
+            NavigationLink {
+                MockGalleryView(
+                    streetImageURL: store.streetImageURL,
+                    venuePhotos: store.venuePhotos,
+                    reviewPhotos: store.reviewPhotos,
+                    place: place,
+                    onPhotosChanged: { Task { await store.load() } }
+                )
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "photo.fill.on.rectangle.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("GALLERY".localized)
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background {
+                    Capsule().fill(Color.white.opacity(0.55))
+                    Capsule().fill(.ultraThinMaterial)
+                }
+            }
+            .buttonStyle(.plain)
+
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 20)
@@ -512,17 +572,53 @@ struct MockPlaceDetailView: View {
 
     private var titleBlock: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(place.name)
-                .font(.system(size: 26, weight: .bold))
-                .foregroundStyle(.primary)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(place.name)
+                    .font(.system(size: 26, weight: .bold))
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                // A place with no community reviews yet is not a place we know
+                // nothing about — the directory row carries its street, its
+                // hours and its floor count. Showing none of that left a
+                // screen with a name and two buttons on it, which read as
+                // broken rather than as unreviewed.
+                if !place.address.isEmpty {
+                    Text(place.address)
+                        .font(.system(size: 15))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let hours = place.openingHours {
+                    Label(hours, systemImage: "clock")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                }
+            }
 
             HStack(spacing: 10) {
                 PlaceActionPill(icon: "location.fill", title: "Open in Maps", action: openMaps)
                 PlaceActionPill(icon: "phone.fill", title: "Call", action: callWhatsApp)
+                if place.website != nil {
+                    PlaceActionPill(icon: "safari.fill", title: "Website", action: openWebsite)
+                }
                 Spacer(minLength: 0)
             }
+
+            // ODbL does not let us keep the credit in the database and off the
+            // screen: it has to travel with the data wherever it is shown.
+            if let attribution = place.dataAttribution {
+                Text(attribution)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+            }
         }
+    }
+
+    private func openWebsite() {
+        guard let website = place.website, let url = URL(string: website) else { return }
+        UIApplication.shared.open(url)
     }
 
     private var emptyStateContent: some View {
@@ -596,13 +692,17 @@ struct MockPlaceDetailView: View {
 
             NotesFromReviewsSection(
                 snippets: notes,
+                hasReviews: store.hasReviews(for: selectedFacility),
                 onOpenReviews: { withAnimation(.snappy(duration: 0.22)) { selectedSection = .reviews } }
             )
 
-            // The empty notes card already carries a "Be the first reviewer"
-            // button — a second identical CTA right under it is noise, so this
-            // block only appears once there is something to disagree with.
-            if !notes.isEmpty {
+            // "Something to disagree with" means this facility has been
+            // reviewed at all — NOT that somebody wrote prose about it. Those
+            // came apart once the fabricated "Community review" note went
+            // away: most reviews answer only the structured questions, so
+            // gating on `notes` would have hidden the edit CTA on exactly the
+            // facilities that have answers worth correcting.
+            if store.hasReviews(for: selectedFacility) {
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Find something different?".localized)
                         .font(.system(size: 20, weight: .bold))
