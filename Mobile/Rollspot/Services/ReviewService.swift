@@ -558,10 +558,10 @@ final class ReviewService {
                             createdAt: date,
                             bodyText: body,
                             providedTags: entranceTags(from: entrance),
-                            photoURLs: entrance.photoUrls ?? []
+                            photoURLs: entrance.photoUrls ?? [],
+                            photoCaptions: entrance.photoCaptions ?? []
                         ))
                     ))
-
                 }
             }
             if row.elevatorExists != nil || row.elevatorWheelchairAccessible != nil
@@ -575,10 +575,9 @@ final class ReviewService {
                     createdAt: date,
                     bodyText: body,
                     providedTags: elevatorTags(from: row),
-
                     photoURLs: row.elevatorPhotoUrls ?? [],
                     photoCaptions: row.elevatorPhotoCaptions ?? []
-                )))
+                ))))
             }
             if row.hasDisabledToilet == false {
                 results.append((dedupeKey(row, "toilet"), withReviewer(PlaceFacilityReview(
@@ -588,10 +587,9 @@ final class ReviewService {
                     createdAt: date,
                     bodyText: (row.toiletReviewText ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
                     providedTags: ["NOT AVAILABLE"],
-
                     photoURLs: row.toiletPhotoUrls ?? [],
                     photoCaptions: row.toiletPhotoCaptions ?? []
-                )))
+                ))))
             } else if row.hasDisabledToilet == true
                         || !(row.toiletReviewText ?? "").isEmpty
                         || !(row.toiletPhotoUrls ?? []).isEmpty {
@@ -603,7 +601,8 @@ final class ReviewService {
                     createdAt: date,
                     bodyText: body,
                     providedTags: toiletTags(from: row),
-                    photoURLs: row.toiletPhotoUrls ?? []
+                    photoURLs: row.toiletPhotoUrls ?? [],
+                    photoCaptions: row.toiletPhotoCaptions ?? []
                 ))))
             }
         }
@@ -643,9 +642,6 @@ final class ReviewService {
         for entry in newestFirst {
             if let key = entry.key {
                 guard seen.insert(key).inserted else { continue }
-                    photoURLs: row.toiletPhotoUrls ?? [],
-                    photoCaptions: row.toiletPhotoCaptions ?? []
-                )))
             }
             kept.append(entry.review)
         }

@@ -66,6 +66,8 @@ struct PlaceFacilityReview: Identifiable, Hashable {
     /// content in `providedTags` and have no prose to quote.
     var hasBodyText: Bool {
         !bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     /// Caption for the photo at `index` in `photoURLs`, if any.
     func caption(forPhotoAt index: Int) -> String? {
         guard index >= 0, index < photoCaptions.count else { return nil }
