@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct MobileApp: App {
+struct RollspotApp: App {
     @StateObject private var languageManager = LanguageManager.shared
     @StateObject private var authSession = AuthSessionStore()
     

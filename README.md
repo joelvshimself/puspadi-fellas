@@ -1,12 +1,12 @@
 # Puspadi Fellas
 
-An app that helps people with mobility disabilities make informed decisions by showing accessibility info for places — sourced from Google Places / OpenStreetMap and enriched by crowdsourced reviews and one-tap confirmations. (Pivoted 2026-08-12 from an earlier TikTok-video-analysis design — see `docs/specs.md` §1 for why.)
+Rollspot is an app that helps people with mobility disabilities make informed decisions by showing accessibility info for places — sourced from Google Places / OpenStreetMap and enriched by crowdsourced reviews and one-tap confirmations. (Pivoted 2026-08-12 from an earlier TikTok-video-analysis design — see `docs/specs.md` §1 for why.)
 
 ## Monorepo layout
 
 ```text
 puspadi-fellas/
-├── Mobile/     # SwiftUI iOS app
+├── Mobile/     # Rollspot — SwiftUI iOS app
 ├── backend/    # Supabase project (Postgres, Auth, Storage, Edge Functions)
 └── docs/       # Spec + system design diagrams — read this first
 ```
@@ -41,7 +41,7 @@ cache, and the IMDF/CoreMotion positioning split for route recording) is in
 Open the iOS app in Xcode:
 
 ```bash
-open Mobile/Mobile.xcodeproj
+open Mobile/Rollspot.xcodeproj
 ```
 
 Then select a simulator and run (⌘R).
@@ -49,8 +49,8 @@ Then select a simulator and run (⌘R).
 ### Folder layout
 
 ```text
-Mobile/Mobile/
-├── App/                 # App entry (MobileApp)
+Mobile/Rollspot/
+├── App/                 # App entry (RollspotApp)
 ├── Models/              # Domain models + mock data
 ├── Views/
 │   ├── ContentView.swift

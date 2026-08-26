@@ -935,7 +935,7 @@ struct MockPlaceDetailView: View {
         // both, so the message text silently vanished. Chat apps linkify the
         // https URL inside plain text on their own. The link redirects into
         // the app — see DeepLinkRouter and the place-link Edge Function.
-        var shareText = "Check out \(place.name) — \(gradeText) on Roll Stop!"
+        var shareText = "Check out \(place.name) — \(gradeText) on Rollspot!"
         if let url = DeepLinkRouter.shareURL(for: place) {
             shareText += "\n\(url.absoluteString)"
         }

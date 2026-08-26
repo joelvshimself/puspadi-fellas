@@ -11,26 +11,26 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		A10000000000000000000001 /* Mobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000000000001 /* Rollspot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Rollspot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		A1000000000000000000000E1 /* Exceptions for "Mobile" folder in "Mobile" target */ = {
+		A1000000000000000000000E1 /* Exceptions for "Rollspot" folder in "Rollspot" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
-			target = A10000000000000000000006 /* Mobile */;
+			target = A10000000000000000000006 /* Rollspot */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		A10000000000000000000002 /* Mobile */ = {
+		A10000000000000000000002 /* Rollspot */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				A1000000000000000000000E1 /* Exceptions for "Mobile" folder in "Mobile" target */,
+				A1000000000000000000000E1 /* Exceptions for "Rollspot" folder in "Rollspot" target */,
 			);
-			path = Mobile;
+			path = Rollspot;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -50,7 +50,7 @@
 		A10000000000000000000004 = {
 			isa = PBXGroup;
 			children = (
-				A10000000000000000000002 /* Mobile */,
+				A10000000000000000000002 /* Rollspot */,
 				A10000000000000000000005 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -58,7 +58,7 @@
 		A10000000000000000000005 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				A10000000000000000000001 /* Mobile.app */,
+				A10000000000000000000001 /* Rollspot.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -66,9 +66,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		A10000000000000000000006 /* Mobile */ = {
+		A10000000000000000000006 /* Rollspot */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A1000000000000000000000A /* Build configuration list for PBXNativeTarget "Mobile" */;
+			buildConfigurationList = A1000000000000000000000A /* Build configuration list for PBXNativeTarget "Rollspot" */;
 			buildPhases = (
 				A10000000000000000000007 /* Sources */,
 				A10000000000000000000003 /* Frameworks */,
@@ -79,14 +79,14 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				A10000000000000000000002 /* Mobile */,
+				A10000000000000000000002 /* Rollspot */,
 			);
-			name = Mobile;
+			name = Rollspot;
 			packageProductDependencies = (
 				A20000000000000000000002 /* Supabase */,
 			);
-			productName = Mobile;
-			productReference = A10000000000000000000001 /* Mobile.app */;
+			productName = Rollspot;
+			productReference = A10000000000000000000001 /* Rollspot.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -104,7 +104,7 @@
 					};
 				};
 			};
-			buildConfigurationList = A1000000000000000000000B /* Build configuration list for PBXProject "Mobile" */;
+			buildConfigurationList = A1000000000000000000000B /* Build configuration list for PBXProject "Rollspot" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -121,7 +121,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				A10000000000000000000006 /* Mobile */,
+				A10000000000000000000006 /* Rollspot */,
 			);
 		};
 /* End PBXProject section */
@@ -271,9 +271,9 @@
 		A1000000000000000000000E /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = RollSpot;
+				ASSETCATALOG_COMPILER_APPICON_NAME = Rollspot;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = Mobile/Mobile.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Rollspot/Rollspot.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -281,12 +281,12 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Roll Stop";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Roll Stop uses your camera so you can take photos of a place's accessibility features.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Roll Stop uses your location to find and check accessibility info for places near you.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Roll Stop uses your microphone for voice search.";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Roll Stop uses your photo library so you can set a profile picture and attach photos to reviews.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Roll Stop uses speech recognition to search places with your voice.";
+				INFOPLIST_KEY_CFBundleDisplayName = "Rollspot";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Rollspot uses your camera so you can take photos of a place's accessibility features.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Rollspot uses your location to find and check accessibility info for places near you.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Rollspot uses your microphone for voice search.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Rollspot uses your photo library so you can set a profile picture and attach photos to reviews.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Rollspot uses speech recognition to search places with your voice.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -310,9 +310,9 @@
 		A1000000000000000000000F /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = RollSpot;
+				ASSETCATALOG_COMPILER_APPICON_NAME = Rollspot;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = Mobile/Mobile.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Rollspot/Rollspot.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -320,12 +320,12 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Roll Stop";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Roll Stop uses your camera so you can take photos of a place's accessibility features.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Roll Stop uses your location to find and check accessibility info for places near you.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Roll Stop uses your microphone for voice search.";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Roll Stop uses your photo library so you can set a profile picture and attach photos to reviews.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Roll Stop uses speech recognition to search places with your voice.";
+				INFOPLIST_KEY_CFBundleDisplayName = "Rollspot";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Rollspot uses your camera so you can take photos of a place's accessibility features.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Rollspot uses your location to find and check accessibility info for places near you.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Rollspot uses your microphone for voice search.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Rollspot uses your photo library so you can set a profile picture and attach photos to reviews.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Rollspot uses speech recognition to search places with your voice.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -349,7 +349,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		A1000000000000000000000A /* Build configuration list for PBXNativeTarget "Mobile" */ = {
+		A1000000000000000000000A /* Build configuration list for PBXNativeTarget "Rollspot" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A1000000000000000000000E /* Debug */,
@@ -358,7 +358,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		A1000000000000000000000B /* Build configuration list for PBXProject "Mobile" */ = {
+		A1000000000000000000000B /* Build configuration list for PBXProject "Rollspot" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A1000000000000000000000C /* Debug */,
