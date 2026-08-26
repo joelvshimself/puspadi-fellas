@@ -1,54 +1,63 @@
 import SwiftUI
 
 /// Branded cold-launch splash: rotating ring/star over a static crescent mark.
-/// Shown for 1 second before the main app content appears.
+/// Shown for 1 second after it is visible and the scene is active, then calls `onFinished`.
 struct SplashScreenView: View {
-    @State private var rotation: Double = 0
-    @State private var isSpinning = false
+    var onFinished: () -> Void = {}
 
-    private static let rotationPeriod: TimeInterval = 2
+    @Environment(\.scenePhase) private var scenePhase
+
+    /// Wall-clock start of the visible spin. `nil` until the scene is active so
+    /// cold launch doesn't burn the timer before anything is on screen — and
+    /// rotation always begins at 0°.
+    @State private var startDate: Date?
+
+    private static let displayDuration: TimeInterval = 1
+    private static let rotationPeriod: TimeInterval = 1
 
     var body: some View {
-        ZStack {
-            Color.white
-                .ignoresSafeArea()
+        TimelineView(
+            .animation(
+                minimumInterval: 1.0 / 60.0,
+                paused: startDate == nil
+            )
+        ) { context in
+            let elapsed = startDate.map { context.date.timeIntervalSince($0) } ?? 0
+            let rotation = (elapsed / Self.rotationPeriod)
+                .truncatingRemainder(dividingBy: 1) * 360
 
             ZStack {
-                Image("Spla")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 143, height: 143)
-                    .rotationEffect(.degrees(rotation))
-                    .offset(y: -75)
+                Color.white
+                    .ignoresSafeArea()
 
-                Image("Splash Subtract")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 147, height: 73)
-                    .offset(y: -16)
+                ZStack {
+                    Image("Spla")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 143, height: 143)
+                        .rotationEffect(.degrees(rotation))
+                        .offset(y: -75)
 
-                Text("RollSpot")
-                    .font(Font(UIFont(name: "SFProDisplay-Bold", size: 40) ?? .systemFont(ofSize: 40, weight: .bold)))
-                    .foregroundStyle(.black)
-                    .offset(y: 60)
+                    Image("Splash Subtract")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 147, height: 73)
+                        .offset(y: -16)
+
+                    Text("RollSpot")
+                        .font(Font(UIFont(name: "SFProDisplay-Bold", size: 40) ?? .systemFont(ofSize: 40, weight: .bold)))
+                        .foregroundStyle(.black)
+                        .offset(y: 60)
+                }
             }
         }
-        .onAppear {
-            isSpinning = true
-            startSpinning()
-        }
-        .onDisappear {
-            isSpinning = false
-        }
-    }
-
-    private func startSpinning() {
-        guard isSpinning else { return }
-        withAnimation(.easeInOut(duration: Self.rotationPeriod)) {
-            rotation += 360
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.rotationPeriod) {
-            startSpinning()
+        .task(id: scenePhase) {
+            guard scenePhase == .active, startDate == nil else { return }
+            // One frame after becoming active so layout/assets can paint first.
+            await Task.yield()
+            startDate = .now
+            try? await Task.sleep(nanoseconds: UInt64(Self.displayDuration * 1_000_000_000))
+            onFinished()
         }
     }
 }
