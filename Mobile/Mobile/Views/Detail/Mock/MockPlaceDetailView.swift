@@ -1,5 +1,6 @@
 import CoreLocation
 import SwiftUI
+import UIKit
 
 /// Primary place details screen — hero carousel, grade banner, and the
 /// Overview / Reviews / Photos sections scoped to one facility at a time
@@ -509,17 +510,53 @@ struct MockPlaceDetailView: View {
 
     private var titleBlock: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(place.name)
-                .font(.system(size: 26, weight: .bold))
-                .foregroundStyle(.primary)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(place.name)
+                    .font(.system(size: 26, weight: .bold))
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                // A place with no community reviews yet is not a place we know
+                // nothing about — the directory row carries its street, its
+                // hours and its floor count. Showing none of that left a
+                // screen with a name and two buttons on it, which read as
+                // broken rather than as unreviewed.
+                if !place.address.isEmpty {
+                    Text(place.address)
+                        .font(.system(size: 15))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let hours = place.openingHours {
+                    Label(hours, systemImage: "clock")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                }
+            }
 
             HStack(spacing: 10) {
                 PlaceActionPill(icon: "location.fill", title: "Open in Maps", action: openMaps)
                 PlaceActionPill(icon: "phone.fill", title: "Call", action: callWhatsApp)
+                if place.website != nil {
+                    PlaceActionPill(icon: "safari.fill", title: "Website", action: openWebsite)
+                }
                 Spacer(minLength: 0)
             }
+
+            // ODbL does not let us keep the credit in the database and off the
+            // screen: it has to travel with the data wherever it is shown.
+            if let attribution = place.dataAttribution {
+                Text(attribution)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+            }
         }
+    }
+
+    private func openWebsite() {
+        guard let website = place.website, let url = URL(string: website) else { return }
+        UIApplication.shared.open(url)
     }
 
     private var emptyStateContent: some View {
