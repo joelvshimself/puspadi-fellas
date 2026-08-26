@@ -89,6 +89,17 @@ final class PlaceReviewStore: ObservableObject {
         provisionalTask?.cancel()
     }
 
+    /// Adopt the canonical place_id the backend filed a just-submitted review
+    /// under before reloading — keeps place-reviews and place-review-photos aligned.
+    func adoptPlaceId(_ canonicalId: String) {
+        guard !canonicalId.isEmpty, canonicalId != placeId else { return }
+        let previous = placeId
+        placeId = canonicalId
+        if let snapshot = Self.snapshots[previous] {
+            Self.snapshots[canonicalId] = snapshot
+        }
+    }
+
     func load() async {
         loadGeneration += 1
         let generation = loadGeneration
@@ -256,7 +267,7 @@ final class PlaceReviewStore: ObservableObject {
     func reviews(for kind: FacilityKind) -> [PlaceFacilityReview] {
         facilityReviews
             .filter { $0.kind == kind }
-            .sorted { $0.createdAt > $1.createdAt }
+            .sorted { PlaceFacilityReview.isNewerFirst($0, $1) }
     }
 
     func hasReviews(for kind: FacilityKind) -> Bool {

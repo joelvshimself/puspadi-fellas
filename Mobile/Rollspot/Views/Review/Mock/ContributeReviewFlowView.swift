@@ -1,5 +1,11 @@
 import SwiftUI
 
+/// Fired when the backend accepts a contribute review — before the user taps Done.
+struct ContributeReviewSubmission {
+    let reviewId: UUID?
+    let placeId: String?
+}
+
 /// New "Contribute a Review" flow — real Supabase submit with draft persistence.
 struct ContributeReviewFlowView: View {
     let place: Place
@@ -11,7 +17,7 @@ struct ContributeReviewFlowView: View {
     /// Done on the confirmation screen — so the presenting page can stage its
     /// "Your review submitted!" state. `onFinished` alone can't tell a
     /// submission from a cancel. Passes the new review id when available.
-    let onSubmitted: ((UUID?) -> Void)?
+    let onSubmitted: ((ContributeReviewSubmission) -> Void)?
     let onFinished: () -> Void
 
     @StateObject private var draft: ReviewDraft
@@ -51,7 +57,7 @@ struct ContributeReviewFlowView: View {
         startingFacility: FacilityKind? = nil,
         initialScreenIndex: Int = 0,
         ignoreDraftRestore: Bool = false,
-        onSubmitted: ((UUID?) -> Void)? = nil,
+        onSubmitted: ((ContributeReviewSubmission) -> Void)? = nil,
         onFinished: @escaping () -> Void
     ) {
         self.place = place
@@ -599,7 +605,8 @@ struct ContributeReviewFlowView: View {
     }
 
     /// Final Review shows every photo from earlier steps in one strip while
-    /// keeping per-facility ownership for submit. New photos still land on toilet.
+    /// keeping per-facility ownership for submit. New photos land on the
+    /// last facility the user actually contributed to in this flow.
     private func finalReviewNoteBinding() -> Binding<ReviewNoteDraft> {
         Binding(
             get: {
@@ -627,10 +634,75 @@ struct ContributeReviewFlowView: View {
                 }
 
                 for photo in newValue.photos where !oldIDs.contains(photo.id) {
-                    draft.toilet.review.photos.append(photo)
+                    appendFinalReviewPhoto(photo)
                 }
             }
         )
+    }
+
+    /// Last facility in the walk that carries any structured answers, notes,
+    /// or photos — where Final Review additions should be filed.
+    private var lastContributedFacility: FacilityKind {
+        for kind in orderedFacilities.reversed() {
+            if facilityHasContribution(kind) { return kind }
+        }
+        return orderedFacilities.last ?? .toilet
+    }
+
+    private func facilityHasContribution(_ kind: FacilityKind) -> Bool {
+        switch kind {
+        case .entrance:
+            return entranceLocations.contains { location in
+                let entrance = location == .lobby ? draft.lobby : draft.basement
+                return !entranceTags(for: location).isEmpty
+                    || !entrance.review.text.isEmpty
+                    || !entrance.review.photos.isEmpty
+                    || entrance.hasDropoffRamp != nil
+                    || entrance.hasRails != nil
+                    || entrance.doorType != nil
+            }
+        case .elevator:
+            return !elevatorAnswers.isEmpty
+                || !draft.elevator.review.text.isEmpty
+                || !draft.elevator.review.photos.isEmpty
+                || draft.elevator.exists != nil
+                || draft.elevator.wheelchairAccessible != nil
+        case .toilet:
+            return toiletInitialAnswer != nil
+                || !toiletTags.isEmpty
+                || !draft.toilet.review.text.isEmpty
+                || !draft.toilet.review.photos.isEmpty
+                || draft.toilet.hasDisabledToilet != nil
+        }
+    }
+
+    private var lastContributedEntranceLocation: EntranceLocation {
+        for location in EntranceLocation.allCases.reversed() where entranceLocations.contains(location) {
+            let entrance = location == .lobby ? draft.lobby : draft.basement
+            if !entranceTags(for: location).isEmpty
+                || !entrance.review.text.isEmpty
+                || !entrance.review.photos.isEmpty
+                || entrance.hasDropoffRamp != nil
+                || entrance.hasRails != nil
+                || entrance.doorType != nil {
+                return location
+            }
+        }
+        return entranceLocations.sorted { $0.rawValue < $1.rawValue }.last ?? .lobby
+    }
+
+    private func appendFinalReviewPhoto(_ photo: ReviewPhotoDraft) {
+        switch lastContributedFacility {
+        case .entrance:
+            switch lastContributedEntranceLocation {
+            case .lobby: draft.lobby.review.photos.append(photo)
+            case .basement: draft.basement.review.photos.append(photo)
+            }
+        case .elevator:
+            draft.elevator.review.photos.append(photo)
+        case .toilet:
+            draft.toilet.review.photos.append(photo)
+        }
     }
 
     private func applyMapping(for kind: FacilityKind) {
@@ -772,7 +844,7 @@ struct ContributeReviewFlowView: View {
             try? await Task.sleep(nanoseconds: 500_000_000)
             UnfinishedReviewStore.clear(for: place)
             isSubmitted = true
-            onSubmitted?(nil)
+            onSubmitted?(ContributeReviewSubmission(reviewId: nil, placeId: nil))
             return
         }
         #endif
@@ -781,7 +853,10 @@ struct ContributeReviewFlowView: View {
             let response = try await ReviewService.shared.submit(draft)
             UnfinishedReviewStore.clear(for: place)
             isSubmitted = true
-            onSubmitted?(UUID(uuidString: response.reviewId))
+            onSubmitted?(ContributeReviewSubmission(
+                reviewId: UUID(uuidString: response.reviewId),
+                placeId: response.placeId
+            ))
         } catch {
             print("[ContributeReviewFlow] Submit failed: \(error)")
             submitError = Self.submitErrorMessage(for: error)

@@ -242,7 +242,14 @@ struct NotReviewView: View {
             }
         }
         .fullScreenCover(isPresented: $showContributeFlow) {
-            ContributeReviewFlowView(place: place) {
+            ContributeReviewFlowView(
+                place: place,
+                onSubmitted: { submission in
+                    if let canonicalId = submission.placeId {
+                        store.adoptPlaceId(canonicalId)
+                    }
+                }
+            ) {
                 showContributeFlow = false
                 Task {
                     await PlaceCacheStore.shared.remove(store.placeId)

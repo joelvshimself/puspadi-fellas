@@ -135,7 +135,9 @@ struct ProfileReviewsView: View {
             let resolvedName = response.userName?.isEmpty == false ? response.userName! : (displayName.isEmpty ? "You" : displayName)
             let resolvedAvatar = response.profileImageUrl.flatMap(URL.init(string:)) ?? avatarURL
             let resolvedRole = response.userRole?.localized ?? mobilityLabel
-            let items = response.reviews.map { row in
+            let items = response.reviews
+                .sorted { $0.createdAt > $1.createdAt }
+                .map { row in
                 let resolved = SavedPlaceSnapshotStore.place(for: row.placeId)
                 return ProfileReviewItem(
                     id: row.id,

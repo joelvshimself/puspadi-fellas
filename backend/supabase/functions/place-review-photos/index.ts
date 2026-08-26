@@ -77,8 +77,8 @@ Deno.serve(async (req: Request) => {
     }, 500);
   }
 
-  // Preserve newest-review-first: group entrances by review, then walk reviews
-  // in the ordered list and append elevator/toilet after that review's entrances.
+  // Newest review first: group entrances by review, then walk reviews in
+  // submission order (newest to oldest) and append elevator/toilet photos.
   const entrancesByReview = new Map<string, Array<{ location: string; photo_urls: string[]; photo_captions: string[] }>>();
   for (const row of entrances ?? []) {
     const id = row.review_id as string;
