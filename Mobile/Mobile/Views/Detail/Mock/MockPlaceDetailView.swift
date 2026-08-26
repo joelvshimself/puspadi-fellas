@@ -39,6 +39,7 @@ struct MockPlaceDetailView: View {
     @State private var reviewJustSubmitted = false
     @State private var lastSubmittedReviewId: UUID?
     @State private var myReviewPresentation: MyReviewPresentation?
+    @State private var isOpeningMyReview = false
 
     @State private var selectedSection: PlaceDetailSection = .overview
     @State private var selectedFacility: FacilityKind = .entrance
@@ -422,33 +423,8 @@ struct MockPlaceDetailView: View {
                 }
                 .animation(.snappy(duration: 0.2), value: activePage)
             }
-
-            Spacer()
-
-            NavigationLink {
-                MockGalleryView(
-                    streetImageURL: store.streetImageURL,
-                    reviewPhotos: store.reviewPhotos,
-                    place: place,
-                    onPhotosChanged: { Task { await store.load() } }
-                )
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "photo.fill.on.rectangle.fill")
-                        .font(.system(size: 12, weight: .semibold))
-                    Text("GALLERY".localized)
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .foregroundStyle(.primary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background {
-                    Capsule().fill(Color.white.opacity(0.55))
-                    Capsule().fill(.ultraThinMaterial)
-                }
-            }
-            .buttonStyle(.plain)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 20)
         // 14pt of clearance above the grade banner, which now covers the
         // bottom 18pt of the hero.
@@ -657,6 +633,8 @@ struct MockPlaceDetailView: View {
     /// opening the My Review screen (Figma "Reviewed" → "My Review").
     private var submittedBanner: some View {
         Button {
+            guard !isOpeningMyReview else { return }
+            isOpeningMyReview = true
             Task { await openMyReview() }
         } label: {
             HStack(spacing: 10) {
@@ -667,9 +645,14 @@ struct MockPlaceDetailView: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.primary)
                 Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                if isOpeningMyReview {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
@@ -679,10 +662,13 @@ struct MockPlaceDetailView: View {
             )
         }
         .buttonStyle(.plain)
+        .disabled(isOpeningMyReview)
         .transition(.scale(scale: 1.1).combined(with: .opacity))
     }
 
     private func openMyReview() async {
+        defer { isOpeningMyReview = false }
+
         do {
             let response = try await ReviewService.shared.fetchMyReviews()
             let profile = try await ProfileService.shared.fetchCurrent()
@@ -849,7 +835,7 @@ struct MockPlaceDetailView: View {
         // both, so the message text silently vanished. Chat apps linkify the
         // https URL inside plain text on their own. The link redirects into
         // the app — see DeepLinkRouter and the place-link Edge Function.
-        var shareText = "Check out \(place.name) — \(gradeText) on Puspadi Fellas!"
+        var shareText = "Check out \(place.name) — \(gradeText) on Roll Stop!"
         if let url = DeepLinkRouter.shareURL(for: place) {
             shareText += "\n\(url.absoluteString)"
         }

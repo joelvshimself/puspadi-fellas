@@ -100,7 +100,11 @@ final class ReviewService {
             guard case .local(let image) = photo.source,
                   let data = image.jpegData(compressionQuality: ReviewNoteDraft.jpegQuality)
             else { return nil }
-            return ReviewPhotoDraft(image: image, jpegData: data)
+            return ReviewPhotoDraft(
+                image: image,
+                jpegData: data,
+                caption: photo.caption ?? ""
+            )
         }
         guard !jpegPhotos.isEmpty else { return }
 
@@ -116,13 +120,25 @@ final class ReviewService {
         switch facility {
         case .entrance:
             draft.lobby.review.photos = jpegPhotos
-            urlMap.lobby = try await uploadPhotos(jpegPhotos, appleMapsId: draft.appleMapsId, facility: "lobby")
+            (urlMap.lobby, urlMap.lobbyCaptions) = try await uploadPhotosWithCaptions(
+                jpegPhotos,
+                appleMapsId: draft.appleMapsId,
+                facility: "lobby"
+            )
         case .elevator:
             draft.elevator.review.photos = jpegPhotos
-            urlMap.elevator = try await uploadPhotos(jpegPhotos, appleMapsId: draft.appleMapsId, facility: "elevator")
+            (urlMap.elevator, urlMap.elevatorCaptions) = try await uploadPhotosWithCaptions(
+                jpegPhotos,
+                appleMapsId: draft.appleMapsId,
+                facility: "elevator"
+            )
         case .toilet:
             draft.toilet.review.photos = jpegPhotos
-            urlMap.toilet = try await uploadPhotos(jpegPhotos, appleMapsId: draft.appleMapsId, facility: "toilet")
+            (urlMap.toilet, urlMap.toiletCaptions) = try await uploadPhotosWithCaptions(
+                jpegPhotos,
+                appleMapsId: draft.appleMapsId,
+                facility: "toilet"
+            )
         }
 
         let payload = draft.buildSubmissionPayload(photoUrls: urlMap)
@@ -193,27 +209,39 @@ final class ReviewService {
 
     private func uploadAllPhotos(for draft: ReviewDraft) async throws -> ReviewPhotoURLMap {
         var map = ReviewPhotoURLMap()
-        map.lobby = try await uploadPhotos(
+        (map.lobby, map.lobbyCaptions) = try await uploadPhotosWithCaptions(
             draft.lobby.review.photos,
             appleMapsId: draft.appleMapsId,
             facility: "lobby"
         )
-        map.basement = try await uploadPhotos(
+        (map.basement, map.basementCaptions) = try await uploadPhotosWithCaptions(
             draft.basement.review.photos,
             appleMapsId: draft.appleMapsId,
             facility: "basement"
         )
-        map.elevator = try await uploadPhotos(
+        (map.elevator, map.elevatorCaptions) = try await uploadPhotosWithCaptions(
             draft.elevator.review.photos,
             appleMapsId: draft.appleMapsId,
             facility: "elevator"
         )
-        map.toilet = try await uploadPhotos(
+        (map.toilet, map.toiletCaptions) = try await uploadPhotosWithCaptions(
             draft.toilet.review.photos,
             appleMapsId: draft.appleMapsId,
             facility: "toilet"
         )
         return map
+    }
+
+    private func uploadPhotosWithCaptions(
+        _ photos: [ReviewPhotoDraft],
+        appleMapsId: String,
+        facility: String
+    ) async throws -> ([String], [String]) {
+        let urls = try await uploadPhotos(photos, appleMapsId: appleMapsId, facility: facility)
+        let captions = photos.map {
+            $0.caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return (urls, captions)
     }
 
     /// Uploads JPEGs to `reviews/{appleMapsId}/{facility}/{uuid}.jpg` and
@@ -376,6 +404,7 @@ final class ReviewService {
         let isWideEnough: Bool?
         let reviewText: String?
         let photoUrls: [String]?
+        let photoCaptions: [String]?
 
         enum CodingKeys: String, CodingKey {
             case location
@@ -385,6 +414,7 @@ final class ReviewService {
             case isWideEnough = "is_wide_enough"
             case reviewText = "review_text"
             case photoUrls = "photo_urls"
+            case photoCaptions = "photo_captions"
         }
     }
 
@@ -397,9 +427,11 @@ final class ReviewService {
         let elevatorBlockers: [String]?
         let elevatorReviewText: String?
         let elevatorPhotoUrls: [String]?
+        let elevatorPhotoCaptions: [String]?
         let hasDisabledToilet: Bool?
         let toiletReviewText: String?
         let toiletPhotoUrls: [String]?
+        let toiletPhotoCaptions: [String]?
         let reviewEntrances: [DBReviewEntranceRow]?
         /// Joined server-side by place-reviews; nil for legacy anonymous rows.
         let reviewerName: String?
@@ -415,9 +447,11 @@ final class ReviewService {
             case elevatorBlockers = "elevator_blockers"
             case elevatorReviewText = "elevator_review_text"
             case elevatorPhotoUrls = "elevator_photo_urls"
+            case elevatorPhotoCaptions = "elevator_photo_captions"
             case hasDisabledToilet = "has_disabled_toilet"
             case toiletReviewText = "toilet_review_text"
             case toiletPhotoUrls = "toilet_photo_urls"
+            case toiletPhotoCaptions = "toilet_photo_captions"
             case reviewEntrances = "review_entrances"
             case reviewerName = "reviewer_name"
             case reviewerRole = "reviewer_role"
@@ -500,7 +534,8 @@ final class ReviewService {
                         createdAt: date,
                         bodyText: body.isEmpty ? "Community review" : body,
                         providedTags: entranceTags(from: entrance),
-                        photoURLs: entrance.photoUrls ?? []
+                        photoURLs: entrance.photoUrls ?? [],
+                        photoCaptions: entrance.photoCaptions ?? []
                     )))
                 }
             }
@@ -515,7 +550,8 @@ final class ReviewService {
                     createdAt: date,
                     bodyText: body.isEmpty ? "Community review" : body,
                     providedTags: elevatorTags(from: row),
-                    photoURLs: row.elevatorPhotoUrls ?? []
+                    photoURLs: row.elevatorPhotoUrls ?? [],
+                    photoCaptions: row.elevatorPhotoCaptions ?? []
                 )))
             }
             if row.hasDisabledToilet == false {
@@ -526,7 +562,8 @@ final class ReviewService {
                     createdAt: date,
                     bodyText: row.toiletReviewText ?? "No accessible toilet reported",
                     providedTags: ["NOT AVAILABLE"],
-                    photoURLs: row.toiletPhotoUrls ?? []
+                    photoURLs: row.toiletPhotoUrls ?? [],
+                    photoCaptions: row.toiletPhotoCaptions ?? []
                 )))
             } else if row.hasDisabledToilet == true
                         || !(row.toiletReviewText ?? "").isEmpty
@@ -539,7 +576,8 @@ final class ReviewService {
                     createdAt: date,
                     bodyText: body.isEmpty ? "Community review" : body,
                     providedTags: toiletTags(from: row),
-                    photoURLs: row.toiletPhotoUrls ?? []
+                    photoURLs: row.toiletPhotoUrls ?? [],
+                    photoCaptions: row.toiletPhotoCaptions ?? []
                 )))
             }
         }

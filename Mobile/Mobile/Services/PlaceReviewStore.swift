@@ -253,7 +253,11 @@ final class PlaceReviewStore: ObservableObject {
             let reviewId = facilityReviews.first { review in
                 review.photoURLs.contains(photo.url)
             }?.reviewId
-            return FacilityPhoto(source: .remote(url), reviewId: reviewId)
+            return FacilityPhoto(
+                source: .remote(url),
+                reviewId: reviewId,
+                caption: photo.trimmedCaption
+            )
         }
     }
 
