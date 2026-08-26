@@ -11,6 +11,7 @@ struct FacilityReviewRow: View {
         review.photoURLs.enumerated().compactMap { index, urlString in
             guard let remote = URL(string: urlString) else { return nil }
             return FacilityPhoto(
+                id: .stable(from: "\(index)|\(urlString)"),
                 source: .remote(remote),
                 reviewId: review.reviewId,
                 caption: review.caption(forPhotoAt: index)
@@ -245,6 +246,7 @@ struct FacilityReviewsList: View {
                             let siblings = review.photoURLs.enumerated().compactMap { index, urlString -> FacilityPhoto? in
                                 guard let remote = URL(string: urlString) else { return nil }
                                 return FacilityPhoto(
+                                    id: .stable(from: "\(index)|\(urlString)"),
                                     source: .remote(remote),
                                     reviewId: review.reviewId,
                                     caption: review.caption(forPhotoAt: index)

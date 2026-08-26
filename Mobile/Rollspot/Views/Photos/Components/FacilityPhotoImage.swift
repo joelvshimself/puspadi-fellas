@@ -16,6 +16,8 @@ struct FacilityPhotoImage: View {
         Color.clear
             .overlay { content }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .clipped()
     }
 
     @ViewBuilder
@@ -25,16 +27,19 @@ struct FacilityPhotoImage: View {
             Image(uiImage: image)
                 .resizable()
                 .aspectRatio(contentMode: fillsFrame ? .fill : .fit)
+                .clipped()
         case let .asset(name):
             Image(name)
                 .resizable()
                 .aspectRatio(contentMode: fillsFrame ? .fill : .fit)
+                .clipped()
         case let .remote(url):
             Group {
                 if let remoteImage {
                     Image(uiImage: remoteImage)
                         .resizable()
                         .aspectRatio(contentMode: fillsFrame ? .fill : .fit)
+                        .clipped()
                 } else if !finishedLoadingRemote {
                     placeholder(symbol: nil)
                 } else {

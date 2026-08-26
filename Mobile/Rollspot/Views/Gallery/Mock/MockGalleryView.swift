@@ -57,10 +57,10 @@ struct MockGalleryView: View {
 
         if selectedFilter == .all {
             photos.append(contentsOf: venuePhotos.compactMap { photo in
-                photo.imageURL.map { FacilityPhoto(source: .remote($0)) }
+                photo.imageURL.map { FacilityPhoto(id: .stable(from: $0.absoluteString), source: .remote($0)) }
             })
             if let streetImageURL {
-                photos.append(FacilityPhoto(source: .remote(streetImageURL)))
+                photos.append(FacilityPhoto(id: .stable(from: streetImageURL.absoluteString), source: .remote(streetImageURL)))
             }
         }
 
@@ -73,7 +73,7 @@ struct MockGalleryView: View {
 
         for photo in matching {
             if let url = photo.imageURL {
-                photos.append(FacilityPhoto(source: .remote(url)))
+                photos.append(FacilityPhoto(id: .stable(from: url.absoluteString), source: .remote(url)))
             }
         }
         return photos
