@@ -229,8 +229,18 @@ final class PlaceReviewStore: ObservableObject {
         }
     }
 
+    /// Opening sentences of the most recent reviews that actually say
+    /// something, newest first.
+    ///
+    /// Filters BEFORE taking `limit`, not after. Most reviews answer only the
+    /// structured questions, so slicing the newest three and then dropping the
+    /// textless ones routinely left this empty while a real note sat fourth in
+    /// the list. Nothing is synthesised to pad it out: if nobody has written
+    /// about this facility the section says so, which is true and is also an
+    /// invitation to be the first.
     func noteSnippets(for kind: FacilityKind, limit: Int = 3) -> [String] {
         reviews(for: kind)
+            .filter(\.hasBodyText)
             .prefix(limit)
             .map(\.firstSentence)
             .filter { !$0.isEmpty }

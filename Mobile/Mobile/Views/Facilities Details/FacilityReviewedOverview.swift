@@ -43,6 +43,7 @@ struct FacilityReviewedOverview: View {
 
             NotesFromReviewsSection(
                 snippets: store.noteSnippets(for: kind),
+                hasReviews: store.hasReviews(for: kind),
                 onOpenReviews: onOpenReviews
             )
 

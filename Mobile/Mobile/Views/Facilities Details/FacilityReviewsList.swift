@@ -60,10 +60,17 @@ struct FacilityReviewRow: View {
 
             Divider()
 
-            Text(review.bodyText)
-                .font(.system(size: 15))
-                .foregroundStyle(.primary)
-                .fixedSize(horizontal: false, vertical: true)
+            // Only when there is something to show. Most reviews answer just
+            // the structured questions, and this used to render the fabricated
+            // string "Community review" for every one of them — the same
+            // sentence under every card, saying nothing. What those reviews
+            // actually contribute is the "What Provided:" line below.
+            if review.hasBodyText {
+                Text(review.bodyText)
+                    .font(.system(size: 15))
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             if !review.providedList.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {

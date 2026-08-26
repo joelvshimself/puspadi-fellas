@@ -59,6 +59,13 @@ struct PlaceFacilityReview: Identifiable, Hashable {
         providedTags.joined(separator: ", ")
     }
 
+    /// Whether the contributor actually wrote something. False for the many
+    /// reviews that answered only the structured questions — those carry their
+    /// content in `providedTags` and have no prose to quote.
+    var hasBodyText: Bool {
+        !bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     /// First sentence of the review body for notes snippets.
     var firstSentence: String {
         PlaceFacilityReview.firstSentence(from: bodyText)

@@ -471,6 +471,17 @@ final class ReviewService {
         return f
     }()
 
+    /// Fans each stored review out into one row per facility it says something
+    /// about.
+    ///
+    /// `bodyText` is whatever the contributor actually typed, and is EMPTY when
+    /// they typed nothing — which is the common case, since the contribute flow
+    /// is mostly structured questions and the free-text box is optional. It
+    /// used to be filled with the literal string "Community review" instead, so
+    /// a place's overview showed three identical "Community review" rows under
+    /// "Notes from reviews" and the review cards all carried the same fake
+    /// sentence. A note nobody wrote is not a note; the structured answers are
+    /// carried by `providedTags`, and callers that want prose check for it.
     static func mapReviews(_ rows: [DBPlaceReviewRow]) -> [PlaceFacilityReview] {
         var results: [PlaceFacilityReview] = []
         for row in rows {
@@ -506,7 +517,7 @@ final class ReviewService {
                         reviewId: row.id,
                         kind: .entrance,
                         createdAt: date,
-                        bodyText: body.isEmpty ? "Community review" : body,
+                        bodyText: body,
                         providedTags: entranceTags(from: entrance),
                         photoURLs: entrance.photoUrls ?? []
                     )))
@@ -521,7 +532,7 @@ final class ReviewService {
                     reviewId: row.id,
                     kind: .elevator,
                     createdAt: date,
-                    bodyText: body.isEmpty ? "Community review" : body,
+                    bodyText: body,
                     providedTags: elevatorTags(from: row),
                     photoURLs: row.elevatorPhotoUrls ?? []
                 )))
@@ -532,7 +543,7 @@ final class ReviewService {
                     reviewId: row.id,
                     kind: .toilet,
                     createdAt: date,
-                    bodyText: row.toiletReviewText ?? "No accessible toilet reported",
+                    bodyText: (row.toiletReviewText ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
                     providedTags: ["NOT AVAILABLE"],
                     photoURLs: row.toiletPhotoUrls ?? []
                 )))
@@ -545,7 +556,7 @@ final class ReviewService {
                     reviewId: row.id,
                     kind: .toilet,
                     createdAt: date,
-                    bodyText: body.isEmpty ? "Community review" : body,
+                    bodyText: body,
                     providedTags: toiletTags(from: row),
                     photoURLs: row.toiletPhotoUrls ?? []
                 )))

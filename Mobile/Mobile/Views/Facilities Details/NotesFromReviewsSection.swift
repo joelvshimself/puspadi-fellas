@@ -6,6 +6,13 @@ import SwiftUI
 /// place?" state instead, and the floating CONTRIBUTE pill covers the rest.)
 struct NotesFromReviewsSection: View {
     let snippets: [String]
+    /// Whether this facility has been reviewed at all, regardless of whether
+    /// anyone wrote prose. Changes what "no notes" means: nobody has been
+    /// here, versus people have been and answered the questions without
+    /// adding a comment. Saying "no reviews yet" under a facility twenty-one
+    /// people have reviewed would be untrue and would discourage the reader
+    /// from trusting the answers right above it.
+    var hasReviews: Bool = false
     var onOpenReviews: () -> Void
 
     var body: some View {
@@ -14,7 +21,9 @@ struct NotesFromReviewsSection: View {
                 .font(.system(size: 17, weight: .semibold))
 
             if snippets.isEmpty {
-                Text("No notes for this facility yet".localized)
+                Text((hasReviews
+                      ? "No written notes yet — the details above come from reviewers' answers."
+                      : "No notes for this facility yet").localized)
                     .font(.system(size: 15))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -60,6 +69,11 @@ struct NotesFromReviewsSection: View {
 
 #Preview("Empty") {
     NotesFromReviewsSection(snippets: [], onOpenReviews: {})
+        .padding()
+}
+
+#Preview("Reviewed, but nobody wrote anything") {
+    NotesFromReviewsSection(snippets: [], hasReviews: true, onOpenReviews: {})
         .padding()
 }
 

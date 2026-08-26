@@ -593,13 +593,17 @@ struct MockPlaceDetailView: View {
 
             NotesFromReviewsSection(
                 snippets: notes,
+                hasReviews: store.hasReviews(for: selectedFacility),
                 onOpenReviews: { withAnimation(.snappy(duration: 0.22)) { selectedSection = .reviews } }
             )
 
-            // The empty notes card already carries a "Be the first reviewer"
-            // button — a second identical CTA right under it is noise, so this
-            // block only appears once there is something to disagree with.
-            if !notes.isEmpty {
+            // "Something to disagree with" means this facility has been
+            // reviewed at all — NOT that somebody wrote prose about it. Those
+            // came apart once the fabricated "Community review" note went
+            // away: most reviews answer only the structured questions, so
+            // gating on `notes` would have hidden the edit CTA on exactly the
+            // facilities that have answers worth correcting.
+            if store.hasReviews(for: selectedFacility) {
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Find something different?".localized)
                         .font(.system(size: 20, weight: .bold))
