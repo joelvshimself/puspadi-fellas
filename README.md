@@ -89,6 +89,8 @@ only writer allowed to call Google Places) and `submit-accessibility-review`
 ```text
 backend/
 ├── .env.example                          # copy to .env, fill in locally, never commit it
+├── scripts/                              # place-directory seed pipeline (see below)
+├── seed/                                 # the downloaded dataset + curated aliases
 └── supabase/
     ├── config.toml
     ├── migrations/
@@ -104,8 +106,58 @@ backend/
     │                                              # nullable user_id (testing)
     └── functions/
         ├── place-accessibility/           # Owner 1 — Google Places / OSM cache-gate
+        ├── places-nearby/                 # Owner 1 — curated place directory reads
         └── submit-accessibility-review/   # Owner 3 — contribute payload from iPhone
 ```
+
+### Place directory (Bali malls)
+
+`place_cache` is two things at once: a cache of whatever a user's lookup
+happened to resolve, and — since 2026-08-26 — a curated directory of places we
+imported deliberately (`is_seeded = true`). The first directory is the south
+Bali shopping malls, 22 of them, downloaded from OpenStreetMap.
+
+```text
+backend/
+├── scripts/
+│   ├── fetch-bali-malls.mjs          # Overpass -> seed/bali-malls.json
+│   ├── generate-bali-mall-seed.mjs   # that JSON -> the seed migration
+│   └── bali-mall-seed.template.sql   # what the generator renders
+└── seed/
+    ├── bali-malls.json               # the dataset, reviewable as a diff
+    └── bali-mall-aliases.json        # hand-curated: the other names each mall goes by
+```
+
+To refresh it:
+
+```bash
+node backend/scripts/fetch-bali-malls.mjs        # re-download from OSM
+node backend/scripts/generate-bali-mall-seed.mjs # rewrite the seed migration
+cd backend && npx supabase db push
+```
+
+The seed migration has a fixed filename and is idempotent, so a refresh
+*updates* it rather than stacking a second seed migration.
+
+**Why OpenStreetMap and not Google.** ODbL lets us store the data, redistribute
+it and build on it, provided the attribution travels with it — which is why
+`place_cache.data_attribution` exists and the detail page renders it. Google
+Places' terms allow caching a place ID and not much else, so Google stays where
+it already is: live enrichment behind `place-accessibility`, never a stored
+dataset.
+
+**Why the alias table.** Every source spells a mall differently — OSM says
+"Beachwalk Bali", MapKit says "Beachwalk Shopping Center" — and
+`resolve_place_id()` matches names exactly. Without `place_aliases` a client
+lookup misses the seeded row and mints a duplicate beside it. That failure is
+already visible in the live table (five Beachwalk rows, five Icon Bali rows);
+the seed migration folds those into the seeded id, reviews and saved places
+first.
+
+**Reading it back.** `places_directory_nearby()` (via the `places-nearby` Edge
+Function) is the directory's read side; the iOS client merges it with
+MKLocalSearch in `NearbyPlacesService.search`. `nearby_places()` is the older
+RPC and still has no caller.
 
 ### Getting started (per owner, on your own machine)
 

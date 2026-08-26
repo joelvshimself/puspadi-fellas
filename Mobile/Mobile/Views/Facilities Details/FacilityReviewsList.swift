@@ -26,13 +26,28 @@ struct FacilityReviewRow: View {
                 avatar
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(review.reviewerName ?? "Community".localized)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.primary)
+                    HStack(spacing: 6) {
+                        Text(review.reviewerName ?? "Community".localized)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.primary)
+                        // A handle like "Tidal Frangipani" reads as a real name
+                        // unless something says otherwise, and a reader
+                        // weighing a stranger's account of a ramp deserves to
+                        // know which they are looking at.
+                        if review.reviewerIsPseudonym {
+                            Image(systemName: "theatermasks")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .accessibilityLabel("Pseudonym".localized)
+                        }
+                    }
                     if let role = review.reviewerRole {
                         Text(role.localized)
                             .font(.system(size: 13))
                             .foregroundStyle(.secondary)
+                    }
+                    if let badge = review.provenance.badgeLabel {
+                        provenanceBadge(badge)
                     }
                 }
 
@@ -73,6 +88,22 @@ struct FacilityReviewRow: View {
                 }
             }
         }
+    }
+
+    /// Marks a card whose content did not come from a person using the app.
+    /// Deliberately plain rather than decorative — this is a caveat, not a
+    /// feature.
+    private func provenanceBadge(_ text: String) -> some View {
+        Text(text.localized)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(Color(.systemGray6))
+            )
+            .padding(.top, 2)
     }
 
     @ViewBuilder

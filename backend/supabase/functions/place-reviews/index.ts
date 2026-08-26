@@ -6,6 +6,15 @@
 // read their OWN profile row — so names could never come from the client.
 // The service role joins them here.
 //
+// PSEUDONYMOUS BY DEFAULT (2026-08-26). This endpoint used to return
+// display_name — the real name typed during onboarding — from an
+// unauthenticated endpoint, beside a statement about the person's disability
+// and photos of where they had been. It now returns profiles.pseudonym, a
+// stable per-account handle, and falls back to the real name only for accounts
+// that opted in with show_real_name. Stable rather than per-review random on
+// purpose: recognising a contributor whose judgement you trust is most of what
+// reviewer identity is FOR.
+//
 // Request:  { placeId: string }  — the id enrich() resolved; same id
 //           submit-accessibility-review filed the rows under.
 // Response: { status: "ok", reviews: [...] } — flattened snake_case rows in
@@ -14,6 +23,12 @@
 //
 // Public (verify_jwt = false in config.toml): review reads are public in the
 // product, and only display-safe profile fields ever leave this function.
+//
+// DEPLOY ORDER MATTERS: this selects reviews.provenance and
+// profiles.pseudonym / show_real_name. Deploying it before
+// 20260826092000_review_pseudonyms_and_provenance.sql is pushed makes every
+// review read fail with "column does not exist" — migrations first, then
+// functions.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -41,7 +56,7 @@ Deno.serve(async (req: Request) => {
   const { data: reviews, error: reviewsError } = await supabase
     .from("reviews")
     .select(`
-      id, user_id, created_at, notes,
+      id, user_id, created_at, notes, provenance,
       elevator_exists, elevator_wheelchair_accessible, elevator_blockers,
       elevator_review_text, elevator_photo_urls,
       has_disabled_toilet, toilet_review_text, toilet_photo_urls
@@ -81,11 +96,14 @@ Deno.serve(async (req: Request) => {
 
   // Reviewer identity — display-safe fields only.
   const userIds = [...new Set(rows.map((r) => r.user_id as string | null).filter(Boolean))] as string[];
-  const profiles = new Map<string, { name: string | null; role: string | null; avatar: string | null }>();
+  const profiles = new Map<
+    string,
+    { name: string | null; role: string | null; avatar: string | null; isPseudonym: boolean }
+  >();
   if (userIds.length > 0) {
     const { data: profileRows, error: profilesError } = await supabase
       .from("profiles")
-      .select("id, display_name, avatar_url, mobility_aids")
+      .select("id, display_name, avatar_url, mobility_aids, pseudonym, show_real_name")
       .in("id", userIds);
 
     if (profilesError) {
@@ -93,10 +111,22 @@ Deno.serve(async (req: Request) => {
       console.error("profiles query failed (continuing anonymous):", profilesError);
     }
     for (const p of profileRows ?? []) {
+      // Real name ONLY on an explicit opt-in. A missing pseudonym should not
+      // happen (a trigger assigns one at profile creation, and the migration
+      // backfilled the existing accounts), but if it ever does, falling back
+      // to the real name would leak exactly what this is here to protect —
+      // so the fallback is anonymity instead, and the client renders
+      // "Community".
+      const showReal = p.show_real_name === true;
+      const pseudonym = (p.pseudonym as string | null)?.trim() || null;
+      const realName = (p.display_name as string | null)?.trim() || null;
       profiles.set(p.id as string, {
-        name: (p.display_name as string | null)?.trim() || null,
+        name: showReal ? realName : pseudonym,
         role: deriveUserRole((p.mobility_aids as string[] | null) ?? []),
-        avatar: (p.avatar_url as string | null) ?? null,
+        // An avatar is a photograph of a person's face — publishing it beside
+        // a pseudonym would undo the pseudonym.
+        avatar: showReal ? ((p.avatar_url as string | null) ?? null) : null,
+        isPseudonym: !showReal && pseudonym !== null,
       });
     }
   }
@@ -110,6 +140,9 @@ Deno.serve(async (req: Request) => {
       reviewer_name: profile?.name ?? null,
       reviewer_role: profile?.role ?? null,
       reviewer_avatar_url: profile?.avatar ?? null,
+      // Lets the client mark a handle as a handle rather than passing it off
+      // as somebody's name.
+      reviewer_is_pseudonym: profile?.isPseudonym ?? false,
     };
   });
 

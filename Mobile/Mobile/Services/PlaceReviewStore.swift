@@ -44,7 +44,10 @@ final class PlaceReviewStore: ObservableObject {
 
     init(place: Place) {
         self.place = place
-        self.placeId = Place.canonicalPlaceId(from: place.coordinate)
+        // A directory place already knows which row it is — no guess needed,
+        // and no chance of addressing a neighbouring id while enrich() is
+        // still in flight.
+        self.placeId = place.directoryPlaceId ?? Place.canonicalPlaceId(from: place.coordinate)
     }
 
     deinit {

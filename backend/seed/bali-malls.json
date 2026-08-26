@@ -1,0 +1,577 @@
+{
+  "generated_at": "2026-08-26T00:23:48.129Z",
+  "generated_by": "backend/scripts/fetch-bali-malls.mjs",
+  "source": "OpenStreetMap via the Overpass API",
+  "license": "ODbL 1.0",
+  "attribution": "© OpenStreetMap contributors (ODbL)",
+  "bbox": {
+    "south": -8.87,
+    "west": 115.08,
+    "north": -8.58,
+    "east": 115.32
+  },
+  "reference_point": {
+    "name": "Kuta Beach",
+    "lat": -8.7175,
+    "lng": 115.1686
+  },
+  "counts": {
+    "returned": 46,
+    "kept": 22,
+    "dropped": 21
+  },
+  "dropped": [
+    {
+      "name": "Jimbaran Corner",
+      "reason": "small shophouse block"
+    },
+    {
+      "name": "Krishna Pusat Oleh Oleh (24 Hours)",
+      "reason": "souvenir warehouse, not a mall"
+    },
+    {
+      "name": "Matahari Department Store",
+      "reason": "department-store tenant inside another mall"
+    },
+    {
+      "name": "GM Discovery Shopping Mall Room",
+      "reason": "a room inside Discovery Mall, not a venue"
+    },
+    {
+      "name": "Harrads Hotel",
+      "reason": "hotel, mis-tagged shop=mall"
+    },
+    {
+      "name": "Robinson",
+      "reason": "department-store tenant inside another mall"
+    },
+    {
+      "name": "Rimo Trade Center",
+      "reason": "defunct — building vacant since 2019"
+    },
+    {
+      "name": "Чесночный переулок-магазины.",
+      "reason": "mis-tagged market alley, name is not a venue"
+    },
+    {
+      "name": "Centro Department Store",
+      "reason": "department-store tenant inside Discovery Mall"
+    },
+    {
+      "name": "Center of Kuta",
+      "reason": "shophouse row, not a mall"
+    },
+    {
+      "name": "Dod meets Pop",
+      "reason": "clothing boutique"
+    },
+    {
+      "name": "Dapur Prima(kitchen accessoires)",
+      "reason": "kitchenware shop, not a mall"
+    },
+    {
+      "name": "Dapur Prima",
+      "reason": "kitchenware shop, not a mall"
+    },
+    {
+      "name": "The Keranjang",
+      "reason": "souvenir centre, not a mall"
+    },
+    {
+      "name": "Palmbay Bali",
+      "reason": "beach club, mis-tagged"
+    },
+    {
+      "name": "The Find",
+      "reason": "concept store in Pererenan, bare node with no supporting tags"
+    },
+    {
+      "name": "Transmart",
+      "reason": "supermarket anchor tenant of Trans Studio Mall"
+    },
+    {
+      "name": "Bandung Collection",
+      "reason": "clothing shop"
+    },
+    {
+      "name": "Darma",
+      "reason": "unclear single shop, no supporting tags"
+    },
+    {
+      "name": "Oakley Vault",
+      "reason": "single-brand outlet store"
+    },
+    {
+      "name": "Krisna Oleh-Oleh (Bali Bypass)",
+      "reason": "souvenir warehouse, not a mall"
+    }
+  ],
+  "malls": [
+    {
+      "place_id": "loc_-8.7165_115.1696",
+      "osm_id": "way/520645071",
+      "name": "Beachwalk Bali",
+      "lat": -8.716548,
+      "lng": 115.16958,
+      "address": "Jalan Pantai Kuta, Kuta, Kabupaten Badung, Bali",
+      "city": "Kuta, Kabupaten Badung, Bali",
+      "postcode": "80361",
+      "phone": "+62 361 8464888",
+      "website": null,
+      "opening_hours": "10:00-00:00",
+      "levels": null,
+      "category": "Mall",
+      "osm_accessibility": {},
+      "distance_from_kuta_m": 151,
+      "aliases": [
+        "Beachwalk Shopping Center",
+        "Beachwalk Shopping Centre",
+        "Beachwalk Mall",
+        "Beachwalk Kuta"
+      ]
+    },
+    {
+      "place_id": "loc_-8.7283_115.1679",
+      "osm_id": "way/130633772",
+      "name": "Discovery Mall Bali",
+      "lat": -8.728254,
+      "lng": 115.167885,
+      "address": "Jalan Kartika Plaza, Kuta, Bali",
+      "city": "Kuta, Bali",
+      "postcode": "80361",
+      "phone": null,
+      "website": "https://www.discoveryshoppingmall.com/",
+      "opening_hours": null,
+      "levels": null,
+      "category": "Mall",
+      "osm_accessibility": {
+        "wheelchair": "yes"
+      },
+      "distance_from_kuta_m": 1198,
+      "aliases": [
+        "Discovery Shopping Mall",
+        "Discovery Mall",
+        "Discovery Mall Kuta"
+      ]
+    },
+    {
+      "place_id": "loc_-8.7116_115.1793",
+      "osm_id": "node/9813574140",
+      "name": "Istana Kuta Galeria",
+      "lat": -8.711634,
+      "lng": 115.179311,
+      "address": null,
+      "city": null,
+      "postcode": null,
+      "phone": null,
+      "website": null,
+      "opening_hours": null,
+      "levels": null,
+      "category": "Mall",
+      "osm_accessibility": {},
+      "distance_from_kuta_m": 1346,
+      "aliases": [
+        "Istana Kuta Galeria Mall",
+        "Kuta Galeria"
+      ]
+    },
+    {
+      "place_id": "loc_-8.7104_115.1793",
+      "osm_id": "way/803382029",
+      "name": "Kuta Gallery Mall",
+      "lat": -8.710388,
+      "lng": 115.179343,
+      "address": null,
+      "city": null,
+      "postcode": null,
+      "phone": null,
+      "website": null,
+      "opening_hours": null,
+      "levels": null,
+      "category": "Mall",
+      "osm_accessibility": {},
+      "distance_from_kuta_m": 1421,
+      "aliases": [
+        "Kuta Gallery"
+      ]
+    },
+    {
+      "place_id": "loc_-8.7230_115.1841",
+      "osm_id": "way/492684142",
+      "name": "Mall Bali Galeria",
+      "lat": -8.722955,
+      "lng": 115.184118,
+      "address": "Jl. By Pass I Gusti Ngurah Rai, Simpang Dewa Ruci, Kuta, Badung, Bali, Kabupaten Badung, Bali, Indonesia",
+      "city": "Kabupaten Badung, Bali, Indonesia",
+      "postcode": "80361",
+      "phone": null,
+      "website": null,
+      "opening_hours": null,
+      "levels": null,
+      "category": "Mall",
+      "osm_accessibility": {
+        "wheelchair": "yes"
+      },
+      "distance_from_kuta_m": 1810,
+      "aliases": [
+        "Mal Bali Galeria",
+        "Bali Galeria",
+        "Mall Bali Galeria Kuta"
+      ]
+    },
+    {
+      "place_id": "loc_-8.7151_115.1855",
+      "osm_id": "way/416092771",
+      "name": "Lippo Plaza Sunset",
+      "lat": -8.715053,
+      "lng": 115.185472,
+      "address": null,
+      "city": null,
+      "postcode": null,
+      "phone": null,
+      "website": null,
+      "opening_hours": null,
+      "levels": null,
+      "category": "Mall",
+      "osm_accessibility": {},
+      "distance_from_kuta_m": 1874,
+      "aliases": [
+        "Lippo Plaza Sunset Road",
+        "Lippo Plaza"
+      ]
+    },
+    {
+      "place_id": "loc_-8.7353_115.1665",
+      "osm_id": "way/260884085",
+      "name": "Lippo Mall Kuta",
+      "lat": -8.735329,
+      "lng": 115.166504,
+      "address": "Jalan Kartika Plaza, Kuta, Bali, Indonesia",
+      "city": "Kuta, Bali, Indonesia",
+      "postcode": "80361",
+      "phone": "+62 361 8978000",
+      "website": "https://www.lippomalls.com/",
+      "opening_hours": null,
+      "levels": 3,
+      "category": "Mall",
+      "osm_accessibility": {},
+      "distance_from_kuta_m": 1996,
+      "aliases": [
+        "Lippo Mall",
+        "Lippo Mall Kuta Bali"
+      ]
+    },
+    {
+      "place_id": "loc_-8.7370_115.1757",
+      "osm_id": "way/533844754",
+      "name": "Park23",
+      "lat": -8.736955,
+      "lng": 115.175717,
+      "address": null,
+      "city": null,
+      "postcode": null,
+      "phone": null,
+      "website": null,
+      "opening_hours": null,
+      "levels": 4,
+      "category": "Mall",
+      "osm_accessibility": {
+        "wheelchair": "limited",
+        "toilets:wheelchair": "yes"
+      },
+      "distance_from_kuta_m": 2300,
+      "aliases": [
+        "Park23 Mall",
+        "Park23 Entertainment Center"
+      ]
+    },
+    {
+      "place_id": "loc_-8.7020_115.1835",
+      "osm_id": "way/1363775659",
+      "name": "Trans Studio Mall Bali",
+      "lat": -8.702048,
+      "lng": 115.183507,
+      "address": "Jalan Imam Bonjol 440, Denpasar",
+      "city": "Denpasar",
+      "postcode": "80119",
+      "phone": "+62 811-2016-666",
+      "website": null,
+      "opening_hours": null,
+      "levels": null,
+      "category": "Mall",
+      "osm_accessibility": {},
+      "distance_from_kuta_m": 2374,
+      "aliases": [
+        "Trans Studio Mall (TSM) Bali",
+        "Trans Studio Mall",
+        "TSM Bali"
+      ]
+    },
+    {
+      "place_id": "loc_-8.6836_115.1565",
+      "osm_id": "way/568835520",
+      "name": "Seminyak Square",
+      "lat": -8.683581,
+      "lng": 115.156516,
+      "address": null,
+      "city": null,
+      "postcode": null,
+      "phone": null,
+      "website": null,
+      "opening_hours": null,
+      "levels": null,
+      "category": "Mall",
+      "osm_accessibility": {},
+      "distance_from_kuta_m": 3999,
+      "aliases": [
+        "Seminyak Square Shopping Center"
+      ]
+    },
+    {
+      "place_id": "loc_-8.6833_115.1569",
+      "osm_id": "way/900627334",
+      "name": "Seminyak Village",
+      "lat": -8.683257,
+      "lng": 115.156901,
+      "address": "Jl. Kayu Jati No.8, Seminyak, Kuta, Bali",
+      "city": "Seminyak, Kuta, Bali",
+      "postcode": "80361",
+      "phone": "+62 361 738097",
+      "website": "https://seminyakvillage.com/",
+      "opening_hours": null,
+      "levels": null,
+      "category": "Mall",
+      "osm_accessibility": {},
+      "distance_from_kuta_m": 4019,
+      "aliases": [
+        "Seminyak Village Mall"
+      ]
+    },
+    {
+      "place_id": "loc_-8.7612_115.1793",
+      "osm_id": "node/4177981176",
+      "name": "Benoa Square",
+      "lat": -8.761204,
+      "lng": 115.179321,
+      "address": "Jl. By Pass Ngurah Rai 21, Jimbaran, Kuta, Kabupaten Badung, Bali, Indonesia",
+      "city": "Jimbaran, Kuta, Kabupaten Badung, Bali, Indonesia",
+      "postcode": "80361",
+      "phone": "+62 36-17808121",
+      "website": "http://www.benoasquarebali.com/",
+      "opening_hours": null,
+      "levels": 4,
+      "category": "Mall",
+      "osm_accessibility": {},
+      "distance_from_kuta_m": 5000,
+      "aliases": [
+        "Benoa Square Mall"
+      ]
+    },
+    {
+      "place_id": "loc_-8.6808_115.2008",
+      "osm_id": "way/312542858",
+      "name": "Dewata Centro",
+      "lat": -8.680778,
+      "lng": 115.200767,
+      "address": "Jalan Teuku Umar, Denpasar",
+      "city": "Denpasar",
+      "postcode": null,
+      "phone": null,
+      "website": null,
+      "opening_hours": null,
+      "levels": null,
+      "category": "Mall",
+      "osm_accessibility": {},
+      "distance_from_kuta_m": 5401,
+      "aliases": [
+        "Dewata Centro Denpasar"
+      ]
+    },
+    {
+      "place_id": "loc_-8.6772_115.2054",
+      "osm_id": "way/311726093",
+      "name": "Libbi Plaza",
+      "lat": -8.677159,
+      "lng": 115.205401,
+      "address": "Jalan Teuku Umar 110, Denpasar",
+      "city": "Denpasar",
+      "postcode": "80114",
+      "phone": null,
+      "website": null,
+      "opening_hours": "Mo-Su 09:00-22:00",
+      "levels": null,
+      "category": "Mall",
+      "osm_accessibility": {},
+      "distance_from_kuta_m": 6040,
+      "aliases": []
+    },
+    {
+      "place_id": "loc_-8.6919_115.2172",
+      "osm_id": "way/316161659",
+      "name": "Plaza Udayana",
+      "lat": -8.691908,
+      "lng": 115.217182,
+      "address": "Jalan Raya Sesetan 122, Denpasar",
+      "city": "Denpasar",
+      "postcode": null,
+      "phone": null,
+      "website": null,
+      "opening_hours": "Mo-Su 09:00-22:00",
+      "levels": null,
+      "category": "Mall",
+      "osm_accessibility": {},
+      "distance_from_kuta_m": 6051,
+      "aliases": [
+        "Udayana Plaza"
+      ]
+    },
+    {
+      "place_id": "loc_-8.6698_115.2145",
+      "osm_id": "way/311366983",
+      "name": "Level 21 Mall Bali",
+      "lat": -8.669812,
+      "lng": 115.214452,
+      "address": "Jalan Teuku Umar 1, Denpasar",
+      "city": "Denpasar",
+      "postcode": "80113",
+      "phone": null,
+      "website": "https://level21mall.com/",
+      "opening_hours": "Mo-Su 08:30-22:00",
+      "levels": null,
+      "category": "Mall",
+      "osm_accessibility": {},
+      "distance_from_kuta_m": 7316,
+      "aliases": [
+        "Level 21",
+        "Level 21 Mall"
+      ]
+    },
+    {
+      "place_id": "loc_-8.6700_115.2173",
+      "osm_id": "way/311218910",
+      "name": "Mal Duta Plaza",
+      "lat": -8.669995,
+      "lng": 115.217298,
+      "address": "Jalan Dewi Sartika 4G, Denpasar",
+      "city": "Denpasar",
+      "postcode": null,
+      "phone": null,
+      "website": null,
+      "opening_hours": "Mo-Fr 08:00-22:00; Sa-Su 08:00-22:30",
+      "levels": 3,
+      "category": "Mall",
+      "osm_accessibility": {},
+      "distance_from_kuta_m": 7520,
+      "aliases": [
+        "Duta Plaza",
+        "Duta Plaza Denpasar"
+      ]
+    },
+    {
+      "place_id": "loc_-8.6659_115.2161",
+      "osm_id": "way/312040347",
+      "name": "Ramayana Mal Bali",
+      "lat": -8.665914,
+      "lng": 115.216139,
+      "address": "Jalan Diponegoro 103, Denpasar",
+      "city": "Denpasar",
+      "postcode": "80111",
+      "phone": "+62 361 246180",
+      "website": "https://ramayana.co.id/",
+      "opening_hours": null,
+      "levels": null,
+      "category": "Mall",
+      "osm_accessibility": {},
+      "distance_from_kuta_m": 7759,
+      "aliases": [
+        "Ramayana Bali Mall",
+        "Ramayana Mall Bali",
+        "Ramayana Denpasar"
+      ]
+    },
+    {
+      "place_id": "loc_-8.6730_115.2440",
+      "osm_id": "way/515378969",
+      "name": "Plaza Renon",
+      "lat": -8.67303,
+      "lng": 115.24403,
+      "address": null,
+      "city": null,
+      "postcode": null,
+      "phone": null,
+      "website": null,
+      "opening_hours": null,
+      "levels": null,
+      "category": "Mall",
+      "osm_accessibility": {},
+      "distance_from_kuta_m": 9654,
+      "aliases": [
+        "Plaza Renon Denpasar"
+      ]
+    },
+    {
+      "place_id": "loc_-8.7931_115.2147",
+      "osm_id": "node/4177605811",
+      "name": "Hardy's Malls Nusa Dua",
+      "lat": -8.793091,
+      "lng": 115.214677,
+      "address": "Jl. Nusa Dua, Benoa 77, South Kuta, Badung, Bali",
+      "city": "South Kuta, Badung, Bali",
+      "postcode": "80361",
+      "phone": "+62 361 774639",
+      "website": null,
+      "opening_hours": null,
+      "levels": null,
+      "category": "Mall",
+      "osm_accessibility": {},
+      "distance_from_kuta_m": 9813,
+      "aliases": [
+        "Hardys Nusa Dua"
+      ]
+    },
+    {
+      "place_id": "loc_-8.6868_115.2638",
+      "osm_id": "way/571147939",
+      "name": "Icon Bali",
+      "lat": -8.686759,
+      "lng": 115.263792,
+      "address": "Jalan Danau Tamblingan 27, Sanur",
+      "city": "Sanur",
+      "postcode": "80228",
+      "phone": null,
+      "website": "https://iconbalimall.com/",
+      "opening_hours": "10:00-22:00",
+      "levels": 4,
+      "category": "Mall",
+      "osm_accessibility": {},
+      "distance_from_kuta_m": 11007,
+      "aliases": [
+        "Icon Bali Mall",
+        "The Icon Bali",
+        "Icon Mall Bali"
+      ]
+    },
+    {
+      "place_id": "loc_-8.6344_115.2322",
+      "osm_id": "way/1233967428",
+      "name": "Living World Denpasar",
+      "lat": -8.63437,
+      "lng": 115.232151,
+      "address": "Jalan Bypass Gatot Subroto, Denpasar",
+      "city": "Denpasar",
+      "postcode": null,
+      "phone": "+62 811-1003-640",
+      "website": null,
+      "opening_hours": "Mo-Fr 10:00-22:00; Sa-Su 10:00-23:00",
+      "levels": null,
+      "category": "Mall",
+      "osm_accessibility": {},
+      "distance_from_kuta_m": 11586,
+      "aliases": [
+        "Living World",
+        "Living World Bali",
+        "Living World Mall"
+      ]
+    }
+  ]
+}

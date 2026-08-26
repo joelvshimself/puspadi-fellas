@@ -1,0 +1,96 @@
+{
+  "note": "Alternate names the SAME venue is known by. OSM's name is the key; the values are the other spellings a lookup may arrive under -- mostly what MapKit hands the iOS client, which is not what OSM stores. resolve_place_id() matches names exactly (punctuation and case stripped), so without these a client lookup for 'Beachwalk Shopping Center' does not find the seeded 'Beachwalk Bali' row, mints a duplicate, and the seed is wasted. Migration 20260826T_bali_mall_seed.sql loads these into public.place_aliases.",
+  "harvested_from": "The project's own place_cache on 2026-08-26: every Bali row whose name looked mall-like, grouped by venue. The duplicate clusters in that table ARE the evidence -- Beachwalk had five rows under one name, Icon Bali five, Park23 five across two spellings.",
+  "excluded_on_purpose": "Names of tenants INSIDE a mall are not aliases of the mall ('Popits Beachwalk Shopping Center', '69SLAM Discovery Shopping Mall (DSM)', 'Deus Ex Machina - Discovery Shopping Mall', 'Eiger Ramayana Bali Mall', 'Centro Department Store'). Aliasing them would file a shop's reviews against the whole mall.",
+  "aliases": {
+    "Beachwalk Bali": [
+      "Beachwalk Shopping Center",
+      "Beachwalk Shopping Centre",
+      "Beachwalk Mall",
+      "Beachwalk Kuta"
+    ],
+    "Discovery Mall Bali": [
+      "Discovery Shopping Mall",
+      "Discovery Mall",
+      "Discovery Mall Kuta"
+    ],
+    "Lippo Mall Kuta": [
+      "Lippo Mall",
+      "Lippo Mall Kuta Bali"
+    ],
+    "Park23": [
+      "Park23 Mall",
+      "Park 23 Mall",
+      "Park 23",
+      "Park23 Entertainment Center"
+    ],
+    "Trans Studio Mall Bali": [
+      "Trans Studio Mall (TSM) Bali",
+      "Trans Studio Mall",
+      "TSM Bali"
+    ],
+    "Mall Bali Galeria": [
+      "Mal Bali Galeria",
+      "Bali Galeria",
+      "Mall Bali Galeria Kuta"
+    ],
+    "Level 21 Mall Bali": [
+      "Level 21",
+      "Level 21 Mall",
+      "Level21 Mall Bali"
+    ],
+    "Living World Denpasar": [
+      "Living World",
+      "Living World Bali",
+      "Living World Mall"
+    ],
+    "Icon Bali": [
+      "Icon Bali Mall",
+      "The Icon Bali",
+      "Icon Mall Bali"
+    ],
+    "Lippo Plaza Sunset": [
+      "Lippo Plaza Sunset Road",
+      "Lippo Plaza"
+    ],
+    "Plaza Renon": [
+      "Plaza Renon Denpasar"
+    ],
+    "Seminyak Square": [
+      "Seminyak Square Shopping Center"
+    ],
+    "Seminyak Village": [
+      "Seminyak Village Mall"
+    ],
+    "Benoa Square": [
+      "Benoa Square Mall"
+    ],
+    "Istana Kuta Galeria": [
+      "Istana Kuta Galeria Mall",
+      "Kuta Galeria"
+    ],
+    "Ramayana Mal Bali": [
+      "Ramayana Bali Mall",
+      "Ramayana Mall Bali",
+      "Ramayana Denpasar"
+    ],
+    "Mal Duta Plaza": [
+      "Duta Plaza",
+      "Duta Plaza Denpasar"
+    ],
+    "Dewata Centro": [
+      "Dewata Centro Denpasar"
+    ],
+    "Plaza Udayana": [
+      "Udayana Plaza"
+    ],
+    "Kuta Gallery Mall": [
+      "Kuta Gallery"
+    ],
+    "Hardy's Malls Nusa Dua": [
+      "Hardy'S Malls Nusa Dua",
+      "Hardys Nusa Dua",
+      "Hardy's Nusa Dua"
+    ]
+  }
+}

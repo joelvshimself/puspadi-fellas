@@ -7,6 +7,12 @@ struct ProfileSettingsView: View {
     @EnvironmentObject private var auth: AuthSessionStore
 
     @State private var showLanguageSheet = false
+    @State private var pseudonym: String?
+    @State private var realName: String?
+    @State private var showRealName = false
+    /// Guards the toggle's own write from re-triggering it when the initial
+    /// load sets the state.
+    @State private var privacyLoaded = false
 
     private static let testFlightURL = URL(string: "https://testflight.apple.com/join/BkzVVnrt")!
 
@@ -42,6 +48,8 @@ struct ProfileSettingsView: View {
                     .buttonStyle(.plain)
                 }
                 .padding(.top, 12)
+
+                privacyCard
 
                 settingsCard {
                     settingsRow(
@@ -93,11 +101,73 @@ struct ProfileSettingsView: View {
             .padding(.bottom, 40)
         }
         .background(Color.mockSectionBackground)
+        .task {
+            guard !privacyLoaded else { return }
+            if let profile = try? await ProfileService.shared.fetchCurrent() {
+                pseudonym = profile.pseudonym
+                realName = profile.displayName
+                showRealName = profile.showRealName ?? false
+            }
+            privacyLoaded = true
+        }
+        .onChange(of: showRealName) { _, newValue in
+            // Only after the initial load — otherwise setting the state from
+            // the fetched profile would immediately write it straight back.
+            guard privacyLoaded else { return }
+            Task { try? await ProfileService.shared.updateShowRealName(newValue) }
+        }
         .sheet(isPresented: $showLanguageSheet) {
             languageSheet
                 .presentationDetents([.height(240)])
                 .presentationCornerRadius(28)
                 .presentationDragIndicator(.visible)
+        }
+    }
+
+    /// How this account is credited on the reviews other people read.
+    ///
+    /// Worth a whole card rather than a buried row: a review card sits next to
+    /// a statement about the writer's disability and photographs of where they
+    /// have been, and the person writing it deserves to know which name is on
+    /// it — and to be able to change their mind.
+    private var privacyCard: some View {
+        settingsCard {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 14) {
+                    Image(systemName: "theatermasks")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(Color.blue)
+                        .frame(width: 24, height: 24)
+
+                    Text("Shown on your reviews".localized)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+
+                    Spacer()
+                }
+
+                Text(showRealName
+                     ? (realName ?? "Your name".localized)
+                     : (pseudonym ?? "Community".localized))
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .padding(.leading, 38)
+
+                Toggle(isOn: $showRealName) {
+                    Text("Use my real name instead".localized)
+                        .font(.subheadline)
+                }
+                .padding(.leading, 38)
+                .disabled(!privacyLoaded)
+
+                Text("Your reviews are signed with a handle unless you turn this on. Your account is still linked to them either way.".localized)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 38)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
         }
     }
 

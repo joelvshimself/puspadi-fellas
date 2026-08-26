@@ -493,6 +493,14 @@ struct SearchSheet: View {
     }
 
     private func performSearch(_ text: String) async {
+        // The curated directory answers alongside MapKit, not after it. It is
+        // the only source that knows a mall by every name it goes by —
+        // searching "beachwalk" finds the seeded row whether the place is
+        // indexed as "Beachwalk Bali" or "Beachwalk Shopping Center" — and it
+        // returns a grade with the result, so a directory hit renders complete
+        // rather than as a grey pin waiting on an enrich call.
+        async let directoryMatches = directoryResults(matching: text)
+
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = text
         request.region = searchRegion
@@ -501,7 +509,7 @@ struct SearchSheet: View {
             let response = try await MKLocalSearch(request: request).start()
             guard !Task.isCancelled else { return }
             defer { prefetchDetails(for: results) }
-            results = response.mapItems.map { item in
+            let mapKitResults = response.mapItems.map { item in
                 Place.fromSearchResult(
                     name: item.name ?? text,
                     category: item.pointOfInterestCategory?.rawValue
@@ -511,15 +519,39 @@ struct SearchSheet: View {
                     distance: distance(to: item.placemark.coordinate)
                 )
             }
+            results = NearbyPlacesService.merge(
+                directory: await directoryMatches,
+                mapKit: mapKitResults
+            )
             isLoading = false
         } catch {
             guard !Task.isCancelled else { return }
             // MKErrorDomain code 4 is a normal "no matches here", not a crash,
-            // but the user still needs to see that something changed.
-            results = []
+            // but the user still needs to see that something changed. A
+            // directory hit is still a result, though — if we have one, the
+            // search did NOT fail, whatever MapKit thinks.
+            let fallback = await directoryMatches
+            guard !Task.isCancelled else { return }
+            results = fallback
             isLoading = false
-            errorMessage = (error as NSError).localizedDescription
+            errorMessage = fallback.isEmpty ? (error as NSError).localizedDescription : nil
+            if !fallback.isEmpty { prefetchDetails(for: fallback) }
         }
+    }
+
+    /// Directory places whose name contains the query, nearest first.
+    ///
+    /// Substring rather than fuzzy on purpose: the directory is small enough
+    /// that a prefix or word match covers real typing, and fuzzy matching over
+    /// a list this size mostly produces confident wrong answers.
+    private func directoryResults(matching text: String) async -> [Place] {
+        let needle = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard needle.count >= 2 else { return [] }
+
+        let rows = await PlaceDirectoryService.shared.nearby(coordinate: searchRegion.center)
+        return rows
+            .filter { $0.name.lowercased().contains(needle) || ($0.city?.lowercased().contains(needle) ?? false) }
+            .map { Place.fromDirectory($0, distance: distance(to: $0.coordinate)) }
     }
 
     /// Warms everything the Place Details page waits on, while the user is

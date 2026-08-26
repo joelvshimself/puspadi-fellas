@@ -68,3 +68,8 @@ verify_jwt = false
 # Public review reads with display-safe reviewer identity.
 [functions.place-reviews]
 verify_jwt = false
+
+# Public place directory — a list of malls is public information, and the same
+# rows are already readable through place_cache's own RLS policy.
+[functions.places-nearby]
+verify_jwt = false
