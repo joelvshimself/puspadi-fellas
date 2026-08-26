@@ -65,36 +65,51 @@ enum NearbyPlacesService {
 
     /// Drops the MapKit copy of anything the directory already covers.
     ///
-    /// Without this the map shows two pins for Beachwalk — one carrying the
-    /// seeded id and its grade, one carrying MapKit's drifted coordinate and
-    /// no grade — and a tap lands on whichever happens to be on top. The
-    /// backend has the same problem and solves it the same way
-    /// (resolve_place_id: a name match within a radius), so the client uses
-    /// the same rule rather than inventing a second one that disagrees.
+    /// This used to compare MapKit's name against the directory name alone,
+    /// and that is not how the same venue arrives twice. MapKit says "Park23
+    /// Mall" where the directory says "Park23", "Discovery Shopping Mall"
+    /// where the directory says "Discovery Mall Bali" — never the same string,
+    /// so both drew a pin. Two markers on one building, one carrying the
+    /// reviews and the grade, one leading to an empty page, and no way for
+    /// anyone tapping to tell which was which.
     ///
-    /// 1km, matching the alias tier of resolve_place_id, because that is the
-    /// distance MapKit's drift actually reaches for one venue — the project's
-    /// own place_cache holds rows ~600m apart that are the same mall.
+    /// The database has always known these are one place; it is what
+    /// place_aliases is for. The directory now ships those names with each
+    /// place, so the client can apply the same rule instead of a weaker guess.
+    ///
+    /// Two ways a MapKit result is recognised as already-covered:
+    ///
+    ///   1. Its name matches the place or any of its aliases, within 1km —
+    ///      the alias tier of resolve_place_id, and the distance MapKit's
+    ///      drift actually reaches for one venue.
+    ///   2. Its name CONTAINS one of those names, within 250m — a tenant.
+    ///      "Deus Ex Machina - Discovery Shopping Mall" and "69SLAM Discovery
+    ///      Shopping Mall (DSM)" are shops inside the mall, and they render as
+    ///      more malls with the same name. The tight radius is what keeps this
+    ///      from swallowing a genuinely different place that happens to share
+    ///      a word: a tenant is inside the building.
     static func merge(directory: [Place], mapKit: [Place]) -> [Place] {
         guard !directory.isEmpty else { return mapKit }
 
         let extras = mapKit.filter { candidate in
-            !directory.contains { known in
-                normalized(known.name) == normalized(candidate.name)
-                    && distance(known.coordinate, candidate.coordinate) <= 1000
+            let candidateName = normalized(candidate.name)
+            guard !candidateName.isEmpty else { return true }
+
+            return !directory.contains { known in
+                let metres = distance(known.coordinate, candidate.coordinate)
+                let names = known.matchableNames
+                if metres <= 1000, names.contains(candidateName) { return true }
+                if metres <= 250, names.contains(where: { candidateName.contains($0) }) { return true }
+                return false
             }
         }
         return directory + extras
     }
 
     /// Same normalisation the database applies in resolve_place_id: lowercase,
-    /// every non-alphanumeric character dropped. "Mal Bali Galeria" and
-    /// "Mall Bali Galeria" still differ here — that pair is handled by the
-    /// alias table server-side, which the client has no copy of. It costs a
-    /// duplicate pin in the rare case, which is the right way round: a
-    /// duplicate pin is visible and harmless, a wrongly merged one hides a
-    /// real place.
-    private static func normalized(_ name: String) -> String {
+    /// every non-alphanumeric character dropped. Shared with Place.
+    /// matchableNames so the client compares names exactly one way.
+    static func normalized(_ name: String) -> String {
         name.lowercased().filter { $0.isLetter || $0.isNumber }
     }
 

@@ -34,6 +34,11 @@ struct Place: Identifiable, Hashable {
     /// place arrives already knowing which row it is, so reviews, photos and
     /// saved-place writes can address it directly instead of guessing.
     var directoryPlaceId: String? = nil
+    /// Every name this place is known by — its own plus its curated aliases.
+    /// Empty for a MapKit result, which knows only what MapKit called it.
+    /// Lets the map recognise that the "Park23 Mall" MapKit just returned is
+    /// the "Park23" it is already showing.
+    var knownNames: [String] = []
     /// Directory detail fields. All nil for a MapKit result, which carries
     /// none of this.
     var phone: String? = nil
@@ -46,6 +51,14 @@ struct Place: Identifiable, Hashable {
     struct ElevatorDetail: Hashable {
         let symbol: String
         let label: String
+    }
+
+    /// Normalised forms of every name this place answers to, for comparing
+    /// against a result from another source. Falls back to its own name for a
+    /// place that carries no alias list.
+    var matchableNames: Set<String> {
+        let names = knownNames.isEmpty ? [name] : knownNames
+        return Set(names.map(NearbyPlacesService.normalized).filter { !$0.isEmpty })
     }
 
     func hash(into hasher: inout Hasher) {

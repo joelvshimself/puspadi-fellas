@@ -52,6 +52,11 @@ final class PlaceDirectoryService {
         /// the place, already collapsed server-side.
         let grade: String
         let gradedFeatures: Int
+        /// Every name this place is known by, straight from place_aliases.
+        /// Used to recognise — and drop — the MapKit result that is this same
+        /// venue under a different spelling. Optional so a client running
+        /// against a backend that predates the field still decodes.
+        let aliases: [String]?
 
         var coordinate: CLLocationCoordinate2D {
             CLLocationCoordinate2D(latitude: lat, longitude: lng)
@@ -175,6 +180,7 @@ extension Place {
             grade: row.overallGrade,
             isLiveResult: true,
             directoryPlaceId: row.placeId,
+            knownNames: [row.name] + (row.aliases ?? []),
             phone: row.phone,
             website: row.website,
             openingHours: row.openingHours,

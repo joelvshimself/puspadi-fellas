@@ -113,6 +113,11 @@ interface DirectoryRow {
   distance_meters: number;
   worst_value: "yes" | "no" | "limited" | "unknown";
   graded_features: number;
+  /// Every name this place is known by. The client has no copy of
+  /// place_aliases, so without these it can only match a MapKit result against
+  /// the seeded name — and "Park23" does not equal "Park23 Mall", which is how
+  /// one building ended up with two pins on the map.
+  aliases: string[] | null;
 }
 
 /// snake_case in, camelCase out — the Swift client decodes these with
@@ -140,6 +145,7 @@ function shape(row: DirectoryRow) {
     // has been assessed and found inaccessible.
     grade: row.graded_features > 0 ? row.worst_value : "unknown",
     gradedFeatures: row.graded_features,
+    aliases: row.aliases ?? [],
   };
 }
 

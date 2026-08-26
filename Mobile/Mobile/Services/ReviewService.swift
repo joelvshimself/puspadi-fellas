@@ -483,7 +483,7 @@ final class ReviewService {
     /// sentence. A note nobody wrote is not a note; the structured answers are
     /// carried by `providedTags`, and callers that want prose check for it.
     static func mapReviews(_ rows: [DBPlaceReviewRow]) -> [PlaceFacilityReview] {
-        var results: [PlaceFacilityReview] = []
+        var results: [(key: String?, review: PlaceFacilityReview)] = []
         for row in rows {
             let date = parseDate(row.createdAt)
             /// Same reviewer on every facility row this review fans out into.
@@ -512,22 +512,28 @@ final class ReviewService {
                     guard !body.isEmpty || !(entrance.photoUrls ?? []).isEmpty || hasFacilityData else {
                         continue
                     }
-                    results.append(withReviewer(PlaceFacilityReview(
-                        id: UUID(),
-                        reviewId: row.id,
-                        kind: .entrance,
-                        createdAt: date,
-                        bodyText: body,
-                        providedTags: entranceTags(from: entrance),
-                        photoURLs: entrance.photoUrls ?? []
-                    )))
+                    results.append((
+                        // Per entrance, not per review: one review legitimately
+                        // covers both the lobby and the basement, and those are
+                        // two different doors.
+                        dedupeKey(row, "entrance-\(entrance.location)"),
+                        withReviewer(PlaceFacilityReview(
+                            id: UUID(),
+                            reviewId: row.id,
+                            kind: .entrance,
+                            createdAt: date,
+                            bodyText: body,
+                            providedTags: entranceTags(from: entrance),
+                            photoURLs: entrance.photoUrls ?? []
+                        ))
+                    ))
                 }
             }
             if row.elevatorExists != nil || row.elevatorWheelchairAccessible != nil
                 || !(row.elevatorReviewText ?? "").isEmpty
                 || !(row.elevatorPhotoUrls ?? []).isEmpty {
                 let body = row.elevatorReviewText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                results.append(withReviewer(PlaceFacilityReview(
+                results.append((dedupeKey(row, "elevator"), withReviewer(PlaceFacilityReview(
                     id: UUID(),
                     reviewId: row.id,
                     kind: .elevator,
@@ -535,10 +541,10 @@ final class ReviewService {
                     bodyText: body,
                     providedTags: elevatorTags(from: row),
                     photoURLs: row.elevatorPhotoUrls ?? []
-                )))
+                ))))
             }
             if row.hasDisabledToilet == false {
-                results.append(withReviewer(PlaceFacilityReview(
+                results.append((dedupeKey(row, "toilet"), withReviewer(PlaceFacilityReview(
                     id: UUID(),
                     reviewId: row.id,
                     kind: .toilet,
@@ -546,12 +552,12 @@ final class ReviewService {
                     bodyText: (row.toiletReviewText ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
                     providedTags: ["NOT AVAILABLE"],
                     photoURLs: row.toiletPhotoUrls ?? []
-                )))
+                ))))
             } else if row.hasDisabledToilet == true
                         || !(row.toiletReviewText ?? "").isEmpty
                         || !(row.toiletPhotoUrls ?? []).isEmpty {
                 let body = row.toiletReviewText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                results.append(withReviewer(PlaceFacilityReview(
+                results.append((dedupeKey(row, "toilet"), withReviewer(PlaceFacilityReview(
                     id: UUID(),
                     reviewId: row.id,
                     kind: .toilet,
@@ -559,10 +565,49 @@ final class ReviewService {
                     bodyText: body,
                     providedTags: toiletTags(from: row),
                     photoURLs: row.toiletPhotoUrls ?? []
-                )))
+                ))))
             }
         }
-        return results
+        return collapseRepeatVisits(results)
+    }
+
+    /// Identifies "this person's verdict on this specific facility". Nil when
+    /// the row carries no reviewer, which is every pre-auth row — those cannot
+    /// be attributed to anyone, so they are never collapsed together.
+    private static func dedupeKey(_ row: DBPlaceReviewRow, _ facility: String) -> String? {
+        guard let reviewer = row.reviewerName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !reviewer.isEmpty else { return nil }
+        return "\(reviewer)|\(facility)"
+    }
+
+    /// One verdict per person per facility, keeping their most recent.
+    ///
+    /// Somebody who reviews the same mall five times is not five reviewers,
+    /// and the list was rendering them as five near-identical cards under the
+    /// same name. It also disagreed with the backend: review_to_signals()
+    /// deletes a place's earlier review signals on every new one, so the GRADE
+    /// has always been "newest review wins" while the list still showed the
+    /// superseded ones as if they were corroborating evidence. accessibility_
+    /// signals goes further and holds a unique (place, feature, source, user)
+    /// so nobody can stack weight by repeating themselves; this is the same
+    /// rule applied to what a reader sees.
+    ///
+    /// Collapsing is per FACILITY, not per review, so a later visit that only
+    /// covers the toilet does not erase what the same person said about the
+    /// entrance months earlier.
+    private static func collapseRepeatVisits(
+        _ entries: [(key: String?, review: PlaceFacilityReview)]
+    ) -> [PlaceFacilityReview] {
+        let newestFirst = entries.sorted { $0.review.createdAt > $1.review.createdAt }
+        var seen = Set<String>()
+        var kept: [PlaceFacilityReview] = []
+        for entry in newestFirst {
+            if let key = entry.key {
+                guard seen.insert(key).inserted else { continue }
+            }
+            kept.append(entry.review)
+        }
+        return kept
     }
 
     private static func parseDate(_ value: String) -> Date {
