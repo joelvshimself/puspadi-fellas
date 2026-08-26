@@ -19,12 +19,6 @@ struct FacilityReviewRow: View {
         }
     }
 
-    private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "MMM yyyy"
-        return f
-    }()
-
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 10) {
@@ -72,9 +66,11 @@ struct FacilityReviewRow: View {
 
                 Spacer()
 
-                Text(Self.dateFormatter.string(from: review.createdAt))
+                Text(ReviewService.listDateLabel(from: review.createdAt))
                     .font(.system(size: 14))
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
             }
 
             Divider()

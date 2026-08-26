@@ -107,6 +107,25 @@ struct PlaceFacilityReview: Identifiable, Hashable {
         }
         return trimmed
     }
+
+    /// `true` when `lhs` should appear above `rhs` in a newest-first list.
+    static func isNewerFirst(_ lhs: PlaceFacilityReview, _ rhs: PlaceFacilityReview) -> Bool {
+        if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
+        // One submit fans out into several facility cards sharing a timestamp —
+        // surface the last wizard step first (where photos usually land).
+        if lhs.reviewId == rhs.reviewId {
+            return facilityListRank(lhs.kind) < facilityListRank(rhs.kind)
+        }
+        return lhs.id.uuidString > rhs.id.uuidString
+    }
+
+    private static func facilityListRank(_ kind: FacilityKind) -> Int {
+        switch kind {
+        case .toilet: return 0
+        case .elevator: return 1
+        case .entrance: return 2
+        }
+    }
 }
 
 /// The review state of a single facility on the place-detail card.

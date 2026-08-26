@@ -195,7 +195,6 @@ struct SearchSheet: View {
     /// Explicit state, never derived from the sheet's height — iOS resizes the
     /// sheet around the keyboard, and inferring intent from the detent made the
     /// content flip back mid-edit.
-    @EnvironmentObject private var languageManager: LanguageManager
     @Binding var isExpanded: Bool
     @Binding var searchText: String
     /// Owned here, next to the TextField. It used to live in HomeMapView and be
@@ -212,7 +211,6 @@ struct SearchSheet: View {
     let onSelectPlace: (Place) -> Void
     let onCancelSearch: () -> Void
 
-    @StateObject private var speechRecognizer = SpeechRecognizer()
     @State private var results: [Place] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -243,11 +241,7 @@ struct SearchSheet: View {
             // focuses it directly, which is what expands the sheet.
             if !expanded {
                 isFieldFocused = false
-                speechRecognizer.stopListening()
             }
-        }
-        .onDisappear {
-            speechRecognizer.stopListening()
         }
     }
 
@@ -264,7 +258,6 @@ struct SearchSheet: View {
 
                 if isExpanded {
                     GlassCircleButton(surface: .onSheet) {
-                        speechRecognizer.stopListening()
                         onCancelSearch()
                     } label: {
                         Image(systemName: "xmark")
@@ -327,26 +320,6 @@ struct SearchSheet: View {
                     .autocorrectionDisabled()
                     .submitLabel(.search)
             }
-
-            Button {
-                if !isExpanded {
-                    withAnimation(.snappy(duration: 0.28)) {
-                        isExpanded = true
-                    }
-                }
-                speechRecognizer.updateLanguage(languageIdentifier: languageManager.currentLanguage == .indonesia ? "id-ID" : "en-US")
-                speechRecognizer.toggleListening { recognizedText in
-                    searchText = recognizedText
-                }
-            } label: {
-                Image(systemName: "mic.fill")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(speechRecognizer.isListening ? Color.red : .secondary)
-                    .scaleEffect(speechRecognizer.isListening ? 1.15 : 1.0)
-                    .animation(speechRecognizer.isListening ? .easeInOut(duration: 0.6).repeatForever(autoreverses: true) : .default, value: speechRecognizer.isListening)
-                    .frame(width: SheetMetrics.rowIconWidth)
-            }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 12)
         .frame(height: SheetMetrics.fieldHeight)
@@ -407,7 +380,6 @@ struct SearchSheet: View {
 
     private func resultRow(_ place: Place) -> some View {
         Button {
-            speechRecognizer.stopListening()
             onSelectPlace(place)
         } label: {
             HStack(spacing: 16) {

@@ -399,11 +399,23 @@ final class ReviewService {
     }
 
     static func profileDateLabel(_ createdAt: String) -> String {
-        let date = parseDate(createdAt)
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM yyyy"
-        return formatter.string(from: date)
+        listDateLabel(from: createdAt)
     }
+
+    static func listDateLabel(from date: Date) -> String {
+        listDateFormatter.string(from: date)
+    }
+
+    static func listDateLabel(from iso8601: String) -> String {
+        listDateLabel(from: parseDate(iso8601))
+    }
+
+    private static let listDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = .current
+        formatter.dateFormat = "d MMM yyyy, h:mm a"
+        return formatter
+    }()
 
     // MARK: - Place facility reviews
 
@@ -620,11 +632,15 @@ final class ReviewService {
                 ))))
             }
         }
-        // A row carrying nothing but an uploaded image is not a review —
-        // there is no verdict in it to read. Photos on a review that DOES say
-        // something are untouched.
+        // Keep rows that carry photos even when there is no prose or structured
+        // tags — photo-only gallery uploads and entrance shots without chips
+        // still belong in the Reviews list (Photos tab already shows them).
         return collapseRepeatVisits(
-            results.filter { $0.review.hasBodyText || !$0.review.providedTags.isEmpty }
+            results.filter {
+                $0.review.hasBodyText
+                    || !$0.review.providedTags.isEmpty
+                    || !$0.review.photoURLs.isEmpty
+            }
         )
     }
 
@@ -655,7 +671,7 @@ final class ReviewService {
     private static func collapseRepeatVisits(
         _ entries: [(key: String?, review: PlaceFacilityReview)]
     ) -> [PlaceFacilityReview] {
-        let newestFirst = entries.sorted { $0.review.createdAt > $1.review.createdAt }
+        let newestFirst = entries.sorted { PlaceFacilityReview.isNewerFirst($0.review, $1.review) }
         var seen = Set<String>()
         var kept: [PlaceFacilityReview] = []
         for entry in newestFirst {
@@ -664,7 +680,7 @@ final class ReviewService {
             }
             kept.append(entry.review)
         }
-        return kept
+        return kept.sorted { PlaceFacilityReview.isNewerFirst($0, $1) }
     }
 
     private static func parseDate(_ value: String) -> Date {

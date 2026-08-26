@@ -88,14 +88,9 @@ enum ContributeReviewTags {
         var tags: [ContributeTagOption] = [
             ContributeTagOption(symbol: "Ramp Icon", label: "RAMP", isSystemSymbol: false),
             ContributeTagOption(symbol: "Handrail Icon", label: "HANDRAIL", isSystemSymbol: false),
-            ContributeTagOption(symbol: "Review - Elevators", label: "AUTOMATIC DOORS", isSystemSymbol: false),
+            ContributeTagOption(symbol: "Automatic Doors Icon", label: "AUTOMATIC DOORS", isSystemSymbol: false),
+            ContributeTagOption(symbol: "door.left.hand.open", label: "MANUAL DOORS"),
         ]
-        switch persona {
-        case .wheelchair:
-            tags.append(ContributeTagOption(symbol: "door.left.hand.open", label: "MANUAL DOORS"))
-        case .everyone:
-            tags.append(ContributeTagOption(symbol: "Review - Elevators", label: "ELEVATOR/ESCALATOR", isSystemSymbol: false))
-        }
         tags.append(contentsOf: [
             ContributeTagOption(symbol: "Review - Security Assistance", label: "SECURITY ASSISTANCE", isSystemSymbol: false),
             ContributeTagOption(symbol: "Review - Wheelchair Available", label: "WHEELCHAIRS AVAILABLE", isSystemSymbol: false),
@@ -119,7 +114,7 @@ enum ContributeReviewTags {
             [
                 ContributeTagOption(symbol: "figure.roll", label: "GRAB BARS"),
                 ContributeTagOption(symbol: "bell", label: "EMERGENCY BUTTONS"),
-                ContributeTagOption(symbol: "door.left.hand.closed", label: "AUTOMATIC DOORS"),
+                ContributeTagOption(symbol: "Automatic Doors Icon", label: "AUTOMATIC DOORS", isSystemSymbol: false),
             ]
         }
     }

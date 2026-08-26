@@ -204,7 +204,7 @@ final class LanguageManager: ObservableObject {
             .indonesia: "Kami sedih melihat Anda pergi...\nBeritahu kami lebih banyak tentang pengalaman Anda agar kami dapat berkembang"
         ],
         "Your feedbacks here (Optional)": [.english: "Your feedbacks here (Optional)", .indonesia: "Masukan Anda di sini (Opsional)"],
-        "Back to Home": [.english: "Back to Home", .indonesia: "Kembali ke Beranda"],
+        "Okey": [.english: "Okey", .indonesia: "Oke"],
         "What Provided:": [.english: "What Provided:", .indonesia: "Fasilitas Tersedia:"],
         "No reviews yet": [.english: "No reviews yet", .indonesia: "Belum ada ulasan"],
 

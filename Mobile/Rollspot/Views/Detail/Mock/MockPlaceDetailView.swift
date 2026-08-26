@@ -39,6 +39,7 @@ struct MockPlaceDetailView: View {
     @State private var showSubmittedBanner = false
     @State private var reviewJustSubmitted = false
     @State private var lastSubmittedReviewId: UUID?
+    @State private var lastSubmittedPlaceId: String?
     @State private var myReviewPresentation: MyReviewPresentation?
     @State private var isOpeningMyReview = false
 
@@ -227,9 +228,10 @@ struct MockPlaceDetailView: View {
             ContributeReviewFlowView(
                 place: place,
                 initialScreenIndex: resumeScreenIndex,
-                onSubmitted: { reviewId in
+                onSubmitted: { submission in
                     reviewJustSubmitted = true
-                    lastSubmittedReviewId = reviewId
+                    lastSubmittedReviewId = submission.reviewId
+                    lastSubmittedPlaceId = submission.placeId
                 }
             ) {
                 showReviewWizard = false
@@ -247,6 +249,10 @@ struct MockPlaceDetailView: View {
                     // Drop the cached grade first or load() republishes the
                     // pre-review grade and the banner only updates if the
                     // realtime insert happens to arrive.
+                    if let canonicalId = lastSubmittedPlaceId {
+                        store.adoptPlaceId(canonicalId)
+                        lastSubmittedPlaceId = nil
+                    }
                     await PlaceCacheStore.shared.remove(store.placeId)
                     await store.load()
                 }
@@ -595,7 +601,7 @@ struct MockPlaceDetailView: View {
     /// The Reviews tab lists every facility's reviews together (the design's
     /// count is the place total, not the selected facility's).
     private var allReviews: [PlaceFacilityReview] {
-        store.facilityReviews.sorted { $0.createdAt > $1.createdAt }
+        store.facilityReviews.sorted { PlaceFacilityReview.isNewerFirst($0, $1) }
     }
 
     /// Every tag the community confirmed for this facility, newest review

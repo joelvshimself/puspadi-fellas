@@ -96,9 +96,19 @@ struct FacilityReviewedOverview: View {
             FacilityPhotoDetailView(photos: selection.photos, initialID: selection.initialID)
         }
         .fullScreenCover(isPresented: $showContributeFlow) {
-            ContributeReviewFlowView(place: place) {
+            ContributeReviewFlowView(
+                place: place,
+                onSubmitted: { submission in
+                    if let canonicalId = submission.placeId {
+                        store.adoptPlaceId(canonicalId)
+                    }
+                }
+            ) {
                 showContributeFlow = false
-                Task { await store.load() }
+                Task {
+                    await PlaceCacheStore.shared.remove(store.placeId)
+                    await store.load()
+                }
             }
         }
     }

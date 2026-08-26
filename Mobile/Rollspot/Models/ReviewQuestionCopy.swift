@@ -32,7 +32,7 @@ enum ReviewQuestionCopy {
         case .wheelchair:
             ["Yes", "With a push", "Too steep", "Not sure"]
         case .everyone:
-            ["Yes", "With a guest", "Too steep", "Not sure"]
+            ["Yes", "With a push", "Too steep", "Not sure"]
         }
     }
 
