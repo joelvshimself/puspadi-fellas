@@ -58,8 +58,8 @@ Deno.serve(async (req: Request) => {
     .select(`
       id, user_id, created_at, notes, provenance,
       elevator_exists, elevator_wheelchair_accessible, elevator_blockers,
-      elevator_review_text, elevator_photo_urls,
-      has_disabled_toilet, toilet_review_text, toilet_photo_urls
+      elevator_review_text, elevator_photo_urls, elevator_photo_captions,
+      has_disabled_toilet, toilet_review_text, toilet_photo_urls, toilet_photo_captions
     `)
     .eq("place_id", placeId)
     .order("created_at", { ascending: false });
@@ -77,7 +77,7 @@ Deno.serve(async (req: Request) => {
   if (reviewIds.length > 0) {
     const { data: entrances, error: entrancesError } = await supabase
       .from("review_entrances")
-      .select("review_id, location, has_dropoff_ramp, has_rails, door_type, is_wide_enough, review_text, photo_urls")
+      .select("review_id, location, has_dropoff_ramp, has_rails, door_type, is_wide_enough, review_text, photo_urls, photo_captions")
       .in("review_id", reviewIds)
       .order("sort_order", { ascending: true });
 

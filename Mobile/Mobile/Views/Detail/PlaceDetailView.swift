@@ -70,7 +70,7 @@ struct PlaceDetailView: View {
                 place: place,
                 startingFacility: nil,
                 initialScreenIndex: 0,
-                onSubmitted: {}
+                onSubmitted: { _ in }
             ) {
                 showReviewWizard = false
             }

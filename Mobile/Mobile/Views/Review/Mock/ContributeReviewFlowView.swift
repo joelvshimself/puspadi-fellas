@@ -5,11 +5,13 @@ struct ContributeReviewFlowView: View {
     let place: Place
     let startingFacility: FacilityKind?
     let initialScreenIndex: Int
+    /// When true, never resumes an unfinished draft — used for Update Review.
+    let ignoreDraftRestore: Bool
     /// Fired the moment the backend accepts the review — BEFORE the user taps
     /// Done on the confirmation screen — so the presenting page can stage its
     /// "Your review submitted!" state. `onFinished` alone can't tell a
-    /// submission from a cancel.
-    let onSubmitted: (() -> Void)?
+    /// submission from a cancel. Passes the new review id when available.
+    let onSubmitted: ((UUID?) -> Void)?
     let onFinished: () -> Void
 
     @StateObject private var draft: ReviewDraft
@@ -41,35 +43,37 @@ struct ContributeReviewFlowView: View {
     @State private var showExitConfirmation = false
     @EnvironmentObject private var auth: AuthSessionStore
     @State private var showLogin = false
+    @State private var reviewPersona: ReviewPersona = .everyone
 
     init(
         place: Place,
         startingFacility: FacilityKind? = nil,
         initialScreenIndex: Int = 0,
-        onSubmitted: (() -> Void)? = nil,
+        ignoreDraftRestore: Bool = false,
+        onSubmitted: ((UUID?) -> Void)? = nil,
         onFinished: @escaping () -> Void
     ) {
         self.place = place
         self.startingFacility = startingFacility
         self.initialScreenIndex = initialScreenIndex
+        self.ignoreDraftRestore = ignoreDraftRestore
         self.onSubmitted = onSubmitted
         self.onFinished = onFinished
 
         let draft = ReviewDraft(appleMapsId: place.id.uuidString, coordinate: place.coordinate, name: place.name)
         var startIndex = initialScreenIndex
-        // Category picker is skipped in this flow, so every facility is
-        // always walked (unless entering from one facility's own "Add
-        // Review" button via startingFacility).
-        var facilities = startingFacility.map { Set([$0]) } ?? Set(FacilityKind.allCases)
+        // Every launch walks the full review: Entrance -> Elevator -> Toilet.
+        var facilities = Set(FacilityKind.allCases)
         var entranceLocs = Set<EntranceLocation>()
         var lobbyTags = Set<ContributeTagOption>()
         var basementTags = Set<ContributeTagOption>()
         var elevTags = Set<ContributeTagOption>()
         var toiletTagsInit = Set<ContributeTagOption>()
 
-        if let snap = UnfinishedReviewStore.snapshot(for: place) {
+        if !ignoreDraftRestore, let snap = UnfinishedReviewStore.snapshot(for: place) {
             startIndex = snap.screenIndex
             facilities = Set(snap.selectedFacilities.compactMap(FacilityKind.init(rawValue:)))
+            facilities.formUnion(Set(FacilityKind.allCases))
             entranceLocs = Set(snap.entranceLocations.compactMap(EntranceLocation.init(rawValue:)))
             lobbyTags = UnfinishedReviewStore.restoreTags(snap.lobbyEntranceTags, forEntrance: .lobby)
             basementTags = UnfinishedReviewStore.restoreTags(snap.basementEntranceTags, forEntrance: .basement)
@@ -130,9 +134,11 @@ struct ContributeReviewFlowView: View {
                     }
                 }
             case .elevator:
-                // No chip screen here — the three questions ARE the answers
-                // (see ElevatorQuestion.tagLabel).
-                list.append(contentsOf: ElevatorQuestion.allCases.map(FlowScreen.elevatorQuestion))
+                list.append(.elevatorQuestion(.wideEntrance))
+                if elevatorAnswers[.wideEntrance] != "No" {
+                    list.append(.elevatorQuestion(.spaceToManeuver))
+                    list.append(.elevatorQuestion(.reachableButtons))
+                }
             case .toilet:
                 list.append(.toiletInitial)
                 if toiletInitialAnswer == "Yes" {
@@ -193,7 +199,8 @@ struct ContributeReviewFlowView: View {
         .fullScreenCover(isPresented: $showLogin) {
             LoginView(
                 onSuccess: { showLogin = false },
-                onCancel: { onFinished() }
+                onCancel: { onFinished() },
+                onExploreMalls: { showLogin = false }
             )
             .environmentObject(auth)
         }
@@ -219,6 +226,17 @@ struct ContributeReviewFlowView: View {
             Text("Your progress won't be saved if you leave now.")
         }
         .onChange(of: screenIndex) { _, _ in persistIfNeeded() }
+        .task { await loadReviewPersona() }
+    }
+
+    private func loadReviewPersona() async {
+        guard auth.isSignedIn else { return }
+        do {
+            let profile = try await ProfileService.shared.fetchCurrent()
+            reviewPersona = ReviewPersona.from(aids: profile?.mobilityAids)
+        } catch {
+            reviewPersona = .everyone
+        }
     }
 
     @ViewBuilder
@@ -247,7 +265,7 @@ struct ContributeReviewFlowView: View {
                 progress: progress(for: screen),
                 selection: entranceTagsBinding(for: location),
                 illustrationAssetName: illustrationAssetName(for: location),
-                optionsOverride: ContributeReviewTags.tags(forEntrance: location),
+                optionsOverride: ContributeReviewTags.tags(forEntrance: location, persona: reviewPersona),
                 subStepProgress: subProgress(for: screen),
                 onBack: goBackOneStep,
                 onContinue: {
@@ -260,9 +278,9 @@ struct ContributeReviewFlowView: View {
                 navTitle: "Entrances",
                 illustrationAssetName: illustrationAssetName(for: location),
                 eyebrow: "Ramps",
-                questionTitle: "Could you push your wheelchair up the ramp without help?",
+                questionTitle: ReviewQuestionCopy.rampQuestion(for: reviewPersona),
                 progress: progress(for: screen),
-                options: ["Yes", "With a push", "Too steep", "Not sure"],
+                options: ReviewQuestionCopy.rampOptions(for: reviewPersona),
                 photoRevealOption: "Not sure",
                 selection: rampAnswerBinding(for: location),
                 note: entranceNoteBinding(for: location),
@@ -279,9 +297,9 @@ struct ContributeReviewFlowView: View {
                 navTitle: "Entrances",
                 illustrationAssetName: illustrationAssetName(for: location),
                 eyebrow: "Hand Rails",
-                questionTitle: "Could you reach and grip the handrail from your wheelchair?",
+                questionTitle: ReviewQuestionCopy.handrailQuestion(for: reviewPersona),
                 progress: progress(for: screen),
-                options: ["Yes", "With effort", "No", "Not sure"],
+                options: ReviewQuestionCopy.handrailOptions,
                 photoRevealOption: "Not sure",
                 selection: handrailAnswerBinding(for: location),
                 note: entranceNoteBinding(for: location),
@@ -305,9 +323,9 @@ struct ContributeReviewFlowView: View {
                 navTitle: "Elevators",
                 illustrationAssetName: "Elevator Question Asset",
                 eyebrow: question.eyebrow,
-                questionTitle: question.title,
+                questionTitle: question.title(for: reviewPersona),
                 progress: progress(for: screen),
-                options: ["Yes", "No", "Not sure"],
+                options: ReviewQuestionCopy.elevatorOptions,
                 photoRevealOption: "Not sure",
                 selection: elevatorAnswerBinding(for: question),
                 note: Binding(get: { draft.elevator.review }, set: { draft.elevator.review = $0 }),
@@ -324,9 +342,9 @@ struct ContributeReviewFlowView: View {
                 navTitle: "Accessible Toilets",
                 illustrationAssetName: "Toilet Survey Asset",
                 eyebrow: "",
-                questionTitle: "Does the mall have accessible toilets?",
+                questionTitle: ReviewQuestionCopy.toiletInitialQuestion,
                 progress: progress(for: screen),
-                options: ["Yes", "No", "Not sure"],
+                options: ReviewQuestionCopy.toiletInitialOptions,
                 photoRevealOption: "",
                 selection: $toiletInitialAnswer,
                 note: Binding(get: { draft.toilet.review }, set: { draft.toilet.review = $0 }),
@@ -343,10 +361,10 @@ struct ContributeReviewFlowView: View {
                 navTitle: "Accessible Toilets",
                 illustrationAssetName: "Toilet Survey Asset",
                 eyebrow: question.eyebrow,
-                questionTitle: question.title,
+                questionTitle: question.title(for: reviewPersona),
                 progress: progress(for: screen),
-                options: question.options,
-                photoRevealOption: question.photoRevealOption ?? "",
+                options: question.options(for: reviewPersona),
+                photoRevealOption: question.photoRevealOption(for: reviewPersona) ?? "",
                 selection: toiletAnswerBinding(for: question),
                 note: Binding(get: { draft.toilet.review }, set: { draft.toilet.review = $0 }),
                 stepNumber: 3,
@@ -596,7 +614,7 @@ struct ContributeReviewFlowView: View {
         let answer = location == .lobby ? lobbyRampAnswer : basementRampAnswer
         let ease: EaseOfAccess? = switch answer {
         case "Yes": .easy
-        case "With a push": .needsAssistance
+        case "With a push", "With a guest": .needsAssistance
         case "Too steep": .cantGoThrough
         default: nil
         }
@@ -695,15 +713,16 @@ struct ContributeReviewFlowView: View {
             try? await Task.sleep(nanoseconds: 500_000_000)
             UnfinishedReviewStore.clear(for: place)
             isSubmitted = true
+            onSubmitted?(nil)
             return
         }
         #endif
 
         do {
-            try await ReviewService.shared.submit(draft)
+            let response = try await ReviewService.shared.submit(draft)
             UnfinishedReviewStore.clear(for: place)
             isSubmitted = true
-            onSubmitted?()
+            onSubmitted?(UUID(uuidString: response.reviewId))
         } catch {
             print("[ContributeReviewFlow] Submit failed: \(error)")
             submitError = Self.submitErrorMessage(for: error)

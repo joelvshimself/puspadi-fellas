@@ -33,6 +33,7 @@ type AccessibilityValue = "yes" | "no" | "limited" | "unknown";
 interface Review {
   text?: string | null;
   photoUrls?: string[] | null;
+  photoCaptions?: string[] | null;
 }
 
 interface EntranceReport {
@@ -116,9 +117,11 @@ Deno.serve(async (req: Request) => {
       elevator_blockers: elevator?.blockers ?? [],
       elevator_review_text: elevator?.review?.text ?? null,
       elevator_photo_urls: elevator?.review?.photoUrls ?? [],
+      elevator_photo_captions: elevator?.review?.photoCaptions ?? [],
       has_disabled_toilet: toilet?.hasDisabledToilet ?? null,
       toilet_review_text: toilet?.review?.text ?? null,
       toilet_photo_urls: toilet?.review?.photoUrls ?? [],
+      toilet_photo_captions: toilet?.review?.photoCaptions ?? [],
       entrance_accessible: entranceAccessible,
       restroom_accessible: restroomAccessible,
       elevator_accessible: elevatorAccessible,
@@ -142,6 +145,7 @@ Deno.serve(async (req: Request) => {
       is_wide_enough: e.isWideEnough,
       review_text: e.review?.text ?? null,
       photo_urls: e.review?.photoUrls ?? [],
+      photo_captions: e.review?.photoCaptions ?? [],
       sort_order: i,
     }));
 
@@ -211,7 +215,19 @@ function normalizeReview(review: Review | null | undefined): Review | null {
     ? review.photoUrls.filter((u): u is string => typeof u === "string" && u.length > 0)
     : [];
   if (text == null && photoUrls.length === 0) return null;
-  return { text, photoUrls };
+  const photoCaptions = normalizePhotoCaptions(review.photoCaptions, photoUrls.length);
+  return { text, photoUrls, photoCaptions };
+}
+
+function normalizePhotoCaptions(
+  raw: string[] | null | undefined,
+  urlCount: number,
+): string[] {
+  const captions = Array.isArray(raw)
+    ? raw.map((c) => (typeof c === "string" ? c.trim() : ""))
+    : [];
+  while (captions.length < urlCount) captions.push("");
+  return captions.slice(0, urlCount);
 }
 
 function normalizeEntrances(raw: EntranceReport[] | null | undefined): EntranceReport[] {
