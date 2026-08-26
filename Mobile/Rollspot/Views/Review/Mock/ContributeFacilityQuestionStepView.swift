@@ -269,23 +269,35 @@ struct ContributeFacilityIllustration: View {
 /// full-width blue capsule-ish rounded rect, disabled/gray until answered.
 struct ContributeContinueButton: View {
     var title: String = "Continue"
+    var isLoading: Bool = false
     let isEnabled: Bool
     let action: () -> Void
 
+    private var isInteractive: Bool {
+        isEnabled && !isLoading
+    }
+
     var body: some View {
         Button(action: action) {
-            Text(title.localized)
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 52)
-                .background(
-                    isEnabled ? Color.accentColor : Color(.systemGray4),
-                    in: Capsule()
-                )
+            Group {
+                if isLoading {
+                    ProgressView()
+                        .tint(.white)
+                } else {
+                    Text(title.localized)
+                }
+            }
+            .font(.system(size: 17, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .background(
+                isInteractive ? Color.accentColor : Color(.systemGray4),
+                in: Capsule()
+            )
         }
         .buttonStyle(.plain)
-        .disabled(!isEnabled)
+        .disabled(!isInteractive)
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
         .background(Color(.systemBackground))

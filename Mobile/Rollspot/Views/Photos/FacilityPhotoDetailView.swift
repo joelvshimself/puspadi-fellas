@@ -21,6 +21,14 @@ struct FacilityPhotoDetailView: View {
         self.init(photos: [photo], initialID: photo.id)
     }
 
+    private var activePhotoID: UUID {
+        currentID ?? initialID
+    }
+
+    private var currentPhoto: FacilityPhoto? {
+        photos.first { $0.id == activePhotoID }
+    }
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -71,6 +79,19 @@ struct FacilityPhotoDetailView: View {
                 Spacer()
                     .allowsHitTesting(false)
             }
+
+            if let caption = currentPhoto?.caption?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+               !caption.isEmpty,
+               !isZoomed {
+                VStack(spacing: 0) {
+                    Spacer()
+                        .allowsHitTesting(false)
+                    PhotoCaptionFooterBar(caption: caption)
+                        .transition(.opacity)
+                }
+                .ignoresSafeArea(edges: .bottom)
+            }
         }
         .presentationBackground(.black)
         .gesture(
@@ -98,7 +119,7 @@ private struct ZoomableFacilityPhotoPage: View {
     @State private var finishedLoading = false
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
+        ZStack {
             Group {
                 if let image {
                     ZoomablePhotoContainer(image: image, isZoomed: $isZoomed)
@@ -112,12 +133,6 @@ private struct ZoomableFacilityPhotoPage: View {
                         .foregroundStyle(.white.opacity(0.6))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-            }
-
-            if photo.caption != nil, !isZoomed {
-                PhotoCaptionBadge()
-                    .padding(16)
-                    .transition(.opacity)
             }
         }
         .task(id: photo.id) {
