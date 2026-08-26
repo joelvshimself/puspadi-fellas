@@ -265,8 +265,11 @@ struct FacilityPhotosView: View {
             .frame(maxWidth: .infinity)
             .frame(height: PhotoMetrics.addPhotosHeight)
             .background(Capsule().fill(PhotoPalette.background1))
+            // See MockPlaceDetailView.addPhotosButton — plain-button hit
+            // testing covers content only, so the capsule needs an explicit
+            // contentShape or most of it is dead.
+            .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
     }
 
     @MainActor

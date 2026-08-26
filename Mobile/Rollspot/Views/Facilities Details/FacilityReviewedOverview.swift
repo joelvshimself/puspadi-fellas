@@ -62,6 +62,7 @@ struct FacilityReviewedOverview: View {
                         let siblings = latest.photoURLs.enumerated().compactMap { index, urlString -> FacilityPhoto? in
                             guard let remote = URL(string: urlString) else { return nil }
                             return FacilityPhoto(
+                                id: .stable(from: "\(index)|\(urlString)"),
                                 source: .remote(remote),
                                 reviewId: latest.reviewId,
                                 caption: latest.caption(forPhotoAt: index)

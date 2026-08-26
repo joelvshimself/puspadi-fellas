@@ -290,32 +290,36 @@ struct MockPlaceDetailView: View {
             let height = heroHeight + stretch
 
             ZStack(alignment: .top) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 0) {
-                        ForEach(0..<totalHeroCount, id: \.self) { index in
-                            heroSlide(index: index, width: geo.size.width, height: height)
+                if isInitialLoading {
+                    HeroLoadingSkeleton(width: geo.size.width, height: height)
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        LazyHStack(spacing: 0) {
+                            ForEach(0..<totalHeroCount, id: \.self) { index in
+                                heroSlide(index: index, width: geo.size.width, height: height)
+                            }
                         }
+                        .scrollTargetLayout()
                     }
-                    .scrollTargetLayout()
-                }
-                .scrollPosition(id: $heroPage)
-                .scrollTargetBehavior(.paging)
-                .frame(width: geo.size.width, height: height)
-                .overlay(alignment: .bottom) {
-                    LinearGradient(
-                        colors: [.clear, .black.opacity(0.35)],
-                        startPoint: .center,
-                        endPoint: .bottom
-                    )
-                    .frame(height: 90)
-                    .allowsHitTesting(false)
-                }
+                    .scrollPosition(id: $heroPage)
+                    .scrollTargetBehavior(.paging)
+                    .frame(width: geo.size.width, height: height)
+                    .overlay(alignment: .bottom) {
+                        LinearGradient(
+                            colors: [.clear, .black.opacity(0.35)],
+                            startPoint: .center,
+                            endPoint: .bottom
+                        )
+                        .frame(height: 90)
+                        .allowsHitTesting(false)
+                    }
 
-                VStack {
-                    Spacer()
-                    bottomOverlay
+                    VStack {
+                        Spacer()
+                        bottomOverlay
+                    }
+                    .frame(height: height)
                 }
-                .frame(height: height)
             }
             .offset(y: -stretch)
         }
@@ -333,22 +337,13 @@ struct MockPlaceDetailView: View {
                     case .success(let image):
                         Image(uiImage: image).resizable().aspectRatio(contentMode: .fill)
                     case .failure:
-                        // Only the first slide has somewhere sensible to fall
-                        // back to; a failed contributor photo is just a gap.
                         if index == 0 {
-                            PlaceImageView(
-                                coordinate: place.coordinate,
-                                remoteImageURL: slide.url,
-                                attribution: store.imageAttribution,
-                                resolved: store.enrichResolved,
-                                height: height,
-                                cornerRadius: 0
-                            )
+                            PlaceEmptyHeroPlaceholder(height: height)
                         } else {
                             Color(.secondarySystemBackground)
                         }
                     case .loading:
-                        Color(.secondarySystemBackground)
+                        HeroLoadingSkeleton(width: width, height: height)
                     }
                 }
                 .frame(width: width, height: height)
@@ -367,16 +362,9 @@ struct MockPlaceDetailView: View {
                 }
             }
         } else {
-            PlaceImageView(
-                coordinate: place.coordinate,
-                remoteImageURL: nil,
-                attribution: store.imageAttribution,
-                resolved: store.enrichResolved,
-                height: height,
-                cornerRadius: 0
-            )
-            .frame(width: width, height: height)
-            .clipped()
+            PlaceEmptyHeroPlaceholder(height: height)
+                .frame(width: width, height: height)
+                .clipped()
         }
     }
 
@@ -797,50 +785,69 @@ struct MockPlaceDetailView: View {
     }
 
     private var photosContent: some View {
-        let photos = store.allFacilityPhotos
-        return VStack(spacing: 16) {
-            // The design's "Click add photo" state is a small MENU next to the
-            // button (Choose Existing / Take New Photo), not an action sheet.
-            Menu {
-                Button { photoSource = .library } label: {
-                    Label("Choose Existing".localized, systemImage: "photo.on.rectangle")
-                }
-                Button { photoSource = .camera } label: {
-                    Label("Take New Photo".localized, systemImage: "camera")
-                }
-                .disabled(!CameraPicker.isAvailable)
-            } label: {
-                HStack(spacing: PhotoMetrics.addPhotosSpacing) {
-                    Image(systemName: "photo.badge.plus.fill")
-                        .font(.system(size: 20))
-                    Text("Add Photos".localized)
-                        .font(.system(size: PhotoMetrics.addPhotosLabelSize, weight: .semibold))
-                }
-                .foregroundStyle(PhotoPalette.brandBlue)
-                .frame(maxWidth: .infinity)
-                .frame(height: PhotoMetrics.addPhotosHeight)
-                .background(Capsule().fill(PhotoPalette.background1))
-            }
-            .buttonStyle(.plain)
+        VStack(spacing: 16) {
+            addPhotosButton
+                .zIndex(1)
 
-            if photos.isEmpty {
-                Text("No photos yet".localized)
-                    .font(.system(size: 15))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 40)
-            } else {
-                PhotoMosaicGrid(
-                    photos: photos,
-                    width: max(contentWidth - 44, 0),
-                    onSelect: { photo in
-                        let siblings = photo.reviewId.map { id in
-                            photos.filter { $0.reviewId == id }
-                        } ?? [photo]
-                        lightbox = LightboxSelection(photos: siblings, initialID: photo.id)
-                    }
-                )
+            photoGrid
+        }
+    }
+
+    private var addPhotosButton: some View {
+        Menu {
+            Button {
+                photoSource = .library
+            } label: {
+                Label("Choose Existing".localized, systemImage: "photo.on.rectangle")
             }
+
+            Button {
+                photoSource = .camera
+            } label: {
+                Label("Take New Photo".localized, systemImage: "camera")
+            }
+            .disabled(!CameraPicker.isAvailable)
+        } label: {
+            HStack(spacing: PhotoMetrics.addPhotosSpacing) {
+                Image(systemName: "photo.badge.plus.fill")
+                    .font(.system(size: 20))
+                Text("Add Photos".localized)
+                    .font(.system(size: PhotoMetrics.addPhotosLabelSize, weight: .semibold))
+            }
+            .foregroundStyle(PhotoPalette.brandBlue)
+            .frame(maxWidth: .infinity)
+            .frame(height: PhotoMetrics.addPhotosHeight)
+            .background(Capsule().fill(PhotoPalette.background1))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Add photos")
+    }
+
+    /// Split out and keyed by the photo set, so SwiftUI reuses the whole
+    /// mosaic across renders instead of rebuilding its tile buttons. That
+    /// rebuilding is what kept collapsing the Add Photos menu.
+    @ViewBuilder
+    private var photoGrid: some View {
+        let photos = store.allFacilityPhotos
+        if photos.isEmpty {
+            Text("No photos yet".localized)
+                .font(.system(size: 15))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 40)
+        } else {
+            PhotoMosaicGrid(
+                photos: photos,
+                width: max(contentWidth - 44, 0),
+                onSelect: { photo in
+                    let siblings = photo.reviewId.map { id in
+                        photos.filter { $0.reviewId == id }
+                    } ?? [photo]
+                    lightbox = LightboxSelection(photos: siblings, initialID: photo.id)
+                }
+            )
+            .id(photos.map(\.id.uuidString).joined())
         }
     }
 

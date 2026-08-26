@@ -5,8 +5,20 @@ import Foundation
 @MainActor
 final class PlaceReviewStore: ObservableObject {
     @Published private(set) var featureGrades: [AccessibilityFeatureGrade] = []
-    @Published private(set) var facilityReviews: [PlaceFacilityReview] = []
-    @Published private(set) var reviewPhotos: [ReviewPhoto] = []
+    @Published private(set) var facilityReviews: [PlaceFacilityReview] = [] {
+        didSet { rebuildAllFacilityPhotos() }
+    }
+    @Published private(set) var reviewPhotos: [ReviewPhoto] = [] {
+        didSet { rebuildAllFacilityPhotos() }
+    }
+    /// Every photo on this place, whatever facility it belongs to.
+    ///
+    /// STORED, not computed. As a computed property this rebuilt every
+    /// `FacilityPhoto` on every body evaluation, so the mosaic's tiles were
+    /// torn down and recreated continuously — which resized the column the
+    /// Add Photos menu anchors to and made the menu dismiss the instant it
+    /// opened, sending the tap into a photo tile instead.
+    @Published private(set) var allFacilityPhotos: [FacilityPhoto] = []
     @Published private(set) var streetImageURL: URL?
     @Published private(set) var imageAttribution: String?
     /// Curated photographs of the venue itself (see PlacePhotoService).
@@ -307,11 +319,8 @@ final class PlaceReviewStore: ObservableObject {
         }
     }
 
-    /// Every photo on this place, whatever facility it belongs to. The Photos
-    /// tab no longer carries a facility selector, so filtering by one would
-    /// silently hide most of what has been contributed.
-    var allFacilityPhotos: [FacilityPhoto] {
-        facilityPhotos(from: reviewPhotos)
+    private func rebuildAllFacilityPhotos() {
+        allFacilityPhotos = facilityPhotos(from: reviewPhotos)
     }
 
     func facilityPhotos(for kind: FacilityKind) -> [FacilityPhoto] {
@@ -319,12 +328,24 @@ final class PlaceReviewStore: ObservableObject {
     }
 
     private func facilityPhotos(from source: [ReviewPhoto]) -> [FacilityPhoto] {
-        source.compactMap { photo -> FacilityPhoto? in
+        // Drop repeats FIRST. The same image can legitimately arrive twice —
+        // repeat submissions are common enough to have their own pruning
+        // migration — and the Photos tab now pools every facility, so the odds
+        // of a duplicate landing in one list went up.
+        var seenURLs = Set<String>()
+        let unique = source.filter { seenURLs.insert($0.url).inserted }
+
+        return unique.enumerated().compactMap { index, photo -> FacilityPhoto? in
             guard let url = photo.imageURL else { return nil }
             let reviewId = facilityReviews.first { review in
                 review.photoURLs.contains(photo.url)
             }?.reviewId
             return FacilityPhoto(
+                // Position AND url. Stable across renders, and — unlike the
+                // url alone — impossible to collide: two tiles sharing one
+                // identity is what let a tap meant for the Add Photos menu be
+                // delivered to a photo instead.
+                id: .stable(from: "\(index)|\(photo.url)"),
                 source: .remote(url),
                 reviewId: reviewId,
                 caption: photo.trimmedCaption

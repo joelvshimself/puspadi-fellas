@@ -363,6 +363,74 @@ struct PlaceDetailLoadingSkeleton: View {
     }
 }
 
+/// Shimmering hero image placeholder shown while place details and hero photos are loading.
+struct HeroLoadingSkeleton: View {
+    var width: CGFloat? = nil
+    var height: CGFloat = 253
+    @State private var shimmerPhase: CGFloat = -1
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(.secondarySystemBackground),
+                    Color(.tertiarySystemBackground),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            GeometryReader { geo in
+                LinearGradient(
+                    colors: [.clear, Color.white.opacity(0.30), .clear],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .frame(width: max(geo.size.width * 0.6, 100))
+                .offset(x: shimmerPhase * max(geo.size.width, 100) * 1.6)
+                .blendMode(.plusLighter)
+            }
+
+            VStack(spacing: 8) {
+                Image(systemName: "photo")
+                    .font(.system(size: 34, weight: .light))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .frame(height: height)
+        .frame(maxWidth: width ?? .infinity)
+        .clipped()
+        .onAppear {
+            withAnimation(.linear(duration: 1.3).repeatForever(autoreverses: false)) {
+                shimmerPhase = 1
+            }
+        }
+        .accessibilityLabel("Loading photo".localized)
+    }
+}
+
+/// Settled placeholder when a venue has no photos after loading finishes.
+struct PlaceEmptyHeroPlaceholder: View {
+    var height: CGFloat = 253
+
+    var body: some View {
+        ZStack {
+            Rectangle().fill(Color(.secondarySystemBackground))
+            VStack(spacing: 8) {
+                Image(systemName: "photo.on.rectangle.angled")
+                    .font(.system(size: 36, weight: .light))
+                    .foregroundStyle(.tertiary)
+                Text("No Photos Available".localized)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(height: height)
+        .frame(maxWidth: .infinity)
+        .clipped()
+    }
+}
+
 /// First-visit spotlight on the CONTRIBUTE pill (Figma "Intro to contribute"):
 /// the screen dims, a white callout explains why contributions matter, and a
 /// pointer aims at the pill — which stays bright above the dim.

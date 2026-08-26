@@ -83,8 +83,10 @@ struct PhotoMosaicGrid: View {
             }
             .frame(width: size, height: size)
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         }
         .buttonStyle(.plain)
+        .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .accessibilityLabel("Photo")
     }
 
