@@ -59,48 +59,36 @@ struct ReviewSubmissionPayload: Encodable {
     struct Review: Encodable {
         let text: String?
         let photoUrls: [String]
-        let photoCaptions: [String]
     }
 }
 
 /// Public Storage URLs produced by `ReviewService` before building the payload.
 struct ReviewPhotoURLMap {
     var lobby: [String] = []
-    var lobbyCaptions: [String] = []
     var basement: [String] = []
-    var basementCaptions: [String] = []
     var elevator: [String] = []
-    var elevatorCaptions: [String] = []
     var toilet: [String] = []
-    var toiletCaptions: [String] = []
 }
 
 extension ReviewNoteDraft {
     /// Empty text + empty URLs → nil review (matches contract:
     /// "review with text=null and photoUrls=[] = same as review:null").
-    fileprivate func asReview(
-        photoUrls: [String],
-        photoCaptions: [String]
-    ) -> ReviewSubmissionPayload.Review? {
+    fileprivate func asReview(photoUrls: [String]) -> ReviewSubmissionPayload.Review? {
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedText.isEmpty && photoUrls.isEmpty { return nil }
-        return .init(
-            text: trimmedText.isEmpty ? nil : trimmedText,
-            photoUrls: photoUrls,
-            photoCaptions: photoCaptions
-        )
+        return .init(text: trimmedText.isEmpty ? nil : trimmedText, photoUrls: photoUrls)
     }
 }
 
 extension EntranceDraft {
-    fileprivate func asReport(photoUrls: [String], photoCaptions: [String]) -> ReviewSubmissionPayload.EntranceReport {
+    fileprivate func asReport(photoUrls: [String]) -> ReviewSubmissionPayload.EntranceReport {
         .init(
             location: location.rawValue,
             hasDropoffRamp: hasDropoffRamp,
             hasRails: hasRails,
             doorType: doorType?.rawValue,
             isWideEnough: isWideEnough,
-            review: review.asReview(photoUrls: photoUrls, photoCaptions: photoCaptions)
+            review: review.asReview(photoUrls: photoUrls)
         )
     }
 }
@@ -114,17 +102,11 @@ extension ReviewDraft {
             wheelchairAccessible: elevator.exists == true ? elevator.wheelchairAccessible : nil,
             // Contract: strip blockers unless wheelchairAccessible == false.
             blockers: elevator.wheelchairAccessible == false ? elevator.blockers.map(\.rawValue) : [],
-            review: elevator.review.asReview(
-                photoUrls: photoUrls.elevator,
-                photoCaptions: photoUrls.elevatorCaptions
-            )
+            review: elevator.review.asReview(photoUrls: photoUrls.elevator)
         )
         let toiletReport = ReviewSubmissionPayload.ToiletReport(
             hasDisabledToilet: toilet.hasDisabledToilet,
-            review: toilet.review.asReview(
-                photoUrls: photoUrls.toilet,
-                photoCaptions: photoUrls.toiletCaptions
-            )
+            review: toilet.review.asReview(photoUrls: photoUrls.toilet)
         )
         // Only entrances the user actually answered. Sending both
         // unconditionally wrote an all-null row for the untouched one, which
@@ -136,14 +118,8 @@ extension ReviewDraft {
             if report.isWideEnough != nil { return true }
             return report.review != nil
         }
-        let lobbyReport = lobby.asReport(
-            photoUrls: photoUrls.lobby,
-            photoCaptions: photoUrls.lobbyCaptions
-        )
-        let basementReport = basement.asReport(
-            photoUrls: photoUrls.basement,
-            photoCaptions: photoUrls.basementCaptions
-        )
+        let lobbyReport = lobby.asReport(photoUrls: photoUrls.lobby)
+        let basementReport = basement.asReport(photoUrls: photoUrls.basement)
         let entranceReports = [lobbyReport, basementReport].filter(hasContent)
 
         return ReviewSubmissionPayload(

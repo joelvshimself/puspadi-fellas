@@ -274,17 +274,22 @@ struct ContributeAccessFollowupStepView: View {
             Button {
                 selectedPhotoForCaption = photo
             } label: {
-                ZStack(alignment: .bottom) {
+                ZStack(alignment: .bottomLeading) {
                     Image(uiImage: photo.image)
                         .resizable()
                         .scaledToFill()
+                        .frame(width: 120, height: 120)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                     if !photo.caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        PhotoCaptionOverlay(caption: photo.caption)
+                        Image(systemName: "text.bubble.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(6)
+                            .background(Color.black.opacity(0.65), in: Circle())
+                            .padding(6)
                     }
                 }
-                .frame(width: 120, height: 120)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
             .buttonStyle(.plain)
 

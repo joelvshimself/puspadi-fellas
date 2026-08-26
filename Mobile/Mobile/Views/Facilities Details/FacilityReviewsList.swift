@@ -8,13 +8,9 @@ struct FacilityReviewRow: View {
     var onSelectPhoto: (FacilityPhoto) -> Void = { _ in }
 
     private var photos: [FacilityPhoto] {
-        review.photoURLs.enumerated().compactMap { index, urlString in
-            guard let remote = URL(string: urlString) else { return nil }
-            return FacilityPhoto(
-                source: .remote(remote),
-                reviewId: review.reviewId,
-                caption: review.caption(forPhotoAt: index)
-            )
+        review.photoURLs.compactMap { url in
+            guard let remote = URL(string: url) else { return nil }
+            return FacilityPhoto(source: .remote(remote), reviewId: review.reviewId)
         }
     }
 
@@ -68,14 +64,8 @@ struct FacilityReviewRow: View {
                     HStack(spacing: 8) {
                         ForEach(photos) { photo in
                             Button { onSelectPhoto(photo) } label: {
-                                ZStack(alignment: .bottom) {
-                                    FacilityPhotoImage(photo: photo, cornerRadius: 10)
-                                    if let caption = photo.caption {
-                                        PhotoCaptionOverlay(caption: caption)
-                                    }
-                                }
-                                .frame(width: 88, height: 88)
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                FacilityPhotoImage(photo: photo, cornerRadius: 10)
+                                    .frame(width: 88, height: 88)
                             }
                             .buttonStyle(.plain)
                         }
@@ -189,13 +179,9 @@ struct FacilityReviewsList: View {
                     ForEach(Array(filtered.enumerated()), id: \.element.id) { index, review in
                         if index > 0 { Divider() }
                         FacilityReviewRow(review: review) { photo in
-                            let siblings = review.photoURLs.enumerated().compactMap { index, urlString -> FacilityPhoto? in
-                                guard let remote = URL(string: urlString) else { return nil }
-                                return FacilityPhoto(
-                                    source: .remote(remote),
-                                    reviewId: review.reviewId,
-                                    caption: review.caption(forPhotoAt: index)
-                                )
+                            let siblings = review.photoURLs.compactMap { url -> FacilityPhoto? in
+                                guard let remote = URL(string: url) else { return nil }
+                                return FacilityPhoto(source: .remote(remote), reviewId: review.reviewId)
                             }
                             lightbox = LightboxSelection(photos: siblings, initialID: photo.id)
                         }
@@ -252,7 +238,6 @@ struct FacilityReviewsList: View {
             bodyText: "The entrance is quite hard to find. When I went there, there's a lot of stairs and it is very hard too see the signage and need to ask the security.",
             providedTags: ["RAMP", "HANDRAIL", "AUTOMATIC DOORS"],
             photoURLs: [],
-            photoCaptions: [],
             reviewerName: "Aarief M.",
             reviewerRole: "Wheelchair User"
         )

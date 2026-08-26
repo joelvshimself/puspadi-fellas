@@ -1,14 +1,12 @@
 import SwiftUI
 
-/// Full-screen lightbox — swipe horizontally among photos from the same review,
-/// with pinch / double-tap zoom on the current photo.
+/// Full-screen lightbox — swipe horizontally among photos from the same review.
 struct FacilityPhotoDetailView: View {
     let photos: [FacilityPhoto]
     let initialID: UUID
 
     @Environment(\.dismiss) private var dismiss
-    @State private var currentID: UUID?
-    @State private var isZoomed = false
+    @State private var currentID: UUID
 
     init(photos: [FacilityPhoto], initialID: UUID) {
         self.photos = photos
@@ -26,34 +24,20 @@ struct FacilityPhotoDetailView: View {
             Color.black.ignoresSafeArea()
 
             if photos.count <= 1, let photo = photos.first {
-                ZoomableFacilityPhotoPage(photo: photo, isZoomed: $isZoomed)
+                FacilityPhotoImage(photo: photo, cornerRadius: 0, fillsFrame: false)
+                    .padding(20)
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 0) {
-                        ForEach(photos) { photo in
-                            ZoomableFacilityPhotoPage(
-                                photo: photo,
-                                isZoomed: Binding(
-                                    get: { currentID == photo.id && isZoomed },
-                                    set: { newValue in
-                                        if currentID == photo.id || currentID == nil {
-                                            isZoomed = newValue
-                                        }
-                                    }
-                                )
-                            )
-                            .containerRelativeFrame(.horizontal)
-                            .id(photo.id)
-                        }
+                TabView(selection: $currentID) {
+                    ForEach(photos) { photo in
+                        FacilityPhotoImage(photo: photo, cornerRadius: 0, fillsFrame: false)
+                            .padding(20)
+                            .tag(photo.id)
                     }
-                    .scrollTargetLayout()
                 }
-                .scrollPosition(id: $currentID)
-                .scrollTargetBehavior(.paging)
-                .scrollDisabled(isZoomed)
+                .tabViewStyle(.page(indexDisplayMode: .automatic))
             }
 
-            VStack(spacing: 0) {
+            VStack {
                 HStack {
                     Spacer()
                     Button { dismiss() } label: {
@@ -65,94 +49,20 @@ struct FacilityPhotoDetailView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                .padding(.top, 20)
-                .padding(.horizontal, 20)
-
                 Spacer()
-                    .allowsHitTesting(false)
             }
+            .padding(20)
         }
         .presentationBackground(.black)
         .gesture(
             DragGesture(minimumDistance: 40)
                 .onEnded { value in
                     if value.translation.height > 80 { dismiss() }
-                },
-            // Ignore swipe-down dismiss while zoomed so it does not fight pan.
-            including: isZoomed ? .none : .gesture
-        )
-        .onChange(of: currentID) { _, _ in
-            isZoomed = false
-        }
-        .animation(.easeOut(duration: 0.15), value: isZoomed)
-        .animation(.easeOut(duration: 0.15), value: currentID)
-    }
-}
-
-/// Loads a `FacilityPhoto` into a `UIImage`, then hands it to the zoom container.
-private struct ZoomableFacilityPhotoPage: View {
-    let photo: FacilityPhoto
-    @Binding var isZoomed: Bool
-
-    @State private var image: UIImage?
-    @State private var finishedLoading = false
-
-    var body: some View {
-        ZStack(alignment: .bottom) {
-            Group {
-                if let image {
-                    ZoomablePhotoContainer(image: image, isZoomed: $isZoomed)
-                } else if !finishedLoading {
-                    ProgressView()
-                        .tint(.white)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    Image(systemName: "photo")
-                        .font(.largeTitle)
-                        .foregroundStyle(.white.opacity(0.6))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-            }
-
-            if let caption = photo.caption, !isZoomed {
-                PhotoCaptionOverlay(
-                    caption: caption,
-                    fontSize: 15,
-                    lineLimit: 4,
-                    horizontalPadding: 20,
-                    verticalPadding: 20
-                )
-                .transition(.opacity)
-            }
-        }
-        .task(id: photo.id) {
-            await loadImage()
-        }
-    }
-
-    private func loadImage() async {
-        finishedLoading = false
-        image = nil
-        isZoomed = false
-        defer { finishedLoading = true }
-
-        switch photo.source {
-        case let .local(uiImage):
-            image = uiImage
-        case let .asset(name):
-            image = UIImage(named: name)
-        case let .remote(url):
-            guard let data = try? await NetworkRetry.download(from: url) else { return }
-            image = UIImage(data: data)
-        }
+        )
     }
 }
 
 #Preview {
-    FacilityPhotoDetailView(
-        photo: FacilityPhoto(
-            source: .asset("SamplePlacePhoto"),
-            caption: "Lobby ramp is on the left side of the main doors."
-        )
-    )
+    FacilityPhotoDetailView(photo: FacilityPhoto.reviewThumbnails[0])
 }
