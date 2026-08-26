@@ -20,15 +20,35 @@ struct FacilityPhoto: Identifiable {
     let source: Source
     /// Groups photos from the same review for lightbox paging.
     var reviewId: UUID?
+    /// Optional text shown under the photo in the lightbox (review notes or
+    /// a per-photo caption when one exists).
+    var caption: String?
 
-    init(id: UUID = UUID(), source: Source, reviewId: UUID? = nil) {
+    init(
+        id: UUID = UUID(),
+        source: Source,
+        reviewId: UUID? = nil,
+        caption: String? = nil
+    ) {
         self.id = id
         self.source = source
         self.reviewId = reviewId
+        self.caption = Self.normalizedCaption(caption)
     }
 
-    init(id: UUID = UUID(), image: UIImage, reviewId: UUID? = nil) {
-        self.init(id: id, source: .local(image), reviewId: reviewId)
+    init(
+        id: UUID = UUID(),
+        image: UIImage,
+        reviewId: UUID? = nil,
+        caption: String? = nil
+    ) {
+        self.init(id: id, source: .local(image), reviewId: reviewId, caption: caption)
+    }
+
+    private static func normalizedCaption(_ caption: String?) -> String? {
+        guard let caption else { return nil }
+        let trimmed = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

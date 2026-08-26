@@ -204,6 +204,7 @@ struct PhotoCaptionEditorView: View {
     let onDismiss: () -> Void
 
     @State private var captionText: String
+    @State private var isPhotoZoomed = false
     @FocusState private var isCaptionFocused: Bool
 
     init(photo: ReviewPhotoDraft, onSave: @escaping (String) -> Void, onDismiss: @escaping () -> Void) {
@@ -221,7 +222,6 @@ struct PhotoCaptionEditorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Top Navigation Bar (Back button < and Checkmark ✓ button)
             HStack {
                 Button(action: onDismiss) {
                     Image(systemName: "chevron.left")
@@ -254,38 +254,37 @@ struct PhotoCaptionEditorView: View {
             .padding(.horizontal, 20)
             .padding(.top, 12)
 
-            Spacer(minLength: 12)
-
-            // Center Full Photo Display
-            Image(uiImage: photo.image)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
+            ZoomablePhotoContainer(image: photo.image, isZoomed: $isPhotoZoomed)
+                .padding(.vertical, 12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.horizontal, 16)
-
-            Spacer(minLength: 12)
-
-            // Bottom Caption Text Input
-            VStack(spacing: 0) {
-                HStack {
-                    TextField("Add a caption ...".localized, text: $captionText)
-                        .font(.system(size: 15))
-                        .focused($isCaptionFocused)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color(.secondarySystemBackground))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(isCaptionFocused ? Color.accentColor : Color.clear, lineWidth: 1.5)
-                )
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 20)
         }
         .background(Color(.systemBackground).ignoresSafeArea())
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            captionField
+        }
+    }
+
+    private var captionField: some View {
+        TextField("Add a caption ...".localized, text: $captionText, axis: .vertical)
+            .font(.system(size: 15))
+            .lineLimit(1...4)
+            .focused($isCaptionFocused)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color(.secondarySystemBackground))
+            )
+            .overlay {
+                Capsule(style: .continuous)
+                    .strokeBorder(
+                        isCaptionFocused ? Color.accentColor : Color.clear,
+                        lineWidth: 1.5
+                    )
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, 12)
+            .background(Color(.systemBackground))
     }
 }
