@@ -19,11 +19,23 @@ import MapKit
 /// be discoverable only when a third-party index feels like mentioning it.
 @MainActor
 enum NearbyPlacesService {
+    /// Pins for the map.
+    ///
+    /// Where the directory has coverage, the directory IS the answer — MapKit
+    /// is not consulted at all. Its "shopping mall" search is a text query, not
+    /// a category filter, so around Kuta it returned RD Leather Bali and a
+    /// Playworks store clustered on top of Lippo Mall Kuta. Suppressing those
+    /// one at a time is a losing game: the query has no notion of "is actually
+    /// a mall", while the directory is a list of malls by construction.
+    ///
+    /// MapKit still answers where we have curated nothing, so the map is not
+    /// empty outside the seeded region — but it is then the fallback rather
+    /// than a co-equal source.
     static func search(in region: MKCoordinateRegion, query: String = "shopping mall") async -> [Place] {
-        async let directory = directoryPlaces(in: region)
-        async let mapKit = mapKitPlaces(in: region, query: query)
+        let directory = await directoryPlaces(in: region)
+        if !directory.isEmpty { return directory }
 
-        return merge(directory: await directory, mapKit: await mapKit)
+        return await mapKitPlaces(in: region, query: query)
     }
 
     /// Directory places covering the visible region.
@@ -64,6 +76,11 @@ enum NearbyPlacesService {
     }
 
     /// Drops the MapKit copy of anything the directory already covers.
+    ///
+    /// Used by the SEARCH sheet, which does still merge the two: someone
+    /// typing a name is looking for a specific place and may well mean one we
+    /// have not curated. The map, which shows everything in view rather than
+    /// what was asked for, takes the directory alone — see `search`.
     ///
     /// This used to compare MapKit's name against the directory name alone,
     /// and that is not how the same venue arrives twice. MapKit says "Park23

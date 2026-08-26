@@ -59,8 +59,28 @@ struct MockPlaceDetailView: View {
         _store = StateObject(wrappedValue: PlaceReviewStore(place: place))
     }
 
+    /// The hero carousel, in the order a reader benefits from most.
+    ///
+    /// A photograph the venue publishes of its own frontage comes first: it
+    /// shows the building, from the street, in good light. Mapillary's
+    /// street-level capture is next — real, but whatever the camera car drove
+    /// past. Contributors' facility photos last: a close-up of a lift button
+    /// is invaluable further down the page and unrecognisable as a hero.
+    private var heroSlides: [(url: URL, credit: String?)] {
+        var slides: [(URL, String?)] = store.venuePhotos.compactMap { photo in
+            photo.imageURL.map { ($0, photo.requiresCredit ? photo.credit : nil) }
+        }
+        if let street = store.streetImageURL {
+            slides.append((street, store.imageAttribution))
+        }
+        slides.append(contentsOf: store.reviewPhotos.compactMap { photo in
+            photo.imageURL.map { ($0, nil) }
+        })
+        return slides
+    }
+
     private var heroURLs: [URL] {
-        store.reviewPhotos.compactMap(\.imageURL)
+        heroSlides.map(\.url)
     }
 
     /// Downloads the carousel's images ahead of the swipe, a couple at a time
@@ -74,7 +94,7 @@ struct MockPlaceDetailView: View {
     }
 
     private var totalHeroCount: Int {
-        max(1, (store.streetImageURL != nil ? 1 : 0) + heroURLs.count)
+        max(1, heroSlides.count)
     }
 
     var body: some View {
@@ -268,48 +288,59 @@ struct MockPlaceDetailView: View {
 
     @ViewBuilder
     private func heroSlide(index: Int, width: CGFloat, height: CGFloat) -> some View {
-        if index == 0, let street = store.streetImageURL {
-            AsyncImage(url: street) { phase in
-                if case .success(let image) = phase {
-                    image.resizable().aspectRatio(contentMode: .fill)
-                } else {
-                    PlaceImageView(
-                        coordinate: place.coordinate,
-                        remoteImageURL: street,
-                        attribution: store.imageAttribution,
-                        resolved: store.enrichResolved,
-                        height: height,
-                        cornerRadius: 0
-                    )
-                }
-            }
-            .frame(width: width, height: height)
-            .clipped()
-        } else {
-            let photoIndex = store.streetImageURL != nil ? index - 1 : index
-            if photoIndex >= 0, photoIndex < heroURLs.count {
-                AsyncImage(url: heroURLs[photoIndex]) { phase in
+        let slides = heroSlides
+        if index >= 0, index < slides.count {
+            let slide = slides[index]
+            ZStack(alignment: .bottomLeading) {
+                AsyncImage(url: slide.url) { phase in
                     switch phase {
                     case .success(let image):
                         image.resizable().aspectRatio(contentMode: .fill)
+                    case .failure:
+                        // Only the first slide has somewhere sensible to fall
+                        // back to; a failed contributor photo is just a gap.
+                        if index == 0 {
+                            PlaceImageView(
+                                coordinate: place.coordinate,
+                                remoteImageURL: slide.url,
+                                attribution: store.imageAttribution,
+                                resolved: store.enrichResolved,
+                                height: height,
+                                cornerRadius: 0
+                            )
+                        } else {
+                            Color(.secondarySystemBackground)
+                        }
                     default:
                         Color(.secondarySystemBackground)
                     }
                 }
                 .frame(width: width, height: height)
                 .clipped()
-            } else {
-                PlaceImageView(
-                    coordinate: place.coordinate,
-                    remoteImageURL: nil,
-                    attribution: store.imageAttribution,
-                    resolved: store.enrichResolved,
-                    height: height,
-                    cornerRadius: 0
-                )
-                .frame(width: width, height: height)
-                .clipped()
+
+                // The credit is a condition of using the image, not a caption
+                // to drop when it is inconvenient.
+                if let credit = slide.credit {
+                    Text(credit)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.black.opacity(0.35), in: Capsule())
+                        .padding(10)
+                }
             }
+        } else {
+            PlaceImageView(
+                coordinate: place.coordinate,
+                remoteImageURL: nil,
+                attribution: store.imageAttribution,
+                resolved: store.enrichResolved,
+                height: height,
+                cornerRadius: 0
+            )
+            .frame(width: width, height: height)
+            .clipped()
         }
     }
 
@@ -402,6 +433,7 @@ struct MockPlaceDetailView: View {
             NavigationLink {
                 MockGalleryView(
                     streetImageURL: store.streetImageURL,
+                    venuePhotos: store.venuePhotos,
                     reviewPhotos: store.reviewPhotos,
                     place: place,
                     onPhotosChanged: { Task { await store.load() } }

@@ -9,6 +9,11 @@ final class PlaceReviewStore: ObservableObject {
     @Published private(set) var reviewPhotos: [ReviewPhoto] = []
     @Published private(set) var streetImageURL: URL?
     @Published private(set) var imageAttribution: String?
+    /// Curated photographs of the venue itself (see PlacePhotoService).
+    /// Preferred over the street-level image where they exist: a photo the
+    /// venue publishes of its own frontage beats whatever Mapillary happened
+    /// to drive past.
+    @Published private(set) var venuePhotos: [PlacePhoto] = []
     @Published private(set) var isLoading = false
     @Published private(set) var enrichResolved = false
     @Published private(set) var reviewPhotosLoadFailed = false
@@ -104,7 +109,8 @@ final class PlaceReviewStore: ObservableObject {
         }
 
         async let reviews = loadFacilityReviews(placeId: placeId)
-        let (reviewRows, photoResponse) = await (reviews, loadReviewPhotos())
+        async let venue = PlacePhotoService.shared.photos(for: placeId)
+        let (reviewRows, photoResponse, venueRows) = await (reviews, loadReviewPhotos(), venue)
 
         guard generation == loadGeneration else {
             print("[PlaceReviewStore] Discarding stale refresh for \(placeId)")
@@ -112,6 +118,7 @@ final class PlaceReviewStore: ObservableObject {
         }
 
         reviewsAttempted = true
+        venuePhotos = venueRows
         featureGrades = enrichResponse?.grade ?? []
         imageAttribution = enrichResponse?.place?.imageAttribution
         streetImageURL = enrichResponse?.place?.imageUrl.flatMap(URL.init(string:))

@@ -4,6 +4,10 @@ import SwiftUI
 /// Gallery screen — live backend photos with inline add (library / camera).
 struct MockGalleryView: View {
     var streetImageURL: URL? = nil
+    /// Curated photographs of the venue itself. Shown under ALL, ahead of the
+    /// street-level capture — they are pictures of the place, not of one
+    /// facility, so no facility filter matches them.
+    var venuePhotos: [PlacePhoto] = []
     var reviewPhotos: [ReviewPhoto] = []
     var place: Place
     /// Lets the owning screen refetch its stores after an upload, so the new
@@ -51,8 +55,13 @@ struct MockGalleryView: View {
     private var galleryFacilityPhotos: [FacilityPhoto] {
         var photos: [FacilityPhoto] = localPhotos
 
-        if selectedFilter == .all, let streetImageURL {
-            photos.append(FacilityPhoto(source: .remote(streetImageURL)))
+        if selectedFilter == .all {
+            photos.append(contentsOf: venuePhotos.compactMap { photo in
+                photo.imageURL.map { FacilityPhoto(source: .remote($0)) }
+            })
+            if let streetImageURL {
+                photos.append(FacilityPhoto(source: .remote(streetImageURL)))
+            }
         }
 
         let matching = reviewPhotos.filter { photo in
