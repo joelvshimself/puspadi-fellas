@@ -4,7 +4,7 @@ struct ProfilePhotosView: View {
     @EnvironmentObject private var languageManager: LanguageManager
     @EnvironmentObject private var auth: AuthSessionStore
 
-    @State private var remotePhotoURLs: [URL] = []
+    @State private var photos: [FacilityPhoto] = []
     @State private var selectedPhoto: FacilityPhoto? = nil
 
     var body: some View {
@@ -13,13 +13,13 @@ struct ProfilePhotosView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("\("All Photos".localized) (\(remotePhotoURLs.count))")
+                    Text("\("All Photos".localized) (\(photos.count))")
                         .font(.title3.weight(.bold))
                         .foregroundStyle(.primary)
                         .padding(.horizontal, PhotoMetrics.gutter)
                         .padding(.top, 12)
 
-                    if remotePhotoURLs.isEmpty {
+                    if photos.isEmpty {
                         VStack(spacing: 12) {
                             Image(systemName: "photo.on.rectangle.angled")
                                 .font(.system(size: 40, weight: .light))
@@ -35,23 +35,22 @@ struct ProfilePhotosView: View {
                         .frame(maxWidth: .infinity, minHeight: 200)
                     } else {
                         LazyVStack(spacing: 12) {
-                            ForEach(remotePhotoURLs, id: \.self) { url in
+                            ForEach(photos) { photo in
                                 Button {
-                                    selectedPhoto = FacilityPhoto(source: .remote(url))
+                                    selectedPhoto = photo
                                 } label: {
-                                    AsyncImage(url: url) { phase in
-                                        switch phase {
-                                        case .success(let image):
-                                            image
-                                                .resizable()
-                                                .aspectRatio(contentMode: .fill)
-                                        default:
-                                            Color(.secondarySystemBackground)
-                                                .overlay { ProgressView() }
+                                    ZStack(alignment: .bottom) {
+                                        FacilityPhotoImage(photo: photo, cornerRadius: 16)
+                                            .frame(maxWidth: .infinity)
+                                            .frame(height: 220)
+                                        if let caption = photo.caption {
+                                            PhotoCaptionOverlay(
+                                                caption: caption,
+                                                fontSize: 13,
+                                                lineLimit: 3
+                                            )
                                         }
                                     }
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 220)
                                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                                 }
                                 .buttonStyle(.plain)
@@ -73,13 +72,13 @@ struct ProfilePhotosView: View {
 
     private func loadPhotosFromSupabase() async {
         guard auth.userId != nil else {
-            await MainActor.run { remotePhotoURLs = [] }
+            await MainActor.run { photos = [] }
             return
         }
         do {
             let response = try await ReviewService.shared.fetchMyReviews()
-            let urls = response.reviews.flatMap(\.photoURLs)
-            await MainActor.run { self.remotePhotoURLs = urls }
+            let loaded = response.reviews.flatMap(\.facilityPhotos)
+            await MainActor.run { self.photos = loaded }
         } catch {
             print("ProfilePhotosView: Failed to load photos from Supabase: \(error)")
         }

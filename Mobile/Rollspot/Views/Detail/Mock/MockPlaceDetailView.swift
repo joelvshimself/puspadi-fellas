@@ -455,34 +455,6 @@ struct MockPlaceDetailView: View {
                 }
                 .animation(.snappy(duration: 0.2), value: activePage)
             }
-
-            Spacer()
-
-            NavigationLink {
-                MockGalleryView(
-                    streetImageURL: store.streetImageURL,
-                    venuePhotos: store.venuePhotos,
-                    reviewPhotos: store.reviewPhotos,
-                    place: place,
-                    onPhotosChanged: { Task { await store.load() } }
-                )
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "photo.fill.on.rectangle.fill")
-                        .font(.system(size: 12, weight: .semibold))
-                    Text("GALLERY".localized)
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .foregroundStyle(.primary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background {
-                    Capsule().fill(Color.white.opacity(0.55))
-                    Capsule().fill(.ultraThinMaterial)
-                }
-            }
-            .buttonStyle(.plain)
-
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 20)
