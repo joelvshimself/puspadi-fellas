@@ -281,6 +281,7 @@ final class LanguageManager: ObservableObject {
         "Notes": [.english: "Notes", .indonesia: "Catatan"],
         "Tell us more about your experience …": [.english: "Tell us more about your experience …", .indonesia: "Ceritakan lebih banyak tentang pengalaman Anda …"],
         "Review Submitted!": [.english: "Review Submitted!", .indonesia: "Ulasan Terkirim!"],
+        "Add a caption ...": [.english: "Add a caption ...", .indonesia: "Tambahkan keterangan ..."],
         "Thank you for helping out!": [.english: "Thank you for helping out!", .indonesia: "Terima kasih telah membantu!"],
         "Any dropoff or ramps?": [.english: "Any dropoff or ramps?", .indonesia: "Apakah ada dropoff atau ramp?"],
         "Look for a step-free path from the curb.": [.english: "Look for a step-free path from the curb.", .indonesia: "Cari jalur tanpa anak tangga dari trotoar."],

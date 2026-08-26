@@ -33,7 +33,6 @@ struct HomeMapView: View {
     /// place; this screen owns the navigation stack, so it does the routing.
     @ObservedObject private var deepLinks = DeepLinkRouter.shared
     @State private var homeCover: HomeFullScreenCover?
-    @State private var pendingProfileTab: ProfileTab?
     /// One-time intro sheet after signup. The flag persists so it is shown
     /// exactly once per device; the sheet stacks over the search sheet so it
     /// takes the same Liquid Glass treatment.
@@ -245,23 +244,13 @@ struct HomeMapView: View {
                             case .auth:
                                 LoginView(
                                     onSuccess: {
-                                        homeCover = nil
-                                        if let tab = pendingProfileTab {
-                                            pendingProfileTab = nil
-                                            path.append(HomeRoute.profile(tab))
-                                        } else if !hasSeenOnboardingIntro {
-                                            // Wait out the cover's dismiss
-                                            // animation — presenting while it
-                                            // is still animating drops the
-                                            // sheet.
-                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-                                                showOnboardingIntro = true
-                                            }
-                                        }
+                                        dismissAuthToHome(showIntroIfNeeded: true)
                                     },
                                     onCancel: {
                                         homeCover = nil
-                                        pendingProfileTab = nil
+                                    },
+                                    onExploreMalls: {
+                                        dismissAuthToHome(showIntroIfNeeded: false)
                                     }
                                 )
                                 .environmentObject(auth)
@@ -805,9 +794,25 @@ struct HomeMapView: View {
             // first (an earlier fix that merged in from another branch) tore
             // down the very view the cover presents from — "not in the window
             // hierarchy" — so the login never appeared.
-            pendingProfileTab = tab
             isSearchActive = false
             homeCover = .auth
+        }
+    }
+
+    /// Closes the auth cover and returns to the map root. Sign-in never
+    /// auto-opens Profile — even when login was triggered from the profile
+    /// button — so every completed auth lands on the home map.
+    private func dismissAuthToHome(showIntroIfNeeded: Bool) {
+        homeCover = nil
+        if !path.isEmpty {
+            path = NavigationPath()
+        }
+        isSearchActive = false
+        guard showIntroIfNeeded, !hasSeenOnboardingIntro else { return }
+        // Wait out the cover's dismiss animation — presenting while it is
+        // still animating drops the sheet.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+            showOnboardingIntro = true
         }
     }
 

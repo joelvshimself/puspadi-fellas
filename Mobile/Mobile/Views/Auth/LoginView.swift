@@ -3,6 +3,7 @@ import SwiftUI
 struct LoginView: View {
     var onSuccess: () -> Void
     var onCancel: () -> Void
+    var onExploreMalls: () -> Void
 
     @State private var path: [AuthRoute] = []
     @State private var signupPassword = ""
@@ -65,6 +66,8 @@ struct LoginView: View {
                         path: $path,
                         onSuccess: onSuccess
                     )
+                case .allSet:
+                    AuthAllSetView(onExplore: onExploreMalls)
                 }
             }
         }
@@ -72,7 +75,7 @@ struct LoginView: View {
 }
 
 #Preview {
-    LoginView(onSuccess: {}, onCancel: {})
+    LoginView(onSuccess: {}, onCancel: {}, onExploreMalls: {})
         .environmentObject(AuthSessionStore())
         .environmentObject(LanguageManager.shared)
 }

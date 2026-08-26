@@ -9,6 +9,8 @@ struct PlaceFacilityReview: Identifiable, Hashable {
     let bodyText: String
     let providedTags: [String]
     let photoURLs: [String]
+    /// Per-photo captions, parallel to `photoURLs` (same index order).
+    let photoCaptions: [String]
     /// Display-safe reviewer identity, joined server-side by the
     /// `place-reviews` Edge Function (profiles are RLS-locked to their owner,
     /// so the client can never read them directly). All nil for legacy rows
@@ -19,6 +21,19 @@ struct PlaceFacilityReview: Identifiable, Hashable {
 
     var providedList: String {
         providedTags.joined(separator: ", ")
+    }
+
+    /// Caption for the photo at `index` in `photoURLs`, if any.
+    func caption(forPhotoAt index: Int) -> String? {
+        guard index >= 0, index < photoCaptions.count else { return nil }
+        let trimmed = photoCaptions[index].trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// Caption for a photo URL in this review, if any.
+    func caption(forPhotoURL url: String) -> String? {
+        guard let index = photoURLs.firstIndex(of: url) else { return nil }
+        return caption(forPhotoAt: index)
     }
 
     /// First sentence of the review body for notes snippets.

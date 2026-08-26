@@ -277,15 +277,16 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 474QX5LGYC;
+				DEVELOPMENT_TEAM = 7HU54XPQ85;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Puspadi Fellas uses your camera so you can take photos of a place's accessibility features.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Puspadi Fellas uses your location to find and check accessibility info for places near you.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Puspadi Fellas uses your microphone for voice search.";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Puspadi Fellas uses your photo library so you can set a profile picture and attach photos to reviews.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Puspadi Fellas uses speech recognition to search places with your voice.";
+				INFOPLIST_KEY_CFBundleDisplayName = "Roll Stop";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Roll Stop uses your camera so you can take photos of a place's accessibility features.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Roll Stop uses your location to find and check accessibility info for places near you.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Roll Stop uses your microphone for voice search.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Roll Stop uses your photo library so you can set a profile picture and attach photos to reviews.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Roll Stop uses speech recognition to search places with your voice.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -296,7 +297,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.ppuspadifellas.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.puspadifellas.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -315,15 +316,16 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 474QX5LGYC;
+				DEVELOPMENT_TEAM = 7HU54XPQ85;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Puspadi Fellas uses your camera so you can take photos of a place's accessibility features.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Puspadi Fellas uses your location to find and check accessibility info for places near you.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Puspadi Fellas uses your microphone for voice search.";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Puspadi Fellas uses your photo library so you can set a profile picture and attach photos to reviews.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Puspadi Fellas uses speech recognition to search places with your voice.";
+				INFOPLIST_KEY_CFBundleDisplayName = "Roll Stop";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Roll Stop uses your camera so you can take photos of a place's accessibility features.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Roll Stop uses your location to find and check accessibility info for places near you.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Roll Stop uses your microphone for voice search.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Roll Stop uses your photo library so you can set a profile picture and attach photos to reviews.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Roll Stop uses speech recognition to search places with your voice.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -334,7 +336,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.ppuspadifellas.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.puspadifellas.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;

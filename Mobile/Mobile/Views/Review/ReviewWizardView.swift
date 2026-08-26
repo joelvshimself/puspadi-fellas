@@ -41,19 +41,19 @@ struct ReviewWizardView: View {
         }
         .background(Color(.systemBackground))
         .toolbar(.hidden, for: .navigationBar)
-        // TODO(reenable-auth): auth gate disabled for testing this new flow — restore before pushing.
-        // .onAppear {
-        //     if !auth.isSignedIn {
-        //         showLogin = true
-        //     }
-        // }
-        // .fullScreenCover(isPresented: $showLogin) {
-        //     LoginView(
-        //         onSuccess: { showLogin = false },
-        //         onCancel: { onFinished() }
-        //     )
-        //     .environmentObject(auth)
-        // }
+        .onAppear {
+            if !auth.isSignedIn {
+                showLogin = true
+            }
+        }
+        .fullScreenCover(isPresented: $showLogin) {
+            LoginView(
+                onSuccess: { showLogin = false },
+                onCancel: { onFinished() },
+                onExploreMalls: { showLogin = false }
+            )
+            .environmentObject(auth)
+        }
         .onChange(of: draftFingerprint) { _, _ in
             hasInteracted = true
         }

@@ -186,29 +186,13 @@ struct ProfileView: View {
     }
 
     private var placeholderAvatar: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.45, green: 0.75, blue: 0.98),
-                            Color(red: 0.26, green: 0.65, blue: 0.96)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
-            Image(systemName: "person.fill")
-                .resizable()
-                .scaledToFit()
-                .foregroundStyle(.white)
-                .frame(width: 42, height: 42)
-                .offset(y: 6)
-        }
-        .frame(width: 88, height: 88)
-        .clipShape(Circle())
-        .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
+        Image("Profile Avatar")
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .frame(width: 88, height: 88)
+            .clipShape(Circle())
+            .overlay(Circle().stroke(Color.white, lineWidth: 2))
+            .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
     }
 
     private func loadProfile() async {

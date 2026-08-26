@@ -110,8 +110,18 @@ struct ProfileReviewsView: View {
                 .presentationDragIndicator(.visible)
         }
         .navigationDestination(item: $reviewToOpen) { review in
-            MockPlaceDetailView(place: place(for: review))
-                .enableSwipeBack()
+            MockMyReviewView(
+                place: place(for: review),
+                reviewId: review.id,
+                userName: review.userName,
+                avatarURL: review.userAvatarURL,
+                userRole: review.userRole,
+                dateLabel: review.dateLabel,
+                notes: review.notes,
+                providedTags: review.providedTags,
+                photoURLs: review.photoURLs
+            )
+            .enableSwipeBack()
         }
     }
 
@@ -203,9 +213,7 @@ struct ProfileReviewsView: View {
 
             Divider()
 
-            Text(review.notes)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            formattedNotesText(review.notes)
                 .fixedSize(horizontal: false, vertical: true)
 
             if !review.providedTags.isEmpty {
@@ -279,6 +287,60 @@ struct ProfileReviewsView: View {
         )
     }
 
+    private func formattedNotesText(_ notes: String) -> Text {
+        let lines = notes.components(separatedBy: "\n")
+        guard !lines.isEmpty else {
+            return Text(notes)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+
+        var combined = Text("")
+        for (index, line) in lines.enumerated() {
+            if index > 0 {
+                combined = combined + Text("\n")
+            }
+            combined = combined + formattedNoteLine(line)
+        }
+        return combined
+    }
+
+    /// Turns `[entrance:lobby] It has stairs` into **lobby** It has stairs.
+    private func formattedNoteLine(_ line: String) -> Text {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.first == "[",
+              let closeBracket = trimmed.firstIndex(of: "]")
+        else {
+            return Text(trimmed)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+
+        let inner = trimmed[trimmed.index(after: trimmed.startIndex)..<closeBracket]
+        let remainderStart = trimmed.index(after: closeBracket)
+        let remainder = remainderStart < trimmed.endIndex
+            ? String(trimmed[remainderStart...]).trimmingCharacters(in: .whitespaces)
+            : ""
+
+        let label: String
+        if let colon = inner.lastIndex(of: ":") {
+            label = String(inner[inner.index(after: colon)...])
+        } else {
+            label = String(inner)
+        }
+
+        let labelText = Text(label)
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(.secondary)
+
+        guard !remainder.isEmpty else { return labelText }
+
+        return labelText
+            + Text(" \(remainder)")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+    }
+
     @ViewBuilder
     private func reviewAvatar(_ review: ProfileReviewItem) -> some View {
         if let url = review.userAvatarURL {
@@ -298,11 +360,10 @@ struct ProfileReviewsView: View {
     }
 
     private var placeholderReviewAvatar: some View {
-        Image(systemName: "person.crop.circle.fill")
+        Image("Profile Avatar")
             .resizable()
             .aspectRatio(contentMode: .fill)
             .frame(width: 40, height: 40)
-            .foregroundStyle(.gray.opacity(0.6))
             .clipShape(Circle())
     }
 

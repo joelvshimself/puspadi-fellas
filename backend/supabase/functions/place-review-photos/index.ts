@@ -5,7 +5,7 @@
 // stored on reviews + review_entrances — does not list the bucket.
 //
 // Request:  { lat: number, lng: number }
-// Response: { status: "ok", placeId, photos: [{ url, facility, label }] }
+// Response: { status: "ok", placeId, photos: [{ url, facility, label, caption }] }
 //
 // TODO: re-enable JWT before production — same device-testing stance as
 // submit-accessibility-review.
@@ -31,6 +31,7 @@ interface PhotoItem {
   url: string;
   facility: Facility;
   label: string;
+  caption: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -48,7 +49,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: reviews, error: reviewsError } = await supabase
     .from("reviews")
-    .select("id, elevator_photo_urls, toilet_photo_urls, created_at")
+    .select("id, elevator_photo_urls, elevator_photo_captions, toilet_photo_urls, toilet_photo_captions, created_at")
     .eq("place_id", placeId)
     .order("created_at", { ascending: false });
 
@@ -65,7 +66,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: entrances, error: entrancesError } = await supabase
     .from("review_entrances")
-    .select("review_id, location, photo_urls")
+    .select("review_id, location, photo_urls, photo_captions")
     .in("review_id", reviewIds);
 
   if (entrancesError) {
@@ -78,13 +79,14 @@ Deno.serve(async (req: Request) => {
 
   // Preserve newest-review-first: group entrances by review, then walk reviews
   // in the ordered list and append elevator/toilet after that review's entrances.
-  const entrancesByReview = new Map<string, Array<{ location: string; photo_urls: string[] }>>();
+  const entrancesByReview = new Map<string, Array<{ location: string; photo_urls: string[]; photo_captions: string[] }>>();
   for (const row of entrances ?? []) {
     const id = row.review_id as string;
     const list = entrancesByReview.get(id) ?? [];
     list.push({
       location: row.location as string,
       photo_urls: (row.photo_urls as string[] | null) ?? [],
+      photo_captions: (row.photo_captions as string[] | null) ?? [],
     });
     entrancesByReview.set(id, list);
   }
@@ -95,16 +97,18 @@ Deno.serve(async (req: Request) => {
     const id = review.id as string;
     for (const entrance of entrancesByReview.get(id) ?? []) {
       const facility = normalizeFacility(entrance.location);
-      appendUrls(photos, entrance.photo_urls, facility);
+      appendUrls(photos, entrance.photo_urls, entrance.photo_captions, facility);
     }
     appendUrls(
       photos,
       (review.elevator_photo_urls as string[] | null) ?? [],
+      (review.elevator_photo_captions as string[] | null) ?? [],
       "elevator",
     );
     appendUrls(
       photos,
       (review.toilet_photo_urls as string[] | null) ?? [],
+      (review.toilet_photo_captions as string[] | null) ?? [],
       "toilet",
     );
   }
@@ -112,13 +116,21 @@ Deno.serve(async (req: Request) => {
   return json({ status: "ok", placeId, photos });
 });
 
-function appendUrls(photos: PhotoItem[], urls: string[], facility: Facility) {
-  for (const url of urls) {
+function appendUrls(
+  photos: PhotoItem[],
+  urls: string[],
+  captions: string[],
+  facility: Facility,
+) {
+  for (let i = 0; i < urls.length; i++) {
+    const url = urls[i];
     if (typeof url !== "string" || url.length === 0) continue;
+    const rawCaption = typeof captions[i] === "string" ? captions[i].trim() : "";
     photos.push({
       url,
       facility,
       label: facilityLabel(facility),
+      caption: rawCaption,
     });
   }
 }
