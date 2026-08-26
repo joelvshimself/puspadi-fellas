@@ -58,8 +58,8 @@ struct MobilityProfileSheet: View {
             }
         }
         .padding(.horizontal, 20)
-        .padding(.top, 16)
-        .padding(.bottom, 16)
+        .padding(.top, 28)
+        .padding(.bottom, 20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .overlay {
             if isSaving {

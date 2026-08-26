@@ -90,6 +90,7 @@ struct ProfileSettingsView: View {
                 .padding(.top, 8)
             }
             .padding(.horizontal, 20)
+            .padding(.top, 16)
             .padding(.bottom, 40)
         }
         .background(Color.mockSectionBackground)

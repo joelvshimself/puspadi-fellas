@@ -105,15 +105,14 @@ struct ProfileView: View {
                         .fill(Color.gray.opacity(0.12))
                 )
                 .padding(.horizontal, 20)
-                .padding(.top, 8)
+                .padding(.top, 14)
             }
-            .padding(.bottom, 12)
+            .padding(.bottom, 20)
             .background(
                 LinearGradient(
                     colors: [
-                        Color(red: 0.72, green: 0.88, blue: 1.0),
-                        Color.white,
-                        Color.mockSectionBackground
+                        Color(red: 0.70, green: 0.86, blue: 1.0),
+                        Color.white
                     ],
                     startPoint: .top,
                     endPoint: .bottom

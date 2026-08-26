@@ -40,7 +40,7 @@ struct ProfileReviewsView: View {
                         .font(.title3.weight(.bold))
                         .foregroundStyle(.primary)
                         .padding(.horizontal, 20)
-                        .padding(.top, 12)
+                        .padding(.top, 16)
 
                     if reviews.isEmpty {
                         VStack(spacing: 12) {
