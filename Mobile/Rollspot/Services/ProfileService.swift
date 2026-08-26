@@ -74,17 +74,6 @@ final class ProfileService {
             .execute()
     }
 
-    /// Switches this account's public review byline between its pseudonym and
-    /// its real name. Only `place-reviews` reads this — the Profile screen
-    /// always shows the person their own real name.
-    func updateShowRealName(_ showRealName: Bool) async throws {
-        let userId = try await client.auth.session.user.id
-        try await client.from("profiles")
-            .update(ProfileShowRealNameUpdate(showRealName: showRealName))
-            .eq("id", value: userId)
-            .execute()
-    }
-
     func uploadAvatar(jpegData: Data) async throws -> String {
         let userId = try await client.auth.session.user.id
         let path = "\(userId.uuidString.lowercased())/avatar.jpg"
@@ -121,11 +110,6 @@ private struct ProfileDisplayNameUpdate: Encodable {
 private struct ProfileMobilityAidsUpdate: Encodable {
     let mobilityAids: [String]
     enum CodingKeys: String, CodingKey { case mobilityAids = "mobility_aids" }
-}
-
-private struct ProfileShowRealNameUpdate: Encodable {
-    let showRealName: Bool
-    enum CodingKeys: String, CodingKey { case showRealName = "show_real_name" }
 }
 
 private struct ProfileAvatarUpdate: Encodable {
