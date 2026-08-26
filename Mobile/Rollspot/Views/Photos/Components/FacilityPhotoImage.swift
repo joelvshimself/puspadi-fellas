@@ -48,11 +48,19 @@ struct FacilityPhotoImage: View {
     }
 
     private func loadRemote(from url: URL) async {
-        finishedLoadingRemote = false
-        remoteImage = nil
+        let key = ImageStore.key(for: url)
+        // Already decoded — repaint, no network, no spinner.
+        if let cached = ImageStore.shared.image(for: key) {
+            remoteImage = cached
+            finishedLoadingRemote = true
+            return
+        }
+        // Only fall back to the spinner when there is genuinely nothing to
+        // show. This used to clear `remoteImage` unconditionally, so every
+        // reappearance blanked the tile and downloaded the photo again.
+        if remoteImage == nil { finishedLoadingRemote = false }
         defer { finishedLoadingRemote = true }
-        guard let data = try? await NetworkRetry.download(from: url) else { return }
-        remoteImage = UIImage(data: data)
+        remoteImage = await ImageStore.shared.remoteImage(for: url)
     }
 
     private func placeholder(symbol: String?) -> some View {

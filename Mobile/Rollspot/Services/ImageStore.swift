@@ -21,6 +21,8 @@ final class ImageStore {
     private let memory = NSCache<NSString, UIImage>()
     private let directory: URL
     private let thumbnailWidth: CGFloat = 48
+    /// In-flight downloads, so N views wanting the same URL share one request.
+    private var inFlight: [String: Task<UIImage?, Never>] = [:]
 
     private init() {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
@@ -31,6 +33,45 @@ final class ImageStore {
 
     static func key(for coordinate: CLLocationCoordinate2D) -> String {
         PlaceCacheStore.key(lat: coordinate.latitude, lng: coordinate.longitude)
+    }
+
+    /// Remote photos are keyed by their URL — they are not tied to a place
+    /// coordinate the way the hero image is.
+    static func key(for url: URL) -> String {
+        url.absoluteString
+    }
+
+    /// Download-once accessor for a remote photo.
+    ///
+    /// A hit costs nothing: the decoded image comes straight out of memory, so
+    /// re-entering the detail page, swiping back to a carousel page or
+    /// switching facility tabs repaints instead of re-downloading. Concurrent
+    /// callers for the same URL share ONE download rather than each starting
+    /// their own — a mosaic showing the same photo twice used to fetch twice.
+    func remoteImage(for url: URL) async -> UIImage? {
+        let key = Self.key(for: url)
+        if let cached = image(for: key) { return cached }
+        if let existing = inFlight[key] { return await existing.value }
+
+        // Detached: this type is @MainActor, and an inherited context would
+        // put every JPEG decode on the main thread — visible jank when a
+        // gallery loads a dozen at once.
+        let task = Task.detached(priority: .utility) { () -> UIImage? in
+            guard let data = try? await NetworkRetry.download(from: url) else { return nil }
+            return UIImage(data: data)
+        }
+        inFlight[key] = task
+        let result = await task.value
+        inFlight[key] = nil
+        if let result { storeInMemory(result, for: key) }
+        return result
+    }
+
+    /// Memory only. The disk tier exists to paint a blurred stand-in for the
+    /// ONE hero image per place; writing a thumbnail for every gallery photo
+    /// would be disk churn nothing ever reads back.
+    func storeInMemory(_ image: UIImage, for key: String) {
+        memory.setObject(image, forKey: key as NSString)
     }
 
     /// Full-size, already decoded. A hit means no network and no snapshot work.

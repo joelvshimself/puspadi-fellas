@@ -267,8 +267,19 @@ final class PlaceReviewStore: ObservableObject {
         }
     }
 
+    /// Every photo on this place, whatever facility it belongs to. The Photos
+    /// tab no longer carries a facility selector, so filtering by one would
+    /// silently hide most of what has been contributed.
+    var allFacilityPhotos: [FacilityPhoto] {
+        facilityPhotos(from: reviewPhotos)
+    }
+
     func facilityPhotos(for kind: FacilityKind) -> [FacilityPhoto] {
-        photos(for: kind).compactMap { photo -> FacilityPhoto? in
+        facilityPhotos(from: photos(for: kind))
+    }
+
+    private func facilityPhotos(from source: [ReviewPhoto]) -> [FacilityPhoto] {
+        source.compactMap { photo -> FacilityPhoto? in
             guard let url = photo.imageURL else { return nil }
             let reviewId = facilityReviews.first { review in
                 review.photoURLs.contains(photo.url)

@@ -140,9 +140,9 @@ struct FacilityReviewRow: View {
     @ViewBuilder
     private var avatar: some View {
         if let url = review.reviewerAvatarURL {
-            AsyncImage(url: url) { phase in
+            CachedRemoteImage(url: url) { phase in
                 if case .success(let image) = phase {
-                    image.resizable().aspectRatio(contentMode: .fill)
+                    Image(uiImage: image).resizable().aspectRatio(contentMode: .fill)
                 } else {
                     avatarPlaceholder
                 }

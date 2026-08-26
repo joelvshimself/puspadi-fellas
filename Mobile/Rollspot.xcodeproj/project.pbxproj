@@ -281,7 +281,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Rollspot";
+				INFOPLIST_KEY_CFBundleDisplayName = Rollspot;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Rollspot uses your camera so you can take photos of a place's accessibility features.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Rollspot uses your location to find and check accessibility info for places near you.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Rollspot uses your microphone for voice search.";
@@ -320,7 +320,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Rollspot";
+				INFOPLIST_KEY_CFBundleDisplayName = Rollspot;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Rollspot uses your camera so you can take photos of a place's accessibility features.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Rollspot uses your location to find and check accessibility info for places near you.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Rollspot uses your microphone for voice search.";

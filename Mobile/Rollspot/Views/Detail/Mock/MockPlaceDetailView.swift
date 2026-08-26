@@ -103,8 +103,11 @@ struct MockPlaceDetailView: View {
     /// looking at.
     private func prefetchCarousel() async {
         guard !heroURLs.isEmpty else { return }
+        // Into ImageStore, not just URLCache: the carousel reads decoded
+        // images from there, so warming raw bytes alone would still leave the
+        // first swipe to each page decoding from scratch.
         _ = await mapWithLimit(heroURLs, limit: 2) { url in
-            _ = try? await NetworkRetry.download(from: url)
+            _ = await ImageStore.shared.remoteImage(for: url)
         }
     }
 
@@ -320,10 +323,10 @@ struct MockPlaceDetailView: View {
         if index >= 0, index < slides.count {
             let slide = slides[index]
             ZStack(alignment: .bottomLeading) {
-                AsyncImage(url: slide.url) { phase in
+                CachedRemoteImage(url: slide.url) { phase in
                     switch phase {
                     case .success(let image):
-                        image.resizable().aspectRatio(contentMode: .fill)
+                        Image(uiImage: image).resizable().aspectRatio(contentMode: .fill)
                     case .failure:
                         // Only the first slide has somewhere sensible to fall
                         // back to; a failed contributor photo is just a gap.
@@ -339,7 +342,7 @@ struct MockPlaceDetailView: View {
                         } else {
                             Color(.secondarySystemBackground)
                         }
-                    default:
+                    case .loading:
                         Color(.secondarySystemBackground)
                     }
                 }
@@ -521,9 +524,11 @@ struct MockPlaceDetailView: View {
                 )
                 .padding(.top, 18)
 
-                // Reviews replaces the facility chips with its own filter
-                // chips (ALL / WITH PHOTOS / tags) — see FacilityReviewsList.
-                if selectedSection != .reviews {
+                // Overview only. Reviews replaces the facility chips with its
+                // own filter chips (ALL / WITH PHOTOS / tags) — see
+                // FacilityReviewsList — and Photos now shows the whole
+                // gallery rather than one facility at a time.
+                if selectedSection == .overview {
                     FacilityChipRow(selection: $selectedFacility)
                         .padding(.top, 18)
                 }
@@ -560,25 +565,9 @@ struct MockPlaceDetailView: View {
             HStack(spacing: 10) {
                 PlaceActionPill(icon: "location.fill", title: "Open in Maps", action: openMaps)
                 PlaceActionPill(icon: "phone.fill", title: "Call", action: callWhatsApp)
-                if place.website != nil {
-                    PlaceActionPill(icon: "safari.fill", title: "Website", action: openWebsite)
-                }
                 Spacer(minLength: 0)
             }
-
-            // ODbL does not let us keep the credit in the database and off the
-            // screen: it has to travel with the data wherever it is shown.
-            if let attribution = place.dataAttribution {
-                Text(attribution)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-            }
         }
-    }
-
-    private func openWebsite() {
-        guard let website = place.website, let url = URL(string: website) else { return }
-        UIApplication.shared.open(url)
     }
 
     private var emptyStateContent: some View {
@@ -803,7 +792,7 @@ struct MockPlaceDetailView: View {
     }
 
     private var photosContent: some View {
-        let photos = store.facilityPhotos(for: selectedFacility)
+        let photos = store.allFacilityPhotos
         return VStack(spacing: 16) {
             // The design's "Click add photo" state is a small MENU next to the
             // button (Choose Existing / Take New Photo), not an action sheet.
