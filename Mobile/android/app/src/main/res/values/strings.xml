@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Rollspot</string>
+    <string name="search_placeholder">Find a place</string>
+    <string name="explore">Explore</string>
+    <string name="saved">Saved</string>
+    <string name="contribute">Contribute</string>
+    <string name="filter">Filter</string>
+    <string name="my_location">My location</string>
+    <string name="accessible">Accessible</string>
+    <string name="moderately_accessible">Moderately Accessible</string>
+    <string name="not_accessible">Not Accessible</string>
+    <string name="no_data_available">No Data Available</string>
+    <string name="save">Save</string>
+    <string name="share">Share</string>
+    <string name="facilities">Facilities</string>
+    <string name="routes">Routes</string>
+    <string name="reviews">Reviews</string>
+    <string name="entrance">Entrance</string>
+    <string name="parking">Parking</string>
+    <string name="restroom">Restroom</string>
+    <string name="seating">Seating</string>
+    <string name="elevator">Elevator</string>
+    <string name="profile">Profile</string>
+    <string name="settings">Settings</string>
+    <string name="sign_in">Sign In</string>
+    <string name="sign_out">Sign Out</string>
+    <string name="cancel">Cancel</string>
+    <string name="done">Done</string>
+</resources>
