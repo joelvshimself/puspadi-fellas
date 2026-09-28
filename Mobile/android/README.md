@@ -42,6 +42,8 @@ app/src/main/java/com/rollspot/app/
 
 **Note**: This project cannot be built on the cloud VM as it requires the Android SDK. Build it locally in Android Studio or on a CI system with Android SDK installed.
 
+**Gradle JVM Compatibility**: This project uses Gradle 8.11.1 which supports JDK 8-25. If you encounter JVM version errors, set the Gradle JDK in Android Studio: **Settings → Build, Execution, Deployment → Build Tools → Gradle → Gradle JDK** and select JDK 17 or 21.
+
 ### Setup
 
 1. Open the project in Android Studio:
@@ -207,6 +209,10 @@ Run Gradle sync:
 ```bash
 ./gradlew sync
 ```
+
+### Gradle JVM version incompatibility
+
+If you see "The project's Gradle version is incompatible with the Gradle JVM version", go to **Android Studio → Settings → Build, Execution, Deployment → Build Tools → Gradle → Gradle JDK** and select JDK 17 or 21 (not 25+).
 
 ### Maps not showing / blank map
 

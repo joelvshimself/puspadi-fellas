@@ -9,6 +9,16 @@ plugins {
 android {
     namespace = "com.rollspot.app"
     compileSdk = 35
+    
+    // Use JDK 17 for compilation regardless of which JDK Gradle runs on
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    
+    kotlinOptions {
+        jvmTarget = "17"
+    }
 
     defaultConfig {
         applicationId = "com.rollspot.app"
@@ -39,15 +49,6 @@ android {
                 "proguard-rules.pro"
             )
         }
-    }
-    
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-    
-    kotlinOptions {
-        jvmTarget = "17"
     }
     
     buildFeatures {
