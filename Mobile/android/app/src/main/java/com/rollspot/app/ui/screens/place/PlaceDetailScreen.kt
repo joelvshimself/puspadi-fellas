@@ -49,7 +49,7 @@ fun PlaceDetailScreen(
                 },
                 actions = {
                     IconButton(onClick = { /* TODO: Save */ }) {
-                        Icon(Icons.Default.Bookmark, contentDescription = "Save")
+                        Icon(Icons.Filled.Bookmark, contentDescription = "Save")
                     }
                     IconButton(onClick = { /* TODO: Share */ }) {
                         Icon(Icons.Default.Share, contentDescription = "Share")

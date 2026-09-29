@@ -34,11 +34,19 @@ app/src/main/java/com/rollspot/app/
 
 ### Prerequisites
 
-1. **Android Studio**: Hedgehog (2023.1.1) or newer
+1. **Android Studio**: Otter 3 Feature Drop (2025.2.3) or newer (AGP 9.x support)
    - Download from: https://developer.android.com/studio
    - Includes Android SDK, build tools, and emulator
-2. **JDK**: 17 or newer (bundled with Android Studio)
-3. **Android SDK**: API 26+ (minimum), API 35 (target) (installed via Android Studio SDK Manager)
+2. **JDK**: 17 or newer
+   - Android Studio bundles a JDK (JBR). For **Terminal** builds, set `JAVA_HOME` if `./gradlew` reports "Unable to locate a Java Runtime":
+     ```bash
+     export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+     export PATH="$JAVA_HOME/bin:$PATH"
+     ```
+     Or install Temurin 17 (`brew install --cask temurin@17`) and point `JAVA_HOME` at it.
+3. **Gradle**: 9.1.0 (via wrapper — no separate install)
+4. **Android Gradle Plugin**: 9.0.1
+5. **Android SDK**: API 26+ (minimum), API 36 (compile/target) — install via Android Studio SDK Manager
 
 **Note**: This project cannot be built on the cloud VM as it requires the Android SDK. Build it locally in Android Studio or on a CI system with Android SDK installed.
 

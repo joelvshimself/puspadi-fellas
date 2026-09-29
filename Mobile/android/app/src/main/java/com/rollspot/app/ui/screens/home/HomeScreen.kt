@@ -105,7 +105,7 @@ fun HomeScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 GlassButton(
                     onClick = { navController.navigate("saved") },
-                    icon = Icons.Default.Bookmark
+                    icon = Icons.Filled.Bookmark
                 )
                 GlassButton(
                     onClick = { /* TODO: Show profile */ },
