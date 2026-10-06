@@ -190,7 +190,7 @@ private struct CircleSurface: ViewModifier {
 
 /// Content of the bottom sheet: a search field that expands the sheet when it
 /// takes focus, category shortcuts before anything is typed, and live
-/// MKLocalSearch results once it is.
+// directory results once it is.
 struct SearchSheet: View {
     /// Explicit state, never derived from the sheet's height — iOS resizes the
     /// sheet around the keyboard, and inferring intent from the detent made the
@@ -204,7 +204,7 @@ struct SearchSheet: View {
     @FocusState private var isFieldFocused: Bool
     let searchRegion: MKCoordinateRegion
     /// HomeMapView's pins, reused as the empty-query "Nearby" list. The sheet
-    /// used to run its own MKLocalSearch for the same region — every settled
+    /// used to run its own search for the same region — every settled
     /// pan cost two identical nearby queries, and each re-presentation of the
     /// sheet (returning from a place page) cost another.
     let nearbyPlaces: [Place]
@@ -453,29 +453,18 @@ struct SearchSheet: View {
         errorMessage = nil
 
         searchTask = Task {
-            // 400ms, not 250: MKLocalSearch throttles rapid-fire requests, and
-            // a fast typist at 250ms still got several queries per word — the
-            // throttle then surfaced as spurious "no results" errors.
-            try? await Task.sleep(nanoseconds: 400_000_000)
+            // Debounce so a fast typist sends one query per pause, not per keystroke.
+            try? await Task.sleep(nanoseconds: 300_000_000)
             guard !Task.isCancelled else { return }
             await performSearch(trimmed)
         }
     }
 
     private func performSearch(_ text: String) async {
-        let request = MKLocalSearch.Request()
-        request.naturalLanguageQuery = text
-        request.region = searchRegion
-
         do {
-            let response = try await MKLocalSearch(request: request).start()
+            let places = try await NearbyPlacesService.search(text: text, near: searchRegion.center)
             guard !Task.isCancelled else { return }
-            results = response.mapItems.compactMap { item in
-                NearbyPlacesService.makePlace(
-                    from: item,
-                    distance: distance(to: item.placemark.coordinate)
-                )
-            }
+            results = places
             isLoading = false
         } catch {
             guard !Task.isCancelled else { return }
@@ -483,24 +472,6 @@ struct SearchSheet: View {
             isLoading = false
             errorMessage = (error as NSError).localizedDescription
         }
-    }
-
-    private func shortAddress(_ placemark: MKPlacemark) -> String {
-        let street = [placemark.subThoroughfare, placemark.thoroughfare]
-            .compactMap { $0 }
-            .joined(separator: " ")
-        return [street, placemark.locality ?? ""]
-            .filter { !$0.isEmpty }
-            .joined(separator: ", ")
-    }
-
-    private func distance(to coordinate: CLLocationCoordinate2D) -> String {
-        let from = CLLocation(latitude: searchRegion.center.latitude,
-                              longitude: searchRegion.center.longitude)
-        let to = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        let metres = from.distance(from: to)
-        return metres < 1000 ? "\(Int(metres)) m"
-                             : String(format: "%.1f km", metres / 1000)
     }
 }
 

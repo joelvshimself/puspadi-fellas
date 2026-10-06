@@ -18,17 +18,16 @@ struct Place: Identifiable, Hashable {
     let facilitySymbols: [String]
     let elevatorDetails: [ElevatorDetail]
     let reviewsSummary: String
-    /// Stable Apple place identity. This is the only Apple Maps value that is
-    /// persisted by the backend; all display data stays in MapKit.
-    var applePlaceId: String? = nil
+    /// Rollspot place ID from the shared place directory (same on iOS and Android).
+    var placeId: String? = nil
+    /// OpenStreetMap element behind this place, e.g. "way/520645071".
+    var osmRef: String? = nil
     /// Overall accessibility grade used to color and filter the map pin.
     /// nil for live search results until the backend enrichment resolves.
     var grade: OverallAccessibility? = nil
-    /// Populated for places from a real MKLocalSearch result once the
-    /// backend enrichment call resolves — nil (and unused) for the mock
-    /// mock detail fixtures. See PlaceDetailView's live grade loading.
+    /// True for places from the Rollspot directory; false for mock detail fixtures.
     var isLiveResult: Bool = false
-    /// Detail fields supplied by the current in-memory MapKit result.
+    /// Detail fields from OpenStreetMap, via the place directory.
     var phone: String? = nil
     var website: String? = nil
     var openingHours: String? = nil
@@ -38,9 +37,8 @@ struct Place: Identifiable, Hashable {
         let label: String
     }
 
-    /// Fixture-only identity for previews. Live MapKit results carry an Apple
-    /// Place ID on iOS 18 and later.
-    var reviewPlaceId: String { applePlaceId ?? "preview:\(id.uuidString)" }
+    /// The ID every API call uses. Previews and fixtures have no directory ID.
+    var reviewPlaceId: String { placeId ?? "preview:\(id.uuidString)" }
 
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
@@ -52,7 +50,7 @@ struct Place: Identifiable, Hashable {
 }
 
 extension Place {
-    /// Builds a minimal Place from a real on-device MKLocalSearch result.
+    /// Builds a minimal Place from a search result or deep link.
     /// The decorative mock fields (gallery, elevator details, canned
     /// reviews summary) don't exist for a real place, so they're left
     /// empty rather than faked — PlaceDetailView only renders them when
@@ -63,7 +61,7 @@ extension Place {
         coordinate: CLLocationCoordinate2D,
         address: String = "",
         distance: String = "",
-        applePlaceId: String? = nil,
+        placeId: String? = nil,
         phone: String? = nil,
         website: String? = nil
     ) -> Place {
@@ -82,7 +80,7 @@ extension Place {
             facilitySymbols: [],
             elevatorDetails: [],
             reviewsSummary: "",
-            applePlaceId: applePlaceId,
+            placeId: placeId,
             isLiveResult: true,
             phone: phone,
             website: website

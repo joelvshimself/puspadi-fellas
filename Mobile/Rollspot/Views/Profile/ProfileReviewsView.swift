@@ -172,7 +172,7 @@ struct ProfileReviewsView: View {
             name: review.placeName,
             category: "Place",
             coordinate: .init(latitude: 0, longitude: 0),
-            applePlaceId: review.placeId
+            placeId: review.placeId
         )
     }
 

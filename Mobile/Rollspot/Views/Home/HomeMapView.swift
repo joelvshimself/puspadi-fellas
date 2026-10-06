@@ -44,7 +44,7 @@ struct HomeMapView: View {
     ///
     /// `onMapCameraChange` fires continuously through a pan, and SearchSheet
     /// keys a `.task(id:)` off whatever region it is handed — so feeding it
-    /// `visibleRegion` directly restarted an MKLocalSearch on every frame of
+    /// `visibleRegion` directly restarted a nearby search on every frame of
     /// every drag, which is what MapKit throttles. Only the debounce below
     /// advances this, so the sheet re-queries once per gesture.
     @State private var settledRegion = baliRegion
@@ -372,7 +372,8 @@ struct HomeMapView: View {
 
     @MainActor
     private func placesNeedingGrade(from places: [Place], force: Bool = false) -> [Place] {
-        places.filter { force || placeGrades[Self.gradeKey(for: $0)] == nil }
+        // Directory places arrive with their grade; only look up the ones that didn't.
+        places.filter { force || (placeGrades[Self.gradeKey(for: $0)] == nil && $0.grade == nil) }
     }
 
     /// Stable across searches, unlike `place.id`.

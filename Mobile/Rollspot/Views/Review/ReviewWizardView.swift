@@ -20,7 +20,7 @@ struct ReviewWizardView: View {
     init(place: Place, onFinished: @escaping () -> Void) {
         self.place = place
         self.onFinished = onFinished
-        _draft = StateObject(wrappedValue: ReviewDraft(appleMapsId: place.reviewPlaceId, coordinate: place.coordinate, name: place.name))
+        _draft = StateObject(wrappedValue: ReviewDraft(placeId: place.reviewPlaceId, coordinate: place.coordinate, name: place.name))
     }
 
     var body: some View {

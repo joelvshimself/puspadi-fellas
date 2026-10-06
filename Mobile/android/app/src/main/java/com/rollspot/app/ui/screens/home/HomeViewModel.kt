@@ -2,10 +2,8 @@ package com.rollspot.app.ui.screens.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.CameraPositionState
-import com.rollspot.app.data.models.Place
-import com.rollspot.app.data.services.NearbyPlacesService
+import app.rollspot.shared.RollspotSdk
+import app.rollspot.shared.api.Place
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,52 +13,56 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class HomeUiState(
-    val nearbyPlaces: List<Place> = emptyList(),
-    val searchQuery: String = "",
+    val centerLat: Double = BALI_LAT,
+    val centerLng: Double = BALI_LNG,
+    val nearby: List<Place> = emptyList(),
+    val query: String = "",
+    val results: List<Place> = emptyList(),
     val isLoading: Boolean = false,
-    val error: String? = null
-)
+    val error: String? = null,
+) {
+    val visiblePlaces: List<Place> get() = if (query.isBlank()) nearby else results
 
-class HomeViewModel : ViewModel() {
-    
-    private val _uiState = MutableStateFlow(HomeUiState())
-    val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
-    
-    private var loadJob: Job? = null
-    
-    fun loadNearbyPlaces(center: LatLng) {
-        loadJob?.cancel()
-        loadJob = viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
-            
-            // Debounce
-            delay(400)
-            
+    companion object {
+        const val BALI_LAT = -8.7200
+        const val BALI_LNG = 115.1700
+    }
+}
+
+// TODO(F2 #33): replace with the shared MapModel; this is the minimum to exercise the shared API.
+class HomeViewModel(private val sdk: RollspotSdk) : ViewModel() {
+    private val _state = MutableStateFlow(HomeUiState())
+    val state: StateFlow<HomeUiState> = _state.asStateFlow()
+    private var searchJob: Job? = null
+
+    init {
+        loadNearby(HomeUiState.BALI_LAT, HomeUiState.BALI_LNG)
+    }
+
+    fun loadNearby(lat: Double, lng: Double) {
+        _state.update { it.copy(centerLat = lat, centerLng = lng, isLoading = true, error = null) }
+        viewModelScope.launch {
             try {
-                val places = NearbyPlacesService.search(center)
-                _uiState.update { 
-                    it.copy(
-                        nearbyPlaces = places,
-                        isLoading = false,
-                        error = null
-                    )
-                }
-            } catch (e: Exception) {
-                _uiState.update { 
-                    it.copy(
-                        isLoading = false,
-                        error = e.message
-                    )
-                }
+                val places = sdk.places.nearby(lat, lng)
+                _state.update { it.copy(nearby = places, isLoading = false) }
+            } catch (error: Exception) {
+                _state.update { it.copy(isLoading = false, error = error.message) }
             }
         }
     }
-    
-    fun updateSearchQuery(query: String) {
-        _uiState.update { it.copy(searchQuery = query) }
-    }
-    
-    fun centerOnUserLocation(cameraPositionState: CameraPositionState) {
-        // TODO: Get user location and animate camera
+
+    fun onQueryChange(query: String) {
+        _state.update { it.copy(query = query) }
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            delay(300)
+            val current = _state.value
+            try {
+                val results = sdk.places.search(query, current.centerLat, current.centerLng)
+                _state.update { it.copy(results = results, error = null) }
+            } catch (error: Exception) {
+                _state.update { it.copy(error = error.message) }
+            }
+        }
     }
 }

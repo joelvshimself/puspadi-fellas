@@ -67,7 +67,7 @@ struct ContributeReviewFlowView: View {
         self.onSubmitted = onSubmitted
         self.onFinished = onFinished
 
-        let draft = ReviewDraft(appleMapsId: place.reviewPlaceId, coordinate: place.coordinate, name: place.name)
+        let draft = ReviewDraft(placeId: place.reviewPlaceId, coordinate: place.coordinate, name: place.name)
         var startIndex = initialScreenIndex
         // Every launch walks the full review: Entrance -> Elevator -> Toilet.
         var facilities = Set(FacilityKind.allCases)

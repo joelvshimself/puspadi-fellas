@@ -6,7 +6,7 @@ import Foundation
 /// Example payload the backend gave us:
 /// ```json
 /// {
-///   "appleMapsId": "flatten-test-marina-bay",
+///   "placeId": "<Rollspot place ID>",
 ///   "entrances": [
 ///     { "location": "lobby", "hasDropoffRamp": true, "hasRails": true,
 ///       "doorType": "automatic", "isWideEnough": true,
@@ -22,7 +22,7 @@ import Foundation
 /// ```
 struct ReviewSubmissionPayload: Encodable {
     let submissionId: UUID
-    let appleMapsId: String
+    let placeId: String
     let entrances: [EntranceReport]?
     let elevator: ElevatorReport?
     let toilet: ToiletReport?
@@ -140,7 +140,7 @@ extension ReviewDraft {
 
         return ReviewSubmissionPayload(
             submissionId: submissionId,
-            appleMapsId: appleMapsId,
+            placeId: placeId,
             entrances: entranceReports.isEmpty ? nil : entranceReports,
             elevator: elevatorReport,
             toilet: toiletReport

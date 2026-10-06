@@ -51,7 +51,7 @@ final class DeepLinkRouter: ObservableObject {
 
     private static func placeQueryItems(for place: Place) -> [URLQueryItem] {
         [
-            URLQueryItem(name: "place_id", value: place.applePlaceId),
+            URLQueryItem(name: "place_id", value: place.placeId),
             URLQueryItem(name: "lat", value: String(format: "%.6f", place.coordinate.latitude)),
             URLQueryItem(name: "lng", value: String(format: "%.6f", place.coordinate.longitude)),
             URLQueryItem(name: "name", value: place.name),
@@ -82,7 +82,7 @@ final class DeepLinkRouter: ObservableObject {
             name: name,
             category: category,
             coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng),
-            applePlaceId: placeId
+            placeId: placeId
         )
     }
 }

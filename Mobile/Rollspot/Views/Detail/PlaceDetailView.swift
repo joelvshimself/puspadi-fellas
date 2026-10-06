@@ -11,7 +11,7 @@ struct PlaceDetailView: View {
     @State private var showPhotos = false
 
     /// Live-fetched community accessibility data — only meaningful for a real
-    /// MKLocalSearch result (place.isLiveResult), never for the mock
+    /// place-directory result (place.isLiveResult), never for the mock
     /// `Place.samples` used elsewhere in this demo.
     @State private var grade: [AccessibilityFeatureGrade] = []
     @State private var isLoadingGrade = false

@@ -1,7 +1,10 @@
 package com.rollspot.app.ui.screens.home
 
 import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -10,143 +13,81 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import com.google.accompanist.permissions.ExperimentalPermissionsApi
-import com.google.accompanist.permissions.isGranted
-import com.google.accompanist.permissions.rememberPermissionState
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.*
-import com.rollspot.app.data.models.Place
+import app.rollspot.shared.places.PlaceRepository
+import com.rollspot.app.data.LocationService
 import com.rollspot.app.ui.components.GlassButton
-import com.rollspot.app.ui.components.SearchBottomSheet
+import com.rollspot.app.ui.components.PlaceList
+import com.rollspot.app.ui.rollspotSdk
 
 /**
- * Home screen with map and search.
- * Mirrors iOS HomeMapView
+ * Home. The map itself arrives with F2 (#33, OpenStreetMap tiles); until then
+ * this shows the same nearby places and search results the map will pin.
  */
-@OptIn(ExperimentalPermissionsApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(
-    navController: NavController,
-    viewModel: HomeViewModel = viewModel()
-) {
+fun HomeScreen(navController: NavController) {
+    val sdk = rollspotSdk()
+    val viewModel: HomeViewModel = viewModel { HomeViewModel(sdk) }
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val locationPermission = rememberPermissionState(Manifest.permission.ACCESS_FINE_LOCATION)
-    
-    val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(
-            LatLng(-8.7200, 115.2000), // Bali region
-            12f
-        )
+    val location = remember { LocationService(context) }
+
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        location.lastKnownLocation()?.let { viewModel.loadNearby(it.latitude, it.longitude) }
     }
-    
-    val uiState by viewModel.uiState.collectAsState()
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
-    var showSearchSheet by remember { mutableStateOf(true) }
-    
-    // Request location permission on first launch
-    LaunchedEffect(locationPermission) {
-        if (!locationPermission.status.isGranted) {
-            locationPermission.launchPermissionRequest()
+    LaunchedEffect(Unit) {
+        if (location.hasPermission) {
+            location.lastKnownLocation()?.let { viewModel.loadNearby(it.latitude, it.longitude) }
+        } else {
+            permission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
         }
     }
-    
-    // Load nearby places when camera moves
-    LaunchedEffect(cameraPositionState.isMoving) {
-        if (!cameraPositionState.isMoving) {
-            val center = cameraPositionState.position.target
-            viewModel.loadNearbyPlaces(center)
-        }
-    }
-    
-    Box(modifier = Modifier.fillMaxSize()) {
-        // Map layer
-        GoogleMap(
-            modifier = Modifier.fillMaxSize(),
-            cameraPositionState = cameraPositionState,
-            properties = MapProperties(
-                isMyLocationEnabled = locationPermission.status.isGranted
-            ),
-            uiSettings = MapUiSettings(
-                myLocationButtonEnabled = false,
-                zoomControlsEnabled = false,
-                compassEnabled = false
-            )
-        ) {
-            // Place markers
-            uiState.nearbyPlaces.forEach { place ->
-                Marker(
-                    state = MarkerState(position = place.coordinate),
-                    title = place.name,
-                    snippet = place.category,
-                    onClick = {
-                        navController.navigate("place/${place.id}")
-                        true
-                    }
-                )
-            }
-        }
-        
-        // Top bar with filter and profile buttons
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(horizontal = 16.dp),
+    ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-                .statusBarsPadding(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            GlassButton(
-                onClick = { /* TODO: Show filter */ },
-                icon = Icons.Default.FilterList
-            )
-            
+            Text("Rollspot", style = MaterialTheme.typography.headlineSmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                GlassButton(
-                    onClick = { navController.navigate("saved") },
-                    icon = Icons.Default.Bookmark
-                )
-                GlassButton(
-                    onClick = { /* TODO: Show profile */ },
-                    icon = Icons.Default.Person
-                )
+                GlassButton(onClick = { navController.navigate("saved") }, icon = Icons.Default.Bookmark)
+                GlassButton(onClick = { navController.navigate("contribute") }, icon = Icons.Default.Person)
             }
         }
-        
-        // Location button
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp)
-                .padding(bottom = 200.dp)
-        ) {
-            GlassButton(
-                onClick = {
-                    viewModel.centerOnUserLocation(cameraPositionState)
-                },
-                icon = if (locationPermission.status.isGranted) {
-                    Icons.Default.MyLocation
-                } else {
-                    Icons.Default.LocationOff
-                }
-            )
+        OutlinedTextField(
+            value = state.query,
+            onValueChange = viewModel::onQueryChange,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("Find a place") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp),
+        )
+        Spacer(Modifier.height(12.dp))
+        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        if (state.isLoading && state.visiblePlaces.isEmpty()) {
+            Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         }
-        
-        // Search bottom sheet
-        if (showSearchSheet) {
-            SearchBottomSheet(
-                sheetState = sheetState,
-                places = uiState.nearbyPlaces,
-                searchQuery = uiState.searchQuery,
-                onSearchQueryChange = { viewModel.updateSearchQuery(it) },
-                onPlaceClick = { place ->
-                    navController.navigate("place/${place.id}")
-                },
-                onExploreClick = { /* Current tab */ },
-                onSavedClick = { navController.navigate("saved") },
-                onContributeClick = { navController.navigate("contribute") }
-            )
-        }
+        PlaceList(
+            places = state.visiblePlaces,
+            fromLat = state.centerLat,
+            fromLng = state.centerLng,
+            onPlaceClick = { navController.navigate("place/${it.id}") },
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            PlaceRepository.ATTRIBUTION,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(vertical = 8.dp),
+        )
     }
 }
