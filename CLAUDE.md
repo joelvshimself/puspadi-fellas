@@ -36,10 +36,13 @@ iOS consumes the shared module as an XCFramework built by Gradle. SKIE turns `su
 ## How work is organised
 
 Work is split **by feature, not by platform**. Whoever takes a feature delivers all of it: the shared logic,
-the iOS views, the Android views, and any backend change. The board is `docs/tasks/README.md`, and each
-feature has its own file `docs/tasks/F<n>-<name>.md` with checklists and acceptance criteria.
+the iOS views, the Android views, and any backend change.
 
-To pick up a task with Claude Code, run `/pick-task F3` (see `.claude/skills/pick-task/SKILL.md`).
+- **Tasks are GitHub issues.** Each has the label `feature` and the milestone `V1.1`, with checklists and
+  acceptance criteria in the body. List them with `gh issue list -m V1.1 -l feature`.
+- **Board:** https://github.com/users/kennethmuyoyo/projects/2 (Todo → In Progress → Done).
+- **New feature?** Open an issue from the "Feature (end-to-end)" template.
+- **Picking one up with Claude Code:** run `/pick-task #33` (see `.claude/skills/pick-task/SKILL.md`).
 
 ## Conventions for agents
 
