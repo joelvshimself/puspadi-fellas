@@ -1,12 +1,11 @@
 import SwiftUI
 
 struct AuthNameView: View {
-    let email: String
-    let password: String
     @Binding var displayName: String
     @Binding var path: [AuthRoute]
 
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var auth: AuthSessionStore
     @FocusState private var nameFocused: Bool
 
     var body: some View {
@@ -35,12 +34,9 @@ struct AuthNameView: View {
                     title: "Continue".localized,
                     enabled: !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ) {
-                    let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-                    AuthDebug.log(
-                        "Name continue email=\(email.isEmpty ? "empty" : email) "
-                        + "passwordLen=\(password.count) name=\(trimmed)"
-                    )
-                    path.append(.mobility(email: email, password: password, displayName: trimmed))
+                    if let step = try? auth.chooseName(displayName) {
+                        advanceAuth(to: step, path: $path, displayName: $displayName, onDone: {})
+                    }
                 }
                 .padding(.bottom, 12)
             }

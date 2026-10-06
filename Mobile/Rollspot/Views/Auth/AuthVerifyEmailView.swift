@@ -2,10 +2,6 @@ import SwiftUI
 
 struct AuthVerifyEmailView: View {
     let email: String
-    let password: String
-    let displayName: String
-    let mobilityAids: [String]
-    @Binding var path: [AuthRoute]
     /// Signup is complete — the auth cover closes and HomeMapView takes over
     /// (showing the one-time onboarding intro sheet if it hasn't been seen).
     var onSuccess: () -> Void
@@ -94,16 +90,10 @@ struct AuthVerifyEmailView: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            if !auth.isSignedIn {
-                try await auth.signInAfterEmailConfirmed(email: email, password: password)
-            }
-            try await auth.finishEmailOnboardingAfterConfirm(
-                displayName: displayName,
-                mobilityAids: mobilityAids
-            )
+            _ = try await auth.completeVerifiedSignUp()
             onSuccess()
         } catch {
-            errorMessage = "Please tap the link in your email first, then try again.".localized
+            errorMessage = error.localizedDescription
         }
     }
 
@@ -113,7 +103,7 @@ struct AuthVerifyEmailView: View {
         isResending = true
         defer { isResending = false }
         do {
-            try await auth.resendConfirmationEmail(email: email)
+            try await auth.resendVerificationEmail()
             resentHint = "A new confirmation email was sent.".localized
         } catch {
             errorMessage = error.localizedDescription

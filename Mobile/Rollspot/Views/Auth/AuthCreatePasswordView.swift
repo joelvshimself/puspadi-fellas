@@ -1,11 +1,13 @@
+import Shared
 import SwiftUI
 
 struct AuthCreatePasswordView: View {
     let email: String
-    @Binding var signupPassword: String
     @Binding var path: [AuthRoute]
+    @Binding var displayName: String
 
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var auth: AuthSessionStore
 
     @State private var password = ""
     @State private var confirm = ""
@@ -15,7 +17,7 @@ struct AuthCreatePasswordView: View {
 
     private enum Field { case password, confirm }
 
-    private var passwordValid: Bool { AuthPasswordRules.isValid(password) }
+    private var passwordValid: Bool { AuthRules.shared.isValidPassword(password: password) }
     private var canContinue: Bool { passwordValid && password == confirm && !confirm.isEmpty }
 
     var body: some View {
@@ -62,7 +64,7 @@ struct AuthCreatePasswordView: View {
                             }
                         }
                     }
-                    Text("Use at least 8 characters, including a number and a special character.".localized)
+                    Text(AuthRules.shared.PASSWORD_HINT.localized)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -97,20 +99,14 @@ struct AuthCreatePasswordView: View {
                     title: "Continue".localized,
                     enabled: canContinue
                 ) {
-                    signupPassword = password
-                    AuthDebug.log("CreatePassword saved passwordLen=\(password.count) email=\(email)")
-                    path.append(.name(email: email, password: password))
+                    if let step = try? auth.choosePassword(password) {
+                        advanceAuth(to: step, path: $path, displayName: $displayName, onDone: {})
+                    }
                 }
                 .padding(.bottom, 12)
             }
             .padding(.horizontal, 24)
         }
         .navigationBarBackButtonHidden(true)
-        .onAppear {
-            if password.isEmpty, !signupPassword.isEmpty {
-                password = signupPassword
-                confirm = signupPassword
-            }
-        }
     }
 }

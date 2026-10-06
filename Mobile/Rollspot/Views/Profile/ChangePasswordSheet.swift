@@ -1,3 +1,4 @@
+import Shared
 import SwiftUI
 
 struct ChangePasswordSheet: View {
@@ -17,7 +18,7 @@ struct ChangePasswordSheet: View {
 
     private enum Field { case currentPassword, password, confirm }
 
-    private var passwordValid: Bool { AuthPasswordRules.isValid(password) }
+    private var passwordValid: Bool { AuthRules.shared.isValidPassword(password: password) }
     private var canSave: Bool { !currentPassword.isEmpty && passwordValid && password == confirm && !confirm.isEmpty }
 
     var body: some View {
