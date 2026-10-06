@@ -1,11 +1,8 @@
+import Shared
 import SwiftUI
 
 struct AuthMobilityView: View {
-    let email: String
-    let password: String
-    @Binding var pendingAppleSignIn: PendingAppleSignIn?
     @Binding var mobilityAids: Set<String>
-    var displayName: String
     @Binding var path: [AuthRoute]
     /// Signup is complete — the auth cover closes and HomeMapView takes over
     /// (showing the one-time onboarding intro sheet if it hasn't been seen).
@@ -13,16 +10,12 @@ struct AuthMobilityView: View {
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var auth: AuthSessionStore
+    @State private var displayName = ""
     @State private var isSaving = false
     @State private var errorMessage: String?
 
-    private let options = [
-        "Wheelchair",
-        "Crutches",
-        "Walking Aid",
-        "No mobility aid",
-        "Other"
-    ]
+    /// Same options, same stored values as Android.
+    private let options = MobilityAids.shared.options
 
     var body: some View {
         ZStack {
@@ -98,16 +91,6 @@ struct AuthMobilityView: View {
             .padding(.horizontal, 24)
         }
         .navigationBarBackButtonHidden(true)
-        .onAppear {
-            AuthDebug.log(
-                "Mobility onAppear email=\(email.isEmpty ? "empty" : email) "
-                + "passwordLen=\(password.count) "
-                + "pendingApple=\(pendingAppleSignIn != nil) "
-                + "isSignedIn=\(auth.isSignedIn) "
-                + "userId=\(auth.userId?.uuidString ?? "nil") "
-                + "name=\(displayName) aids=\(mobilityAids.sorted())"
-            )
-        }
     }
 
     private func saveAndContinue() async {
@@ -115,63 +98,12 @@ struct AuthMobilityView: View {
         errorMessage = nil
         isSaving = true
         defer { isSaving = false }
-        let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let aids = mobilityAids.sorted()
-        AuthDebug.log(
-            "Mobility continue email=\(email.isEmpty ? "empty" : email) "
-            + "passwordLen=\(password.count) "
-            + "pendingApple=\(pendingAppleSignIn != nil) "
-            + "isSignedIn=\(auth.isSignedIn) "
-            + "name=\(trimmedName) aids=\(aids)"
-        )
         do {
-            if let pendingAppleSignIn {
-                AuthDebug.log("Mobility branch: completeAppleSignup")
-                try await auth.completeAppleSignup(
-                    pending: pendingAppleSignIn,
-                    displayName: trimmedName,
-                    mobilityAids: aids
-                )
-                AuthDebug.log("Mobility completeAppleSignup success → done")
-                onSuccess()
-            } else if !password.isEmpty {
-                AuthDebug.log("Mobility branch: registerEmailAccount")
-                switch try await auth.registerEmailAccount(
-                    email: email,
-                    password: password,
-                    displayName: trimmedName,
-                    mobilityAids: aids
-                ) {
-                case .ready:
-                    AuthDebug.log("Mobility registerEmailAccount → done")
-                    onSuccess()
-                case .needsEmailConfirmation:
-                    AuthDebug.log("Mobility registerEmailAccount → verifyEmail")
-                    path.append(
-                        .verifyEmail(
-                            email: email,
-                            password: password,
-                            displayName: trimmedName,
-                            mobilityAids: aids
-                        )
-                    )
-                }
-            } else if auth.isSignedIn {
-                AuthDebug.log("Mobility branch: updateOnboardingProfile (already signed in)")
-                try await auth.updateOnboardingProfile(
-                    displayName: trimmedName,
-                    mobilityAids: aids
-                )
-                AuthDebug.log("Mobility updateOnboardingProfile success → done")
-                onSuccess()
-            } else {
-                AuthDebug.log(
-                    "Mobility branch: NO CREDENTIALS — password empty, not signed in, no pending Apple"
-                )
-                errorMessage = "Something went wrong. Try again.".localized
-            }
+            // Order matches the options list so both apps store the same array.
+            let aids = options.filter { mobilityAids.contains($0) }
+            let step = try await auth.finishMobility(aids)
+            advanceAuth(to: step, path: $path, displayName: $displayName, onDone: onSuccess)
         } catch {
-            AuthDebug.log("Mobility error: \(type(of: error)) \(error.localizedDescription)")
             errorMessage = error.localizedDescription
         }
     }

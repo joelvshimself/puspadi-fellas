@@ -1,12 +1,11 @@
+import Shared
 import SwiftUI
 
 struct AuthEmailFoundView: View {
     let email: String
     var onSuccess: () -> Void
     @Binding var path: [AuthRoute]
-    @Binding var pendingAppleSignIn: PendingAppleSignIn?
     @Binding var displayName: String
-    @Binding var mobilityAids: Set<String>
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var auth: AuthSessionStore
@@ -15,7 +14,7 @@ struct AuthEmailFoundView: View {
     @State private var password = ""
     @State private var showPassword = false
     @State private var isLoading = false
-    @State private var passwordError = false
+    @State private var passwordError: String?
     @FocusState private var focusedField: Field?
 
     private enum Field { case email, password }
@@ -24,16 +23,12 @@ struct AuthEmailFoundView: View {
         email: String,
         onSuccess: @escaping () -> Void,
         path: Binding<[AuthRoute]>,
-        pendingAppleSignIn: Binding<PendingAppleSignIn?>,
-        displayName: Binding<String>,
-        mobilityAids: Binding<Set<String>>
+        displayName: Binding<String>
     ) {
         self.email = email
         self.onSuccess = onSuccess
         _path = path
-        _pendingAppleSignIn = pendingAppleSignIn
         _displayName = displayName
-        _mobilityAids = mobilityAids
         _emailText = State(initialValue: email)
     }
 
@@ -69,8 +64,8 @@ struct AuthEmailFoundView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Password".localized)
                         .font(.caption)
-                        .foregroundStyle(passwordError ? AuthPalette.errorRed : .secondary)
-                    AuthFieldBox(isFocused: focusedField == .password, isError: passwordError) {
+                        .foregroundStyle(passwordError != nil ? AuthPalette.errorRed : .secondary)
+                    AuthFieldBox(isFocused: focusedField == .password, isError: passwordError != nil) {
                         HStack {
                             Group {
                                 if showPassword {
@@ -91,8 +86,8 @@ struct AuthEmailFoundView: View {
                             }
                         }
                     }
-                    if passwordError {
-                        Text("Incorrect password. Try again.".localized)
+                    if let passwordError {
+                        Text(passwordError.localized)
                             .font(.caption)
                             .foregroundStyle(AuthPalette.errorRed)
                     }
@@ -100,16 +95,14 @@ struct AuthEmailFoundView: View {
 
                 AuthContinueButton(
                     title: "Continue".localized,
-                    enabled: !password.isEmpty && AuthPasswordRules.looksLikeEmail(emailText),
+                    enabled: !password.isEmpty && AuthRules.shared.looksLikeEmail(value: emailText),
                     isLoading: isLoading
                 ) {
                     Task { await submit() }
                 }
 
                 AuthSocialButtons(
-                    onSuccess: onSuccess,
-                    onNeedsOnboarding: beginAppleOnboarding,
-                    onDeferAppleSignIn: deferAppleSignIn
+                    onStep: { advanceAuth(to: $0, path: $path, displayName: $displayName, onDone: onSuccess) }
                 )
 
                 Spacer()
@@ -121,28 +114,14 @@ struct AuthEmailFoundView: View {
 
     private func submit() async {
         guard !isLoading else { return }
-        passwordError = false
+        passwordError = nil
         isLoading = true
         defer { isLoading = false }
         do {
-            try await auth.signInWithEmail(
-                email: emailText.trimmingCharacters(in: .whitespacesAndNewlines),
-                password: password
-            )
-            onSuccess()
+            let step = try await auth.signIn(email: emailText, password: password)
+            advanceAuth(to: step, path: $path, displayName: $displayName, onDone: onSuccess)
         } catch {
-            passwordError = true
+            passwordError = error.localizedDescription
         }
-    }
-
-    private func beginAppleOnboarding(suggestedName: String?) {
-        displayName = suggestedName ?? ""
-        mobilityAids = []
-        path.append(.name(email: "", password: ""))
-    }
-
-    private func deferAppleSignIn(_ pending: PendingAppleSignIn, suggestedName: String?) {
-        pendingAppleSignIn = pending
-        beginAppleOnboarding(suggestedName: suggestedName)
     }
 }
