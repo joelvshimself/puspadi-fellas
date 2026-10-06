@@ -2,7 +2,7 @@ import type { Auth } from "./auth";
 import { requireUserId } from "./auth";
 import type { Env } from "./env";
 import { HttpError, json, methodNotAllowed, readJson, requiredString, uuid } from "./http";
-import { loadGrade } from "./places";
+import { findPlaceId, loadGrade, requirePlaceId } from "./places";
 import { ensureProfile } from "./profile";
 
 type AccessibilityValue = "yes" | "no" | "limited";
@@ -25,7 +25,8 @@ interface Entrance {
 
 interface ReviewPayload {
   submissionId?: unknown;
-  appleMapsId?: unknown;
+  /** Rollspot place ID, or osm:<type>/<id>. */
+  placeId?: unknown;
   entrances?: Entrance[] | null;
   elevator?: {
     exists?: unknown;
@@ -53,7 +54,7 @@ interface NormalizedEntrance {
 interface ReviewRow {
   id: string;
   user_id: string;
-  apple_place_id: string;
+  place_id: string;
   notes: string | null;
   elevator_exists: number | null;
   elevator_wheelchair_accessible: number | null;
@@ -66,6 +67,7 @@ interface ReviewRow {
   pseudonym: string | null;
   avatar_key: string | null;
   mobility_aids: string | null;
+  place_name: string | null;
 }
 
 interface EntranceRow {
@@ -164,14 +166,19 @@ export async function handleReviewsRoot(request: Request, env: Env, auth: Auth):
   const userId = await requireUserId(auth, request);
   const body = await readJson<ReviewPayload>(request);
   const submissionId = requiredString(body.submissionId, "submissionId", 100);
-  const placeId = requiredString(body.appleMapsId, "appleMapsId", 500);
 
   const previous = await env.DB.prepare(
-    `SELECT id FROM reviews WHERE user_id = ? AND submission_id = ?`,
-  ).bind(userId, submissionId).first<{ id: string }>();
+    `SELECT id, place_id FROM reviews WHERE user_id = ? AND submission_id = ?`,
+  ).bind(userId, submissionId).first<{ id: string; place_id: string }>();
   if (previous) {
-    return json({ status: "ok", reviewId: previous.id, placeId, grade: await loadGrade(env, placeId) });
+    return json({
+      status: "ok",
+      reviewId: previous.id,
+      placeId: previous.place_id,
+      grade: await loadGrade(env, previous.place_id),
+    });
   }
+  const placeId = await requirePlaceId(env, requiredString(body.placeId, "placeId", 200));
 
   await ensureProfile(env, userId);
   const entrances = normalizeEntrances(env, body.entrances);
@@ -186,10 +193,9 @@ export async function handleReviewsRoot(request: Request, env: Env, auth: Auth):
   const reviewId = uuid();
 
   const statements: D1PreparedStatement[] = [
-    env.DB.prepare(`INSERT OR IGNORE INTO places (apple_place_id) VALUES (?)`).bind(placeId),
     env.DB.prepare(
       `INSERT INTO reviews (
-        id, submission_id, user_id, apple_place_id, notes,
+        id, submission_id, user_id, place_id, notes,
         elevator_exists, elevator_wheelchair_accessible, elevator_blockers,
         elevator_review_text, has_disabled_toilet, toilet_review_text
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -236,9 +242,9 @@ export async function handleReviewsRoot(request: Request, env: Env, auth: Auth):
   for (const [feature, value] of signals) {
     if (!value) continue;
     statements.push(env.DB.prepare(
-      `INSERT INTO accessibility_signals (apple_place_id, user_id, feature, value, review_id)
+      `INSERT INTO accessibility_signals (place_id, user_id, feature, value, review_id)
        VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(apple_place_id, user_id, feature) DO UPDATE SET
+       ON CONFLICT(place_id, user_id, feature) DO UPDATE SET
          value = excluded.value,
          review_id = excluded.review_id,
          updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`,
@@ -266,9 +272,10 @@ function addPhotos(
 
 async function reviewRows(env: Env, where: string, value: string): Promise<ReviewRow[]> {
   const result = await env.DB.prepare(
-    `SELECT r.*, p.display_name, p.pseudonym, p.avatar_key, p.mobility_aids
+    `SELECT r.*, p.display_name, p.pseudonym, p.avatar_key, p.mobility_aids, pl.name AS place_name
      FROM reviews r
      LEFT JOIN profiles p ON p.user_id = r.user_id
+     LEFT JOIN places pl ON pl.id = r.place_id
      WHERE ${where} = ?
      ORDER BY r.created_at DESC
      LIMIT 100`,
@@ -336,10 +343,11 @@ function reviewOutput(env: Env, row: ReviewRow, entrances: EntranceRow[], photos
   };
 }
 
-export async function handlePlaceReviews(request: Request, env: Env, encodedPlaceId: string): Promise<Response> {
+export async function handlePlaceReviews(request: Request, env: Env, encodedPlaceKey: string): Promise<Response> {
   if (request.method !== "GET") return methodNotAllowed("GET");
-  const placeId = decodeURIComponent(encodedPlaceId);
-  const rows = await reviewRows(env, "r.apple_place_id", placeId);
+  const placeId = await findPlaceId(env, encodedPlaceKey);
+  if (!placeId) return json({ status: "ok", reviews: [] });
+  const rows = await reviewRows(env, "r.place_id", placeId);
   const related = await relatedRows(env, rows.map((row) => row.id));
   return json({
     status: "ok",
@@ -352,10 +360,11 @@ export async function handlePlaceReviews(request: Request, env: Env, encodedPlac
   });
 }
 
-export async function handleReviewPhotos(request: Request, env: Env, encodedPlaceId: string): Promise<Response> {
+export async function handleReviewPhotos(request: Request, env: Env, encodedPlaceKey: string): Promise<Response> {
   if (request.method !== "GET") return methodNotAllowed("GET");
-  const placeId = decodeURIComponent(encodedPlaceId);
-  const rows = await reviewRows(env, "r.apple_place_id", placeId);
+  const placeId = await findPlaceId(env, encodedPlaceKey);
+  if (!placeId) return json({ status: "ok", placeId: null, photos: [] });
+  const rows = await reviewRows(env, "r.place_id", placeId);
   const related = await relatedRows(env, rows.map((row) => row.id));
   const label: Record<Facility, string> = {
     lobby: "Lobby", basement: "Basement", elevator: "Elevator", toilet: "Toilet", exit_side: "Exit side", other: "Other",
@@ -397,8 +406,8 @@ export async function handleMyReviews(request: Request, env: Env, auth: Auth): P
     const photoUrls = photos.map((photo) => `${env.API_BASE_URL}/v1/media/${photo.object_key}`);
     return {
       id: row.id,
-      placeId: row.apple_place_id,
-      placeName: "Place",
+      placeId: row.place_id,
+      placeName: row.place_name ?? "Place",
       createdAt: row.created_at,
       reviewText: row.notes?.trim() || "No review notes written.",
       providedFeatures: [...features],
