@@ -1,16 +1,12 @@
 import Foundation
 
-/// Exact wire shape of `POST /functions/v1/submit-accessibility-review`, per
-/// the backend teammate's contract. `ReviewDraft.buildSubmissionPayload()`
-/// maps the wizard's local state onto this 1:1 — see ReviewService for the
-/// live call site (photos are uploaded to Storage first; URLs land here).
+/// Wire shape of `POST /v1/reviews`. `ReviewDraft.buildSubmissionPayload()`
+/// maps the wizard state onto it after photos have been uploaded to R2.
 ///
 /// Example payload the backend gave us:
 /// ```json
 /// {
 ///   "appleMapsId": "flatten-test-marina-bay",
-///   "lat": 1.2834,
-///   "lng": 103.8607,
 ///   "entrances": [
 ///     { "location": "lobby", "hasDropoffRamp": true, "hasRails": true,
 ///       "doorType": "automatic", "isWideEnough": true,
@@ -25,12 +21,8 @@ import Foundation
 /// }
 /// ```
 struct ReviewSubmissionPayload: Encodable {
+    let submissionId: UUID
     let appleMapsId: String
-    let lat: Double
-    let lng: Double
-    /// Lets the backend map (lat, lng, name) onto an existing place_id rather
-    /// than minting one from the coordinate — see ReviewDraft.name.
-    let name: String?
     let entrances: [EntranceReport]?
     let elevator: ElevatorReport?
     let toilet: ToiletReport?
@@ -63,7 +55,7 @@ struct ReviewSubmissionPayload: Encodable {
     }
 }
 
-/// Public Storage URLs produced by `ReviewService` before building the payload.
+/// Public R2 URLs produced by `ReviewService` before building the payload.
 struct ReviewPhotoURLMap {
     var lobby: [String] = []
     var lobbyCaptions: [String] = []
@@ -106,7 +98,7 @@ extension EntranceDraft {
 }
 
 extension ReviewDraft {
-    /// Builds the request body from wizard state plus Storage public URLs
+    /// Builds the request body from wizard state plus R2 public URLs
     /// for each facility's note photos.
     func buildSubmissionPayload(photoUrls: ReviewPhotoURLMap) -> ReviewSubmissionPayload {
         let elevatorReport = ReviewSubmissionPayload.ElevatorReport(
@@ -147,10 +139,8 @@ extension ReviewDraft {
         let entranceReports = [lobbyReport, basementReport].filter(hasContent)
 
         return ReviewSubmissionPayload(
+            submissionId: submissionId,
             appleMapsId: appleMapsId,
-            lat: coordinate.latitude,
-            lng: coordinate.longitude,
-            name: name,
             entrances: entranceReports.isEmpty ? nil : entranceReports,
             elevator: elevatorReport,
             toilet: toiletReport

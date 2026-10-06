@@ -88,14 +88,14 @@ struct ProfilePhotosView: View {
             }
         }
         .task(id: auth.userId) {
-            await loadPhotosFromSupabase()
+            await loadPhotos()
         }
         .fullScreenCover(item: $selectedPhoto) { photo in
             FacilityPhotoDetailView(photo: photo)
         }
     }
 
-    private func loadPhotosFromSupabase() async {
+    private func loadPhotos() async {
         guard auth.userId != nil else {
             await MainActor.run { photos = [] }
             return
@@ -105,7 +105,7 @@ struct ProfilePhotosView: View {
             let loaded = response.reviews.flatMap(\.facilityPhotos)
             await MainActor.run { self.photos = loaded }
         } catch {
-            print("ProfilePhotosView: Failed to load photos from Supabase: \(error)")
+            print("ProfilePhotosView: Failed to load photos: \(error)")
         }
     }
 }

@@ -87,6 +87,11 @@ struct AuthWelcomeView: View {
     @Binding var pendingAppleSignIn: PendingAppleSignIn?
     @Binding var displayName: String
     @Binding var mobilityAids: Set<String>
+    @EnvironmentObject private var auth: AuthSessionStore
+    @State private var email = ""
+    @State private var isCheckingEmail = false
+    @State private var errorMessage: String?
+    @FocusState private var emailFocused: Bool
 
     var body: some View {
         ZStack {
@@ -109,11 +114,40 @@ struct AuthWelcomeView: View {
                     .font(.subheadline)
                     .foregroundStyle(AuthPalette.subtitle)
 
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Email".localized)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    AuthFieldBox(isFocused: emailFocused, isError: errorMessage != nil) {
+                        TextField("you@example.com", text: $email)
+                            .keyboardType(.emailAddress)
+                            .textContentType(.emailAddress)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .focused($emailFocused)
+                            .submitLabel(.continue)
+                            .onSubmit { Task { await continueWithEmail() } }
+                    }
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.caption)
+                            .foregroundStyle(AuthPalette.errorRed)
+                    }
+                }
+
+                AuthContinueButton(
+                    title: "Continue with Email".localized,
+                    enabled: AuthPasswordRules.looksLikeEmail(email),
+                    isLoading: isCheckingEmail
+                ) {
+                    Task { await continueWithEmail() }
+                }
+
                 AuthSocialButtons(
                     onSuccess: onSuccess,
-                    onNeedsOnboarding: beginAppleOnboarding,
+                    onNeedsOnboarding: beginSocialOnboarding,
                     onDeferAppleSignIn: deferAppleSignIn,
-                    showsOrLabel: false
+                    showsOrLabel: true
                 )
 
                 Spacer()
@@ -122,7 +156,20 @@ struct AuthWelcomeView: View {
         }
     }
 
-    private func beginAppleOnboarding(suggestedName: String?) {
+    private func continueWithEmail() async {
+        guard !isCheckingEmail, AuthPasswordRules.looksLikeEmail(email) else { return }
+        isCheckingEmail = true
+        errorMessage = nil
+        defer { isCheckingEmail = false }
+        let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        do {
+            path.append(try await auth.emailRegistered(normalized) ? .emailFound(normalized) : .createPassword(normalized))
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func beginSocialOnboarding(suggestedName: String?) {
         displayName = suggestedName ?? ""
         mobilityAids = []
         AuthDebug.log(
@@ -133,6 +180,6 @@ struct AuthWelcomeView: View {
 
     private func deferAppleSignIn(_ pending: PendingAppleSignIn, suggestedName: String?) {
         pendingAppleSignIn = pending
-        beginAppleOnboarding(suggestedName: suggestedName)
+        beginSocialOnboarding(suggestedName: suggestedName)
     }
 }

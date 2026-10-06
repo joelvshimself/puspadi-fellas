@@ -137,6 +137,29 @@ struct AuthSocialButtons: View {
             .frame(height: 52)
             .accessibilityLabel("Continue with Apple".localized)
 
+            Button {
+                Task { await completeGoogleSignIn() }
+            } label: {
+                HStack(spacing: 10) {
+                    Text("G")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(Color(red: 0.26, green: 0.52, blue: 0.96))
+                    Text("Continue with Google".localized)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.primary)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 52)
+                .background(Color.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(Color.black.opacity(0.18), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(isBusy)
+            .opacity(isBusy ? 0.6 : 1)
+
             if isBusy {
                 ProgressView()
             }
@@ -185,6 +208,23 @@ struct AuthSocialButtons: View {
             } catch {
                 errorMessage = error.localizedDescription
             }
+        }
+    }
+
+    private func completeGoogleSignIn() async {
+        guard !isBusy else { return }
+        isBusy = true
+        errorMessage = nil
+        defer { isBusy = false }
+        do {
+            let suggestedName = try await auth.signInWithGoogle()
+            if await auth.profileNeedsOnboarding() {
+                onNeedsOnboarding(suggestedName)
+            } else {
+                onSuccess()
+            }
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 }

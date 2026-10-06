@@ -5,7 +5,7 @@ import SwiftUI
 ///
 /// Photos reach the gallery from two directions, so the source is an enum
 /// rather than a plain URL: already-published photos come back as remote URLs
-/// (the same public `review-photos` Storage bucket ReviewService uploads to),
+/// (the same R2-backed URLs ReviewService uploads to),
 /// while photos the user just picked are still local `UIImage`s until submit.
 struct FacilityPhoto: Identifiable {
     enum Source {
@@ -68,12 +68,8 @@ extension FacilityPhoto {
 
 /// Backing store for one facility's gallery.
 ///
-/// TODO(backend): there is no place/facility photo endpoint yet — only
-/// `submit-accessibility-review`, which attaches photos to a *review*. So
-/// `add(_:)` keeps new photos in memory and the gallery seeds from `samples`.
-/// Once a gallery endpoint exists, `load()` should fetch remote URLs and
-/// `add(_:)` should upload JPEGs to the `review-photos` bucket the way
-/// `ReviewService.uploadPhotos` does, then swap the local entries for remote ones.
+/// New photos are held in memory until ReviewService uploads them and refreshes
+/// the gallery from the API.
 @MainActor
 final class FacilityPhotoStore: ObservableObject {
     @Published private(set) var photos: [FacilityPhoto]

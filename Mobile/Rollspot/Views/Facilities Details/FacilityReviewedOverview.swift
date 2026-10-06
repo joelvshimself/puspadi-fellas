@@ -106,7 +106,6 @@ struct FacilityReviewedOverview: View {
             ) {
                 showContributeFlow = false
                 Task {
-                    await PlaceCacheStore.shared.remove(store.placeId)
                     await store.load()
                 }
             }

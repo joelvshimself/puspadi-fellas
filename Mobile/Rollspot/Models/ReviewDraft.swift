@@ -3,21 +3,18 @@ import SwiftUI
 
 /// State for the "Add Review" wizard (Views/Review/).
 ///
-/// Field names/types mirror the real payload contract for the
-/// `submit-accessibility-review` Edge Function (backend/supabase/functions/
-/// submit-accessibility-review/index.ts) — see `ReviewSubmissionPayload` for
-/// the exact wire shape and `ReviewService` for the live call site.
+/// Field names/types mirror the real `POST /v1/reviews` payload contract — see
+/// `ReviewSubmissionPayload` for the exact wire shape and `ReviewService` for
+/// the live call site.
 final class ReviewDraft: ObservableObject {
-    /// TODO(backend): Place has no Apple Maps identifier field yet. This is
-    /// placeholder-sourced from place.id.uuidString — real source TBD
-    /// (likely an MKMapItem identifier once the search flow captures one).
+    /// Stable across retries and double taps; the database accepts one review
+    /// for this submission identifier.
+    let submissionId = UUID()
+    /// Stable Apple Maps place identifier used by the backend.
     let appleMapsId: String
+    /// Used only to restore an unfinished local draft in context.
     let coordinate: CLLocationCoordinate2D
-    /// Sent with the submission so the backend can resolve this to the SAME
-    /// place_id the grade is cached under. The coordinate alone cannot do it —
-    /// MapKit's reading of one venue moves by hundreds of metres between
-    /// searches, so a review keyed on the raw coordinate can land on an id
-    /// nothing else points at. See resolve_place_id in the migrations.
+    /// Used only to label an unfinished local draft.
     let name: String
 
     /// The wizard always walks both entrances in sequence (Lobby, then
@@ -126,7 +123,7 @@ struct ToiletDraft {
 // MARK: - Shared review note
 
 /// One local photo attached to a facility note. JPEG bytes are uploaded to
-/// Supabase Storage (`review-photos`) at submit time; the resulting public
+/// Cloudflare R2 at submit time; the resulting public
 /// URLs become `photoUrls` in the wire payload.
 struct ReviewPhotoDraft: Identifiable {
     let id: UUID

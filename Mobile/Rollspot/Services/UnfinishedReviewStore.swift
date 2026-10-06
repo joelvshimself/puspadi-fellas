@@ -36,7 +36,7 @@ enum UnfinishedReviewStore {
         toiletTags: Set<ContributeTagOption>,
         draft: ReviewDraft
     ) {
-        let placeId = Place.canonicalPlaceId(from: place.coordinate)
+        let placeId = place.reviewPlaceId
         var all = loadAll()
         all[placeId] = Snapshot(
             placeId: placeId,
@@ -61,7 +61,7 @@ enum UnfinishedReviewStore {
     }
 
     static func snapshot(for place: Place) -> Snapshot? {
-        loadAll()[Place.canonicalPlaceId(from: place.coordinate)]
+        loadAll()[place.reviewPlaceId]
     }
 
     static func hasUnfinished(for place: Place) -> Bool {
@@ -70,7 +70,7 @@ enum UnfinishedReviewStore {
 
     static func clear(for place: Place) {
         var all = loadAll()
-        all.removeValue(forKey: Place.canonicalPlaceId(from: place.coordinate))
+        all.removeValue(forKey: place.reviewPlaceId)
         persist(all)
     }
 

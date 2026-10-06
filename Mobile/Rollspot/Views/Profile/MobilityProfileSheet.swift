@@ -116,6 +116,7 @@ struct MobilityProfileSheet: View {
     }
 
     private func choose(_ profile: MobilityProfile) async {
+        guard !isSaving else { return }
         draft = profile
         isSaving = true
         errorMessage = nil

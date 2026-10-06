@@ -252,7 +252,6 @@ struct NotReviewView: View {
             ) {
                 showContributeFlow = false
                 Task {
-                    await PlaceCacheStore.shared.remove(store.placeId)
                     await store.load()
                 }
             }
@@ -312,7 +311,7 @@ struct NotReviewView: View {
         switch state {
         case .empty:
             FacilityHeroCard(kind: kind, headline: kind.headline, subtitle: kind.subtitle) {
-                Text("Google Maps")
+                Text("Rollspot community")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 10)
@@ -515,7 +514,7 @@ struct FacilitySourceProof: View {
             Text("+10")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-            Text("Google Maps +2")
+            Text("Community reviews")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 10)

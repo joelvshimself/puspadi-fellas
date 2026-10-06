@@ -1,7 +1,7 @@
 import Foundation
 
 /// Mock-only data for `MockMyReviewView` (legacy demo screen).
-/// Live place detail uses `PlaceReviewStore` + Supabase — see MockPlaceDetailView.
+/// Live place detail uses `PlaceReviewStore` + the Cloudflare API.
 struct MockTag: Identifiable, Hashable {
     let id = UUID()
     let label: String

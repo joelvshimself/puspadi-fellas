@@ -4,19 +4,21 @@ struct ChangePasswordSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var auth: AuthSessionStore
 
+    @State private var currentPassword = ""
     @State private var password = ""
     @State private var confirm = ""
     @State private var showPassword = false
+    @State private var showCurrentPassword = false
     @State private var showConfirm = false
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var didSucceed = false
     @FocusState private var focusedField: Field?
 
-    private enum Field { case password, confirm }
+    private enum Field { case currentPassword, password, confirm }
 
     private var passwordValid: Bool { AuthPasswordRules.isValid(password) }
-    private var canSave: Bool { passwordValid && password == confirm && !confirm.isEmpty }
+    private var canSave: Bool { !currentPassword.isEmpty && passwordValid && password == confirm && !confirm.isEmpty }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -24,6 +26,31 @@ struct ChangePasswordSheet: View {
                 .font(.title3.weight(.bold))
                 .foregroundStyle(.primary)
                 .padding(.top, 8)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Current Password".localized)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                AuthFieldBox(isFocused: focusedField == .currentPassword) {
+                    HStack {
+                        Group {
+                            if showCurrentPassword {
+                                TextField("Current Password".localized, text: $currentPassword)
+                            } else {
+                                SecureField("Current Password".localized, text: $currentPassword)
+                            }
+                        }
+                        .textContentType(.password)
+                        .textInputAutocapitalization(.never)
+                        .focused($focusedField, equals: .currentPassword)
+
+                        Button { showCurrentPassword.toggle() } label: {
+                            Image(systemName: showCurrentPassword ? "eye.slash" : "eye")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Password".localized)
@@ -106,11 +133,12 @@ struct ChangePasswordSheet: View {
     }
 
     private func save() async {
+        guard !isSaving, canSave else { return }
         isSaving = true
         errorMessage = nil
         defer { isSaving = false }
         do {
-            try await auth.updatePassword(newPassword: password)
+            try await auth.updatePassword(currentPassword: currentPassword, newPassword: password)
             didSucceed = true
             try? await Task.sleep(nanoseconds: 700_000_000)
             dismiss()

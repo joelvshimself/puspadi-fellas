@@ -10,16 +10,12 @@ struct PlaceDetailView: View {
     @State private var showReviewWizard = false
     @State private var showPhotos = false
 
-    /// Live-fetched from place-accessibility — only meaningful for a real
+    /// Live-fetched community accessibility data — only meaningful for a real
     /// MKLocalSearch result (place.isLiveResult), never for the mock
     /// `Place.samples` used elsewhere in this demo.
     @State private var grade: [AccessibilityFeatureGrade] = []
     @State private var isLoadingGrade = false
     @State private var gradeLoadFailed = false
-    /// Populated from the same enrich() response as the grade — a cached
-    /// Mapillary photo URL for this place (nil if none), passed to PlaceImageView.
-    @State private var imageURL: URL?
-    @State private var imageAttribution: String?
     @State private var enrichResolved = false
 
     /// Community review photos from `place-review-photos` (facility-labeled).
@@ -53,14 +49,8 @@ struct PlaceDetailView: View {
             await watchPlaceReviews()
         }
         .fullScreenCover(isPresented: $showReviewWizard, onDismiss: {
-            // A successful submit recomputes accessibility_grade() server-side
-            // and may add new photos — drop the device enrich cache and refetch.
+            // A successful submit may change both the grade and gallery.
             Task {
-                let key = PlaceCacheStore.key(
-                    lat: place.coordinate.latitude,
-                    lng: place.coordinate.longitude
-                )
-                await PlaceCacheStore.shared.remove(key)
                 async let gradeLoad: Void = loadGrade()
                 async let photosLoad: Void = loadReviewPhotos()
                 _ = await (gradeLoad, photosLoad)
@@ -89,15 +79,8 @@ struct PlaceDetailView: View {
             enrichResolved = true
         }
         do {
-            let response = try await AccessibilityService.shared.enrich(
-                lat: place.coordinate.latitude,
-                lng: place.coordinate.longitude,
-                name: place.name,
-                userInitiated: true
-            )
+            let response = try await AccessibilityService.shared.enrich(placeId: place.reviewPlaceId)
             grade = response.grade ?? []
-            imageURL = response.place?.imageUrl.flatMap(URL.init(string:))
-            imageAttribution = response.place?.imageAttribution
         } catch {
             gradeLoadFailed = true
         }
@@ -109,31 +92,16 @@ struct PlaceDetailView: View {
         reviewPhotosLoadFailed = false
         defer { isLoadingReviewPhotos = false }
         do {
-            let response = try await ReviewService.shared.fetchReviewPhotos(
-                lat: place.coordinate.latitude,
-                lng: place.coordinate.longitude,
-                name: place.name
-            )
+            let response = try await ReviewService.shared.fetchReviewPhotos(placeId: place.reviewPlaceId)
             reviewPhotos = response.photos
         } catch {
             reviewPhotosLoadFailed = true
         }
     }
 
-    /// Live refresh while this sheet stays open: another device's review insert
-    /// for the same `place_id` invalidates the enrich cache and reloads grade + photos.
+    /// The Cloudflare API is refreshed explicitly after local submissions.
     private func watchPlaceReviews() async {
-        guard place.isLiveResult else { return }
-        let placeId = PlaceCacheStore.key(
-            lat: place.coordinate.latitude,
-            lng: place.coordinate.longitude
-        )
-        for await _ in ReviewService.shared.watchReviewInserts(placeId: placeId) {
-            await PlaceCacheStore.shared.remove(placeId)
-            async let gradeLoad: Void = loadGrade()
-            async let photosLoad: Void = loadReviewPhotos()
-            _ = await (gradeLoad, photosLoad)
-        }
+        // Intentionally empty: no hidden realtime cache invalidation.
     }
 
     /// TODO(backend): derived client-side from the per-feature rows as a
@@ -252,14 +220,6 @@ struct PlaceDetailView: View {
                     .foregroundStyle(.secondary)
             }
 
-            // ODbL requires the credit to be shown wherever the data is, not
-            // just recorded in the database it came from.
-            if let attribution = place.dataAttribution {
-                Text(attribution)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .padding(.top, 2)
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -462,14 +422,14 @@ struct PlaceDetailView: View {
         }
     }
 
-    /// Real per-feature grades from the backend, plus the cached street photo.
+    /// Community grades plus Apple Maps imagery rendered on device.
     private var liveFacilitiesContent: some View {
         VStack(alignment: .leading, spacing: 20) {
             accessibilityGradeSection
             PlaceImageView(
                 coordinate: place.coordinate,
-                remoteImageURL: imageURL,
-                attribution: imageAttribution,
+                remoteImageURL: nil,
+                attribution: nil,
                 resolved: enrichResolved
             )
             // Community photos from `place-review-photos` (added on main).
@@ -622,5 +582,3 @@ private enum DetailTab: String, CaseIterable, Identifiable {
         )
     )
 }
-
-

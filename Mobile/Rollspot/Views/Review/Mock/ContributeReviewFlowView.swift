@@ -6,7 +6,7 @@ struct ContributeReviewSubmission {
     let placeId: String?
 }
 
-/// New "Contribute a Review" flow — real Supabase submit with draft persistence.
+/// Contribute flow backed by the Cloudflare API, with local draft persistence.
 struct ContributeReviewFlowView: View {
     let place: Place
     let startingFacility: FacilityKind?
@@ -67,7 +67,7 @@ struct ContributeReviewFlowView: View {
         self.onSubmitted = onSubmitted
         self.onFinished = onFinished
 
-        let draft = ReviewDraft(appleMapsId: place.id.uuidString, coordinate: place.coordinate, name: place.name)
+        let draft = ReviewDraft(appleMapsId: place.reviewPlaceId, coordinate: place.coordinate, name: place.name)
         var startIndex = initialScreenIndex
         // Every launch walks the full review: Entrance -> Elevator -> Toilet.
         var facilities = Set(FacilityKind.allCases)
@@ -741,7 +741,7 @@ struct ContributeReviewFlowView: View {
         let answer = location == .lobby ? lobbyRampAnswer : basementRampAnswer
         let ease: EaseOfAccess? = switch answer {
         case "Yes": .easy
-        case "With a push", "With a push": .needsAssistance
+        case "With a push": .needsAssistance
         case "Too steep": .cantGoThrough
         default: nil
         }

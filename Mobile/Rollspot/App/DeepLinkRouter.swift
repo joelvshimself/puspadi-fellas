@@ -1,17 +1,14 @@
 import CoreLocation
 import Foundation
 
-/// Deep links: `puspadifellas://place?lat=…&lng=…&name=…&category=…`.
+/// Deep links include the stable Apple Place ID alongside temporary display data.
 ///
 /// One type owns both directions so the share button and the URL handler can
 /// never drift apart: `url(for:)` builds the link the share sheet sends, and
 /// `handle(_:)` parses an incoming one back into a `Place` for navigation.
 /// The app's URL scheme is registered in Info.plist (CFBundleURLTypes).
 ///
-/// The link carries the coordinate + name — the same identity every backend
-/// call keys on — so an opened link resolves to the same place_id, grade and
-/// reviews as the sender's screen. (Universal Links can layer on later by
-/// pointing the same handler at an https path.)
+/// The Apple Place ID is the identity used for grades, reviews, and saves.
 @MainActor
 final class DeepLinkRouter: ObservableObject {
     static let shared = DeepLinkRouter()
@@ -54,6 +51,7 @@ final class DeepLinkRouter: ObservableObject {
 
     private static func placeQueryItems(for place: Place) -> [URLQueryItem] {
         [
+            URLQueryItem(name: "place_id", value: place.applePlaceId),
             URLQueryItem(name: "lat", value: String(format: "%.6f", place.coordinate.latitude)),
             URLQueryItem(name: "lng", value: String(format: "%.6f", place.coordinate.longitude)),
             URLQueryItem(name: "name", value: place.name),
@@ -78,11 +76,13 @@ final class DeepLinkRouter: ObservableObject {
 
         let name = items.first(where: { $0.name == "name" })?.value ?? "Shared place"
         let category = items.first(where: { $0.name == "category" })?.value ?? "Place"
+        let placeId = items.first(where: { $0.name == "place_id" })?.value
 
         pendingPlace = Place.fromSearchResult(
             name: name,
             category: category,
-            coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng)
+            coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng),
+            applePlaceId: placeId
         )
     }
 }

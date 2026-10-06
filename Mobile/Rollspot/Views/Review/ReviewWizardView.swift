@@ -20,8 +20,7 @@ struct ReviewWizardView: View {
     init(place: Place, onFinished: @escaping () -> Void) {
         self.place = place
         self.onFinished = onFinished
-        // TODO(backend): placeholder appleMapsId — see ReviewDraft.
-        _draft = StateObject(wrappedValue: ReviewDraft(appleMapsId: place.id.uuidString, coordinate: place.coordinate, name: place.name))
+        _draft = StateObject(wrappedValue: ReviewDraft(appleMapsId: place.reviewPlaceId, coordinate: place.coordinate, name: place.name))
     }
 
     var body: some View {
@@ -210,6 +209,7 @@ struct ReviewWizardView: View {
     }
 
     private func submit() async {
+        guard !isSubmitting else { return }
         isSubmitting = true
         defer { isSubmitting = false }
         do {
@@ -242,4 +242,3 @@ struct ReviewWizardView: View {
         return hasher.finalize()
     }
 }
-

@@ -88,6 +88,7 @@ struct AuthVerifyEmailView: View {
     }
 
     private func continueAfterConfirm() async {
+        guard !isLoading else { return }
         errorMessage = nil
         resentHint = nil
         isLoading = true
@@ -107,6 +108,7 @@ struct AuthVerifyEmailView: View {
     }
 
     private func resend() async {
+        guard !isResending else { return }
         errorMessage = nil
         isResending = true
         defer { isResending = false }

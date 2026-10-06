@@ -111,6 +111,7 @@ struct AuthMobilityView: View {
     }
 
     private func saveAndContinue() async {
+        guard !isSaving else { return }
         errorMessage = nil
         isSaving = true
         defer { isSaving = false }

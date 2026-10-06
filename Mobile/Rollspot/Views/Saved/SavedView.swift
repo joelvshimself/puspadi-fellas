@@ -3,14 +3,15 @@ import SwiftUI
 struct SavedView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var savedPlacesService = SavedPlacesService.shared
-
-    private var savedPlaces: [Place] {
-        SavedPlaceSnapshotStore.savedPlaces(from: savedPlacesService.savedPlaceIds)
-    }
+    @State private var savedPlaces: [Place] = []
+    @State private var isLoading = true
 
     var body: some View {
         Group {
-            if savedPlaces.isEmpty {
+            if isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if savedPlaces.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "bookmark.slash")
                         .font(.system(size: 48, weight: .light))
@@ -72,10 +73,19 @@ struct SavedView: View {
                 }
             }
         }
-        // The list renders from local snapshots, so it is already on screen
-        // before this runs — this only reconciles with the server.
         .task {
             await savedPlacesService.fetchSavedPlaceIds()
+            let ids = savedPlacesService.savedPlaceIds
+            var resolved: [Place] = []
+            for placeId in ids {
+                if let place = await SavedPlaceSnapshotStore.resolve(placeId: placeId) {
+                    resolved.append(place)
+                }
+            }
+            savedPlaces = resolved.sorted {
+                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+            isLoading = false
         }
     }
 }

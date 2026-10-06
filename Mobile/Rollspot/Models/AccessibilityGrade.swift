@@ -1,8 +1,6 @@
 import SwiftUI
 
-/// Mirrors one row returned by the `accessibility_grade()` Postgres function
-/// (see backend/supabase/migrations) — the confidence-weighted, time-decayed
-/// blend across every signal (Google/OSM/review/confirmation) for a feature.
+/// One community-derived accessibility grade returned by the Cloudflare API.
 struct AccessibilityFeatureGrade: Identifiable, Codable {
     let feature: String
     let bestValue: String
@@ -39,28 +37,13 @@ struct AccessibilityFeatureGrade: Identifiable, Codable {
     }
 }
 
-/// The `place_cache` row as returned by the Edge Function — only the fields
-/// the client actually needs are decoded.
+/// Stable place identity returned by the API. Apple Maps remains responsible
+/// for all place names, coordinates, addresses, and other display data.
 struct PlaceCacheRow: Codable {
     let placeId: String
-    let name: String?
-    let lat: Double?
-    let lng: Double?
-    let osmAccessibility: [String: String]?
-    /// Permanent Supabase Storage URL of a cached Mapillary photo (CC BY-SA),
-    /// nil when there's no coverage. See backend tryCacheMapillaryImage.
-    let imageUrl: String?
-    let imageAttribution: String?
-    /// Non-nil while the Edge Function is still enriching this place in the
-    /// background (Google → OSM → the Mapillary image download). A response
-    /// read during that window is a snapshot of work in progress — most
-    /// importantly it has no `imageUrl` yet — so the device cache must not
-    /// hold onto it for a full day. See `PlaceCacheStore.isFresh`.
-    let refreshClaimedAt: String?
 }
 
-/// Response shape of `place-accessibility` (see
-/// backend/supabase/functions/place-accessibility/index.ts).
+/// Response shape of `GET /v1/places/:applePlaceId/accessibility`.
 struct PlaceAccessibilityResponse: Codable {
     let status: String
     let place: PlaceCacheRow?

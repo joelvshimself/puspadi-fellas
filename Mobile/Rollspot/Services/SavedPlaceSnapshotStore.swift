@@ -1,96 +1,39 @@
-import CoreLocation
-import Foundation
-import SwiftUI
+import MapKit
 
-/// Persists full Place snapshots for saved bookmarks (Supabase only stores place_id).
+/// Keeps Apple Maps results only for the current process. Saved records in D1
+/// contain just the Apple Place ID; current place data is resolved from MapKit.
+@MainActor
 enum SavedPlaceSnapshotStore {
-    private static let key = "savedPlaceSnapshots"
-
-    struct Snapshot: Codable {
-        let id: UUID
-        let name: String
-        let category: String
-        let distance: String
-        var address: String
-        let lat: Double
-        let lng: Double
-    }
+    private static var places: [String: Place] = [:]
 
     static func save(_ place: Place, placeId: String) {
-        var all = loadAll()
-        all[placeId] = Snapshot(
-            id: place.id,
-            name: place.name,
-            category: place.category,
-            distance: place.distance,
-            address: place.address,
-            lat: place.coordinate.latitude,
-            lng: place.coordinate.longitude
-        )
-        persist(all)
+        places[placeId] = place
     }
 
     static func remove(placeId: String) {
-        var all = loadAll()
-        all.removeValue(forKey: placeId)
-        persist(all)
+        places.removeValue(forKey: placeId)
     }
 
     static func place(for placeId: String) -> Place? {
-        guard let snap = loadAll()[placeId] else { return nil }
-        return Place(
-            id: snap.id,
-            name: snap.name,
-            category: snap.category,
-            distance: snap.distance,
-            address: snap.address,
-            ratingLabel: "",
-            summary: "",
-            description: "",
-            coordinate: CLLocationCoordinate2D(latitude: snap.lat, longitude: snap.lng),
-            accentColor: .accentColor,
-            gallerySymbols: [],
-            facilitySymbols: [],
-            elevatorDetails: [],
-            reviewsSummary: "",
-            isLiveResult: true
-        )
+        places[placeId]
     }
 
     static func savedPlaces(from ids: Set<String>) -> [Place] {
-        let all = loadAll()
-        return ids.compactMap { all[$0].map { snap in
-            Place(
-                id: snap.id,
-                name: snap.name,
-                category: snap.category,
-                distance: snap.distance,
-                address: snap.address,
-                ratingLabel: "",
-                summary: "",
-                description: "",
-                coordinate: CLLocationCoordinate2D(latitude: snap.lat, longitude: snap.lng),
-                accentColor: .accentColor,
-                gallerySymbols: [],
-                facilitySymbols: [],
-                elevatorDetails: [],
-                reviewsSummary: "",
-                isLiveResult: true
-            )
-        }}
-        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        ids.compactMap { places[$0] }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
-    private static func loadAll() -> [String: Snapshot] {
-        guard let data = UserDefaults.standard.data(forKey: key),
-              let decoded = try? JSONDecoder().decode([String: Snapshot].self, from: data)
-        else { return [:] }
-        return decoded
-    }
-
-    private static func persist(_ all: [String: Snapshot]) {
-        if let data = try? JSONEncoder().encode(all) {
-            UserDefaults.standard.set(data, forKey: key)
+    static func resolve(placeId: String) async -> Place? {
+        if let place = places[placeId] { return place }
+        guard let identifier = MKMapItem.Identifier(rawValue: placeId) else { return nil }
+        do {
+            let item = try await MKMapItemRequest(mapItemIdentifier: identifier).mapItem
+            guard let place = NearbyPlacesService.makePlace(from: item) else { return nil }
+            places[placeId] = place
+            return place
+        } catch {
+            print("[SavedPlaceSnapshotStore] Apple Maps lookup failed: \(error)")
+            return nil
         }
     }
 }

@@ -120,6 +120,7 @@ struct AuthEmailFoundView: View {
     }
 
     private func submit() async {
+        guard !isLoading else { return }
         passwordError = false
         isLoading = true
         defer { isLoading = false }

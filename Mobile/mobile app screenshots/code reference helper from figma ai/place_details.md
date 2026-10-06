@@ -267,7 +267,7 @@ struct PlaceDetailsView: View {
             }
 
             // Source badge
-            Text("Google Maps +2")
+            Text("Community reviews")
                 .font(.system(size: 10))
                 .foregroundStyle(Color(red: 114/255, green: 114/255, blue: 114/255))
                 .padding(.horizontal, 6)
@@ -662,7 +662,7 @@ struct PlaceDetailsView: View {
                     .overlay(Capsule().stroke(Color.gray.opacity(0.2), lineWidth: 1))
             }
 
-            Text("Google Maps +2")
+            Text("Community reviews")
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundColor(Color(red: 0.45, green: 0.45, blue: 0.45))
                 .padding(.horizontal, 8)
@@ -1049,7 +1049,7 @@ struct PlaceDetailsView: View {
                                     .padding(.leading, 4)
                             }
                             
-                            Text("Google Maps +2")
+                            Text("Community reviews")
                                 .font(.system(size: 12))
                                 .foregroundColor(.secondary)
                         }

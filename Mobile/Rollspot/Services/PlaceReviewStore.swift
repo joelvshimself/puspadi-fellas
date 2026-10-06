@@ -1,7 +1,7 @@
-import CoreLocation
 import Foundation
 
-/// Reactive source of truth for place-level grades, reviews, and photos.
+/// The detail screen's source of truth. Each load reads current community data
+/// once; there is no second persistence cache to invalidate or reconcile.
 @MainActor
 final class PlaceReviewStore: ObservableObject {
     @Published private(set) var featureGrades: [AccessibilityFeatureGrade] = []
@@ -11,237 +11,91 @@ final class PlaceReviewStore: ObservableObject {
     @Published private(set) var reviewPhotos: [ReviewPhoto] = [] {
         didSet { rebuildAllFacilityPhotos() }
     }
-    /// Every photo on this place, whatever facility it belongs to.
-    ///
-    /// STORED, not computed. As a computed property this rebuilt every
-    /// `FacilityPhoto` on every body evaluation, so the mosaic's tiles were
-    /// torn down and recreated continuously — which resized the column the
-    /// Add Photos menu anchors to and made the menu dismiss the instant it
-    /// opened, sending the tap into a photo tile instead.
     @Published private(set) var allFacilityPhotos: [FacilityPhoto] = []
     @Published private(set) var streetImageURL: URL?
     @Published private(set) var imageAttribution: String?
-    /// Curated photographs of the venue itself (see PlacePhotoService).
-    /// Preferred over the street-level image where they exist: a photo the
-    /// venue publishes of its own frontage beats whatever Mapillary happened
-    /// to drive past.
     @Published private(set) var venuePhotos: [PlacePhoto] = []
     @Published private(set) var isLoading = false
     @Published private(set) var enrichResolved = false
     @Published private(set) var reviewPhotosLoadFailed = false
-    /// True once the reviews fetch has SUCCEEDED at least once. An empty
-    /// `facilityReviews` only means "no reviews" when this is set — before
-    /// that it may just mean the fetch failed, which must never render as
-    /// the "Know something about the place?" empty state.
     @Published private(set) var reviewsResolved = false
-    /// True once the reviews fetch has COMPLETED at least once, success or
-    /// not. Until then the page is still loading — a cached grade makes
-    /// `isLoading` false immediately, but rendering the tabs before the
-    /// reviews land flashed empty cards for a second on every open.
     @Published private(set) var reviewsAttempted = false
+    @Published private(set) var aiSummary: String?
 
     let place: Place
-    /// Which place_id this venue actually lives under.
-    ///
-    /// Starts as the coordinate-derived guess and is replaced by the canonical
-    /// id the moment enrich() reports one. They differ whenever MapKit handed
-    /// us a drifted reading of a place the backend already knows — which is
-    /// most of the time for map pins — and reviews, photos and cache
-    /// invalidation all have to follow the canonical id, not the guess, or
-    /// they address a row nothing else points at.
     private(set) var placeId: String
-
-    /// What a place resolved to last time, kept for the life of the session.
-    ///
-    /// PlaceCacheStore already caches the grade, so a revisit painted its
-    /// badge instantly — but the carousel is built from `venuePhotos` and
-    /// `reviewPhotos`, which were re-fetched every single time. That is what
-    /// made a second visit sit on an empty hero: not the images (those are in
-    /// ImageStore), but the URLs of the images, which nothing remembered.
-    ///
-    /// Repainted immediately on re-entry, then refreshed behind the content
-    /// so it still converges on the server's answer.
-    private struct Snapshot {
-        var facilityReviews: [PlaceFacilityReview]
-        var reviewPhotos: [ReviewPhoto]
-        var venuePhotos: [PlacePhoto]
-    }
-    private static var snapshots: [String: Snapshot] = [:]
-
-    private var watchTask: Task<Void, Never>?
-    private var loadGeneration = 0
-    /// Bounded so a place whose claim is stuck (a worker killed mid-flight
-    /// holds it for REFRESH_CLAIM_TTL_MS) cannot turn into a polling loop.
-    private var provisionalRetries = 0
-    private static let maxProvisionalRetries = 2
-    private var provisionalTask: Task<Void, Never>?
+    private var reloadRequested = false
 
     init(place: Place) {
         self.place = place
-        // A directory place already knows which row it is — no guess needed,
-        // and no chance of addressing a neighbouring id while enrich() is
-        // still in flight.
-        self.placeId = place.directoryPlaceId ?? Place.canonicalPlaceId(from: place.coordinate)
+        self.placeId = place.reviewPlaceId
     }
 
-    deinit {
-        watchTask?.cancel()
-        provisionalTask?.cancel()
-    }
-
-    /// Adopt the canonical place_id the backend filed a just-submitted review
-    /// under before reloading — keeps place-reviews and place-review-photos aligned.
     func adoptPlaceId(_ canonicalId: String) {
-        guard !canonicalId.isEmpty, canonicalId != placeId else { return }
-        let previous = placeId
+        guard !canonicalId.isEmpty else { return }
         placeId = canonicalId
-        if let snapshot = Self.snapshots[previous] {
-            Self.snapshots[canonicalId] = snapshot
-        }
     }
 
     func load() async {
-        loadGeneration += 1
-        let generation = loadGeneration
-        reviewPhotosLoadFailed = false
-
-        // Publish the cached grade BEFORE awaiting anything. enrich() is only
-        // one of three requests below, and they resolve together — so a place
-        // opened before still sat on a spinner while the review and photo
-        // calls finished, even though its grade was already on disk.
-        if let cached = await PlaceCacheStore.shared.get(
-            lat: place.coordinate.latitude,
-            lng: place.coordinate.longitude,
-            name: place.name
-        ) {
-            featureGrades = cached.grade ?? []
-            imageAttribution = cached.place?.imageAttribution
-            streetImageURL = cached.place?.imageUrl.flatMap(URL.init(string:))
-            if let known = cached.place?.placeId { placeId = known }
-            enrichResolved = true
+        if isLoading {
+            reloadRequested = true
+            return
         }
+        isLoading = true
+        repeat {
+            reloadRequested = false
+            await loadOnce()
+        } while reloadRequested && !Task.isCancelled
+        isLoading = false
+    }
 
-        // Same idea as the cached grade above, for everything the carousel and
-        // the tabs are built from.
-        if let snapshot = Self.snapshots[placeId] {
-            facilityReviews = snapshot.facilityReviews
-            reviewPhotos = snapshot.reviewPhotos
-            venuePhotos = snapshot.venuePhotos
-            reviewsResolved = true
+    /// A request that arrives during a load is coalesced into one more pass,
+    /// ensuring a just-submitted review cannot be hidden by an older response.
+    private func loadOnce() async {
+        reviewPhotosLoadFailed = false
+        reviewsAttempted = false
+        defer {
+            enrichResolved = true
             reviewsAttempted = true
         }
 
-        // Only show loading if there is genuinely nothing to show yet.
-        isLoading = featureGrades.isEmpty && reviewPhotos.isEmpty && venuePhotos.isEmpty
-        defer {
-            if generation == loadGeneration {
-                isLoading = false
-                enrichResolved = true
-            }
+        async let gradeResult = try? AccessibilityService.shared.enrich(placeId: placeId)
+        async let reviewResult = loadFacilityReviews()
+        async let photoResult = loadReviewPhotos()
+        async let venueResult = PlacePhotoService.shared.photos(for: placeId)
+
+        let gradeResponse = await gradeResult
+        let reviews = await reviewResult
+        let photos = await photoResult
+        let venue = await venueResult
+        featureGrades = gradeResponse?.grade ?? []
+        facilityReviews = reviews ?? []
+        reviewsResolved = reviews != nil
+        if let photos {
+            reviewPhotos = photos.photos
         }
-
-        // The id this visit STARTED with. enrich() may replace `placeId` with
-        // the canonical one below, and the snapshot has to be findable under
-        // the id the next visit will arrive with — which is this one.
-        let requestedId = placeId
-
-        // enrich() runs FIRST rather than alongside the other two, because it
-        // is what tells us the canonical place_id — and querying `reviews` for
-        // the coordinate-derived guess returns nothing when the backend filed
-        // them under a resolved id. It is a cache hit in the common case, so
-        // this costs no real latency, and the grade above is already on screen.
-        let enrichResponse = try? await AccessibilityService.shared.enrich(
-            lat: place.coordinate.latitude,
-            lng: place.coordinate.longitude,
-            name: place.name,
-            userInitiated: true
+        venuePhotos = venue
+        streetImageURL = nil
+        imageAttribution = nil
+        aiSummary = await PlaceAISummaryService.shared.summary(
+            for: place,
+            featureGrades: featureGrades,
+            serverSummary: nil
         )
-        if let resolved = enrichResponse?.place?.placeId { placeId = resolved }
-
-        guard generation == loadGeneration else {
-            print("[PlaceReviewStore] Discarding stale refresh for \(placeId)")
-            return
-        }
-
-        async let reviews = loadFacilityReviews(placeId: placeId)
-        async let venue = PlacePhotoService.shared.photos(for: placeId)
-        let (reviewRows, photoResponse, venueRows) = await (reviews, loadReviewPhotos(), venue)
-
-        guard generation == loadGeneration else {
-            print("[PlaceReviewStore] Discarding stale refresh for \(placeId)")
-            return
-        }
-
-        reviewsAttempted = true
-        venuePhotos = venueRows
-        featureGrades = enrichResponse?.grade ?? []
-        imageAttribution = enrichResponse?.place?.imageAttribution
-        streetImageURL = enrichResponse?.place?.imageUrl.flatMap(URL.init(string:))
-        if let photoResponse {
-            reviewPhotos = photoResponse.photos
-        }
-        let snapshot = Snapshot(
-            facilityReviews: reviewRows ?? facilityReviews,
-            reviewPhotos: photoResponse?.photos ?? reviewPhotos,
-            venuePhotos: venueRows
-        )
-        Self.snapshots[placeId] = snapshot
-        if requestedId != placeId { Self.snapshots[requestedId] = snapshot }
-
-        if let reviewRows {
-            facilityReviews = reviewRows
-            reviewsResolved = true
-            print("[PlaceReviewStore] Loaded \(reviewRows.count) facility review(s) for \(placeId)")
-        }
-
-        scheduleProvisionalRefresh(for: enrichResponse)
     }
 
-    /// The Edge Function answers before its background task has fetched OSM
-    /// tags and downloaded the Mapillary photo, so the first look at a place
-    /// legitimately has no image. Rather than leaving the screen empty until
-    /// the user comes back, ask again once the work has had time to land.
-    private func scheduleProvisionalRefresh(for response: PlaceAccessibilityResponse?) {
-        guard response?.place?.refreshClaimedAt != nil else {
-            provisionalRetries = 0
-            return
-        }
-        guard provisionalRetries < Self.maxProvisionalRetries else { return }
-        provisionalRetries += 1
-
-        provisionalTask?.cancel()
-        provisionalTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(5))
-            guard !Task.isCancelled, let self else { return }
-            // The cached copy is the provisional one — drop it or enrich()
-            // hands back the same image-less answer. Both keys: the response is
-            // filed under the coordinate key we asked with and mirrored under
-            // whatever canonical id the server resolved it to.
-            await PlaceCacheStore.shared.remove(self.placeId)
-            if let resolved = response?.place?.placeId, resolved != self.placeId {
-                await PlaceCacheStore.shared.remove(resolved)
-            }
-            await self.load()
-        }
-    }
-
-    private func loadFacilityReviews(placeId: String) async -> [PlaceFacilityReview]? {
+    private func loadFacilityReviews() async -> [PlaceFacilityReview]? {
         do {
             return try await ReviewService.shared.fetchPlaceReviews(placeId: placeId)
         } catch {
-            print("[PlaceReviewStore] Facility review fetch FAILED for \(placeId): \(error)")
+            if !Task.isCancelled { print("[PlaceReviewStore] Reviews failed: \(error)") }
             return nil
         }
     }
 
-    @discardableResult
     private func loadReviewPhotos() async -> PlaceReviewPhotosResponse? {
         do {
-            let response = try await ReviewService.shared.fetchReviewPhotos(
-                lat: place.coordinate.latitude,
-                lng: place.coordinate.longitude,
-                name: place.name
-            )
+            let response = try await ReviewService.shared.fetchReviewPhotos(placeId: placeId)
             reviewPhotosLoadFailed = false
             return response
         } catch {
@@ -250,19 +104,9 @@ final class PlaceReviewStore: ObservableObject {
         }
     }
 
-    func startWatching() {
-        watchTask?.cancel()
-        watchTask = Task {
-            for await _ in ReviewService.shared.watchReviewInserts(placeId: placeId) {
-                // The reviews-table insert arrives before its review_entrances
-                // child rows are committed by the Edge Function.
-                try? await Task.sleep(for: .milliseconds(300))
-                guard !Task.isCancelled else { break }
-                await PlaceCacheStore.shared.remove(placeId)
-                await load()
-            }
-        }
-    }
+    /// Cloudflare requests are refreshed explicitly after a local submission.
+    /// We do not keep a background realtime channel open for every detail view.
+    func startWatching() {}
 
     func reviews(for kind: FacilityKind) -> [PlaceFacilityReview] {
         facilityReviews
@@ -270,13 +114,8 @@ final class PlaceReviewStore: ObservableObject {
             .sorted { PlaceFacilityReview.isNewerFirst($0, $1) }
     }
 
-    func hasReviews(for kind: FacilityKind) -> Bool {
-        !reviews(for: kind).isEmpty
-    }
-
-    func hasAnyReviews() -> Bool {
-        !facilityReviews.isEmpty
-    }
+    func hasReviews(for kind: FacilityKind) -> Bool { !reviews(for: kind).isEmpty }
+    func hasAnyReviews() -> Bool { !facilityReviews.isEmpty }
 
     func overviewState(for kind: FacilityKind) -> FacilityOverviewState {
         if isUnavailable(kind) { return .unavailable }
@@ -286,28 +125,15 @@ final class PlaceReviewStore: ObservableObject {
 
     func isUnavailable(_ kind: FacilityKind) -> Bool {
         switch kind {
-        case .elevator:
-            return facilityReviews.contains { row in
-                row.kind == .elevator && row.providedTags.contains("NOT AVAILABLE")
-            }
-        case .toilet:
-            return facilityReviews.contains { row in
-                row.kind == .toilet && row.providedTags.contains("NOT AVAILABLE")
+        case .elevator, .toilet:
+            facilityReviews.contains { row in
+                row.kind == kind && row.providedTags.contains("NOT AVAILABLE")
             }
         case .entrance:
-            return false
+            false
         }
     }
 
-    /// Opening sentences of the most recent reviews that actually say
-    /// something, newest first.
-    ///
-    /// Filters BEFORE taking `limit`, not after. Most reviews answer only the
-    /// structured questions, so slicing the newest three and then dropping the
-    /// textless ones routinely left this empty while a real note sat fourth in
-    /// the list. Nothing is synthesised to pad it out: if nobody has written
-    /// about this facility the section says so, which is true and is also an
-    /// invitation to be the first.
     func noteSnippets(for kind: FacilityKind, limit: Int = 3) -> [String] {
         reviews(for: kind)
             .filter(\.hasBodyText)
@@ -320,8 +146,9 @@ final class PlaceReviewStore: ObservableObject {
         reviewPhotos.filter { photo in
             switch kind {
             case .entrance:
-                let f = photo.facility.lowercased()
-                return f.contains("lobby") || f.contains("basement") || f.contains("entrance") || f.contains("exit")
+                let facility = photo.facility.lowercased()
+                return facility.contains("lobby") || facility.contains("basement")
+                    || facility.contains("entrance") || facility.contains("exit")
             case .elevator:
                 return photo.facility.lowercased().contains("elevator")
             case .toilet:
@@ -339,34 +166,23 @@ final class PlaceReviewStore: ObservableObject {
     }
 
     private func facilityPhotos(from source: [ReviewPhoto]) -> [FacilityPhoto] {
-        // Drop repeats FIRST. The same image can legitimately arrive twice —
-        // repeat submissions are common enough to have their own pruning
-        // migration — and the Photos tab now pools every facility, so the odds
-        // of a duplicate landing in one list went up.
         var seenURLs = Set<String>()
-        let unique = source.filter { seenURLs.insert($0.url).inserted }
-
-        return unique.enumerated().compactMap { index, photo -> FacilityPhoto? in
-            guard let url = photo.imageURL else { return nil }
-            let reviewId = facilityReviews.first { review in
-                review.photoURLs.contains(photo.url)
-            }?.reviewId
-            return FacilityPhoto(
-                // Position AND url. Stable across renders, and — unlike the
-                // url alone — impossible to collide: two tiles sharing one
-                // identity is what let a tap meant for the Add Photos menu be
-                // delivered to a photo instead.
-                id: .stable(from: "\(index)|\(photo.url)"),
-                source: .remote(url),
-                reviewId: reviewId,
-                caption: photo.trimmedCaption
-            )
-        }
+        return source
+            .filter { seenURLs.insert($0.url).inserted }
+            .enumerated()
+            .compactMap { index, photo in
+                guard let url = photo.imageURL else { return nil }
+                let reviewId = facilityReviews.first { $0.photoURLs.contains(photo.url) }?.reviewId
+                return FacilityPhoto(
+                    id: .stable(from: "\(index)|\(photo.url)"),
+                    source: .remote(url),
+                    reviewId: reviewId,
+                    caption: photo.trimmedCaption
+                )
+            }
     }
 
     var overallGrade: OverallAccessibility? {
-        // Nothing known yet — keep whatever the pin already showed rather
-        // than contradicting it with "no data".
         let collapsed = collapseAccessibility(featureGrades)
         return collapsed == .noData ? (place.grade ?? .noData) : collapsed
     }

@@ -26,7 +26,7 @@ struct FacilityReviewRow: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
-                        Text(review.bylineName ?? "Community".localized)
+                        Text(review.displayBylineName ?? "Community".localized)
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(.primary)
                         // A handle like "Tidal Frangipani" reads as a real name
@@ -44,6 +44,8 @@ struct FacilityReviewRow: View {
                         Text(role.localized)
                             .font(.system(size: 13))
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                     }
                     if let badge = review.provenance.badgeLabel {
                         if let source = review.sourceURL {
@@ -192,6 +194,22 @@ struct FacilityReviewsList: View {
         let initialID: UUID
     }
 
+    /// One row per contributor: a person can leave evidence for several
+    /// facilities in one visit, and listing each as an unrelated row made
+    /// the same person's account look duplicated.
+    private struct ContributorGroup: Identifiable {
+        let id: String
+        let reviewerName: String?
+        let reviewerRole: String?
+        let reviewerAvatarURL: URL?
+        let reviewerIsPseudonym: Bool
+        let reviews: [PlaceFacilityReview]
+
+        var latest: PlaceFacilityReview {
+            reviews.sorted(by: PlaceFacilityReview.isNewerFirst)[0]
+        }
+    }
+
     /// Distinct tags across the reviews, most common first, with counts.
     private var tagCounts: [(tag: String, count: Int)] {
         var counts: [String: Int] = [:]
@@ -217,6 +235,31 @@ struct FacilityReviewsList: View {
         }
     }
 
+    /// `filtered`, grouped by person so one contributor's evidence across
+    /// facilities renders as a single row instead of repeating their name,
+    /// avatar, and date for each facility they reviewed.
+    private var groupedFiltered: [ContributorGroup] {
+        let groups = Dictionary(grouping: filtered) { review in
+            let name = review.bylineName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            // Old anonymous rows have no reliable person identity, so keep
+            // them separate instead of implying that they came from one visit.
+            return name.isEmpty ? "review-\(review.reviewId.uuidString)" : name
+        }
+
+        return groups.map { key, rows in
+            let latest = rows.sorted(by: PlaceFacilityReview.isNewerFirst)[0]
+            return ContributorGroup(
+                id: key,
+                reviewerName: latest.bylineName,
+                reviewerRole: latest.reviewerRole,
+                reviewerAvatarURL: latest.reviewerAvatarURL,
+                reviewerIsPseudonym: latest.reviewerIsPseudonym,
+                reviews: rows.sorted { Self.facilityRank($0.kind) < Self.facilityRank($1.kind) }
+            )
+        }
+        .sorted { PlaceFacilityReview.isNewerFirst($0.latest, $1.latest) }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             ScrollView(.horizontal, showsIndicators: false) {
@@ -228,7 +271,7 @@ struct FacilityReviewsList: View {
             }
             .scrollClipDisabled()
 
-            if filtered.isEmpty {
+            if groupedFiltered.isEmpty {
                 Text("No reviews match this filter".localized)
                     .font(.subheadline)
                     .foregroundStyle(.tertiary)
@@ -236,27 +279,159 @@ struct FacilityReviewsList: View {
                     .padding(.vertical, 24)
             } else {
                 VStack(spacing: 0) {
-                    ForEach(Array(filtered.enumerated()), id: \.element.id) { index, review in
+                    ForEach(Array(groupedFiltered.enumerated()), id: \.element.id) { index, group in
                         if index > 0 { Divider() }
-                        FacilityReviewRow(review: review) { photo in
-                            let siblings = review.photoURLs.enumerated().compactMap { index, urlString -> FacilityPhoto? in
-                                guard let remote = URL(string: urlString) else { return nil }
-                                return FacilityPhoto(
-                                    id: .stable(from: "\(index)|\(urlString)"),
-                                    source: .remote(remote),
-                                    reviewId: review.reviewId,
-                                    caption: review.caption(forPhotoAt: index)
-                                )
-                            }
-                            lightbox = LightboxSelection(photos: siblings, initialID: photo.id)
-                        }
-                        .padding(.vertical, 14)
+                        contributorRow(group)
+                            .padding(.vertical, 14)
                     }
                 }
             }
         }
         .fullScreenCover(item: $lightbox) { selection in
             FacilityPhotoDetailView(photos: selection.photos, initialID: selection.initialID)
+        }
+    }
+
+    private func contributorRow(_ group: ContributorGroup) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 10) {
+                avatar(url: group.reviewerAvatarURL)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(group.reviewerName ?? "Community".localized)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.primary)
+                        if group.reviewerIsPseudonym {
+                            Image(systemName: "theatermasks")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .accessibilityLabel("Pseudonym".localized)
+                        }
+                    }
+                    if let role = group.reviewerRole {
+                        Text(role.localized)
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                }
+
+                Spacer()
+
+                Text(ReviewService.listDateLabel(from: group.latest.createdAt))
+                    .font(.system(size: 14))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            VStack(alignment: .leading, spacing: 16) {
+                ForEach(group.reviews) { review in
+                    facilityEvidence(review)
+                }
+            }
+        }
+    }
+
+    private func facilityEvidence(_ review: PlaceFacilityReview) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(review.kind.title, systemImage: Self.facilitySymbol(for: review.kind))
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.primary)
+
+            if review.hasBodyText {
+                Text(review.bodyText)
+                    .font(.system(size: 15))
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !review.providedList.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("What Provided:".localized)
+                        .font(.system(size: 15, weight: .semibold))
+                    Text(review.providedList.lowercased().capitalized)
+                        .font(.system(size: 15))
+                }
+            }
+
+            let photos = facilityPhotos(for: review)
+            if !photos.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(photos) { photo in
+                            Button { lightbox = LightboxSelection(photos: photos, initialID: photo.id) } label: {
+                                ZStack(alignment: .bottomLeading) {
+                                    FacilityPhotoImage(photo: photo, cornerRadius: 10)
+                                    if photo.caption != nil {
+                                        PhotoCaptionBadge().padding(6)
+                                    }
+                                }
+                                .frame(width: 88, height: 88)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func facilityPhotos(for review: PlaceFacilityReview) -> [FacilityPhoto] {
+        review.photoURLs.enumerated().compactMap { index, urlString in
+            guard let remote = URL(string: urlString) else { return nil }
+            return FacilityPhoto(
+                id: .stable(from: "\(index)|\(urlString)"),
+                source: .remote(remote),
+                reviewId: review.reviewId,
+                caption: review.caption(forPhotoAt: index)
+            )
+        }
+    }
+
+    private func avatar(url: URL?) -> some View {
+        Group {
+            if let url {
+                CachedRemoteImage(url: url) { phase in
+                    if case .success(let image) = phase {
+                        Image(uiImage: image).resizable().aspectRatio(contentMode: .fill)
+                    } else {
+                        avatarPlaceholder
+                    }
+                }
+            } else {
+                avatarPlaceholder
+            }
+        }
+        .frame(width: 38, height: 38)
+        .clipShape(Circle())
+    }
+
+    private var avatarPlaceholder: some View {
+        Circle()
+            .fill(Color(.systemGray5))
+            .overlay {
+                Image(systemName: "person.fill")
+                    .font(.system(size: 17))
+                    .foregroundStyle(.secondary)
+            }
+    }
+
+    private static func facilityRank(_ kind: FacilityKind) -> Int {
+        switch kind {
+        case .entrance: 0
+        case .elevator: 1
+        case .toilet: 2
+        }
+    }
+
+    private static func facilitySymbol(for kind: FacilityKind) -> String {
+        switch kind {
+        case .entrance: "door.left.hand.open"
+        case .elevator: "arrow.up.arrow.down"
+        case .toilet: "figure.roll"
         }
     }
 

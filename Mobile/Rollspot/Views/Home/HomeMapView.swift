@@ -77,13 +77,15 @@ struct HomeMapView: View {
     @State private var isSearchingForGrade = false
     @State private var showFilter = false
     @State private var nearbyPlaces: [Place] = []
+    /// The first pin set depends on an Apple MapKit search, so make that empty
+    /// interval explicit.
+    @State private var isLoadingInitialPlaces = true
     /// Places the user has opened. The nearby sweep only queries for shopping
     /// malls, so anything else they tap — a hotel from Apple's own POI layer,
     /// say — would otherwise never get a pin, and so never show its grade.
     @State private var visitedPlaces: [Place] = []
-    /// Grades keyed by rounded coordinate, NOT by `place.id`:
-    /// `Place.fromSearchResult` mints a new UUID on every search, so an
-    /// id-keyed cache never hit and each probe re-fetched every place.
+    /// In-memory UI state keyed by the stable Apple Place ID, not the transient
+    /// UUID created for a search result.
     @State private var placeGrades: [String: OverallAccessibility] = [:]
     @State private var nearbyLoadTask: Task<Void, Never>?
     /// Top and bottom safe-area insets captured before map ignores safe area.
@@ -110,6 +112,12 @@ struct HomeMapView: View {
                                 .fill(SheetPalette.searchScrim.opacity(0.6))
                                 .background(.ultraThinMaterial)
                                 .ignoresSafeArea()
+                                .transition(.opacity)
+                        }
+                    }
+                    .overlay {
+                        if isLoadingInitialPlaces && path.isEmpty {
+                            initialPlacesLoadingOverlay
                                 .transition(.opacity)
                         }
                     }
@@ -352,8 +360,8 @@ struct HomeMapView: View {
         }
     }
 
-    /// How many places get a grade lookup per load, and how many run at once.
-    /// A pan should not cost 25 paid Google calls or 25 parallel connections.
+    /// Keep map updates bounded so a camera move does not create a wall of
+    /// simultaneous network work.
     private static let maxGradesPerLoad = 8
     private static let maxConcurrentGradeLookups = 3
     /// How many times the filter may widen before giving up. Doubling from the
@@ -362,51 +370,18 @@ struct HomeMapView: View {
     /// could cost ~64 of them.
     private static let maxGradeSearchSteps = 4
 
-    /// Places whose grade came back `.noData` and have already been given a
-    /// second chance this session.
-    ///
-    /// `.noData` means "the backend had no signal yet", not "this place has no
-    /// accessibility" — server-side enrichment finishes after the first
-    /// response, so a single lookup genuinely can be too early and one retry is
-    /// worth it. Retrying *forever*, on every pan and every return to the map,
-    /// is what turned a rate-limited backend into a self-sustaining request
-    /// storm. One retry, then the place is left alone until something
-    /// invalidates it.
-    @State private var retriedNoDataGrades: Set<String> = []
-
-    /// Places still worth a lookup: never asked, or asked once and answered
-    /// `.noData`.
     @MainActor
-    private func placesNeedingGrade(from places: [Place]) -> [Place] {
-        places.filter { place in
-            let key = Self.gradeKey(for: place)
-            guard let known = placeGrades[key] else { return true }
-            return known == .noData && !retriedNoDataGrades.contains(key)
-        }
+    private func placesNeedingGrade(from places: [Place], force: Bool = false) -> [Place] {
+        places.filter { force || placeGrades[Self.gradeKey(for: $0)] == nil }
     }
 
     /// Stable across searches, unlike `place.id`.
     private nonisolated static func gradeKey(for place: Place) -> String {
-        PlaceCacheStore.key(lat: place.coordinate.latitude, lng: place.coordinate.longitude)
+        place.reviewPlaceId
     }
 
     private static func resolveGrade(for place: Place) async -> OverallAccessibility {
-        let response = try? await AccessibilityService.shared.enrich(
-            lat: place.coordinate.latitude,
-            lng: place.coordinate.longitude,
-            name: place.name
-        )
-        return grade(from: response)
-    }
-
-    /// Grade from the device cache alone — no request, so it costs nothing and
-    /// is not subject to the per-load budget.
-    private static func cachedGrade(for place: Place) async -> OverallAccessibility? {
-        guard let response = await AccessibilityService.shared.cached(
-            lat: place.coordinate.latitude,
-            lng: place.coordinate.longitude,
-            name: place.name
-        ) else { return nil }
+        let response = try? await AccessibilityService.shared.enrich(placeId: place.reviewPlaceId)
         return grade(from: response)
     }
 
@@ -419,10 +394,7 @@ struct HomeMapView: View {
     /// resolved shows up on the pin instead of waiting for the next pan.
     @MainActor
     private func refreshStaleGrades() async {
-        let stale = placesNeedingGrade(from: nearbyPlaces + visitedPlaces)
-        guard !stale.isEmpty else { return }
-
-        await resolveGrades(for: stale)
+        await resolveGrades(for: nearbyPlaces + visitedPlaces, force: true)
     }
 
     @MainActor
@@ -435,39 +407,21 @@ struct HomeMapView: View {
         let places = await NearbyPlacesService.search(in: visibleRegion)
         guard !Task.isCancelled else { return }
         nearbyPlaces = places
+        withAnimation(.easeOut(duration: 0.2)) {
+            isLoadingInitialPlaces = false
+        }
         await resolveGrades(for: places)
     }
 
     /// Resolves grades a few at a time, publishing each as it lands so pins
     /// tag themselves progressively instead of all at the end.
     @MainActor
-    private func resolveGrades(for places: [Place]) async {
-        let candidates = placesNeedingGrade(from: places)
+    private func resolveGrades(for places: [Place], force: Bool = false) async {
+        let candidates = placesNeedingGrade(from: places, force: force)
         guard !candidates.isEmpty else { return }
 
-        // Free pass first. `maxGradesPerLoad` exists to cap NETWORK calls, but
-        // it used to cap places — so with 25 pins and a budget of 8, seventeen
-        // of them stayed Unknown even when their grade was already sitting on
-        // disk. Publish everything we already know, then spend the budget only
-        // on what genuinely needs asking.
-        var needsRequest: [Place] = []
-        for place in candidates {
-            if let grade = await Self.cachedGrade(for: place) {
-                placeGrades[Self.gradeKey(for: place)] = grade
-            } else {
-                needsRequest.append(place)
-            }
-        }
-
-        let pending = needsRequest.prefix(Self.maxGradesPerLoad)
+        let pending = candidates.prefix(Self.maxGradesPerLoad)
         guard !pending.isEmpty else { return }
-
-        // A place asked about now has had its chance; if the answer is
-        // `.noData` again it stops being retried. Marked up front rather than
-        // on completion so an interrupted round still counts.
-        for place in pending where placeGrades[Self.gradeKey(for: place)] == .noData {
-            retriedNoDataGrades.insert(Self.gradeKey(for: place))
-        }
 
         var queue = Array(pending).makeIterator()
 
@@ -526,6 +480,30 @@ struct HomeMapView: View {
             handleMapSelection(selection)
         }
         .mapStyle(.standard(elevation: .realistic))
+    }
+
+    /// A subdued map-loading treatment for the first request. It makes the map
+    /// look intentionally unavailable rather than like it has no places, while
+    /// the app chrome and search sheet remain above it.
+    private var initialPlacesLoadingOverlay: some View {
+        ZStack {
+            Rectangle()
+                .fill(.black.opacity(0.14))
+                .background(.thinMaterial)
+
+            VStack(spacing: 10) {
+                ProgressView()
+                    .controlSize(.regular)
+                Text("Loading nearby places")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .foregroundStyle(.primary)
+        }
+        .ignoresSafeArea()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Loading nearby places")
+        .accessibilityAddTraits(.updatesFrequently)
+        .allowsHitTesting(false)
     }
 
     private var topBar: some View {

@@ -246,14 +246,11 @@ struct MockPlaceDetailView: View {
                     }
                 }
                 Task {
-                    // Drop the cached grade first or load() republishes the
-                    // pre-review grade and the banner only updates if the
-                    // realtime insert happens to arrive.
+                    // Reload explicit server state after a local submission.
                     if let canonicalId = lastSubmittedPlaceId {
                         store.adoptPlaceId(canonicalId)
                         lastSubmittedPlaceId = nil
                     }
-                    await PlaceCacheStore.shared.remove(store.placeId)
                     await store.load()
                 }
             }
@@ -375,7 +372,7 @@ struct MockPlaceDetailView: View {
     }
 
     private var saveId: String {
-        Place.canonicalPlaceId(from: place.coordinate)
+        place.reviewPlaceId
     }
 
     private var isSaved: Bool {
@@ -482,10 +479,13 @@ struct MockPlaceDetailView: View {
 
     /// Still fetching, with nothing meaningful to lay out yet. Distinct from
     /// the empty state on purpose: "loading" gets a skeleton; "empty" is a
-    /// settled fact. A cached grade alone is NOT enough — the tabs need the
+    /// settled fact. A grade alone is NOT enough — the tabs need the
     /// reviews, so the skeleton holds until that fetch has completed once.
     private var isInitialLoading: Bool {
-        store.isLoading || !store.reviewsAttempted
+        // The Reviews tab is ready as soon as its own request succeeds. Hero
+        // and gallery images can continue loading without holding the whole
+        // place page on its skeleton.
+        !store.reviewsAttempted || (store.isLoading && !store.reviewsResolved)
     }
 
     /// No community contributions yet — no reviews and no photos. The design
@@ -571,6 +571,11 @@ struct MockPlaceDetailView: View {
 
     private var emptyStateContent: some View {
         VStack(alignment: .leading, spacing: 16) {
+            if let aiSummary = store.aiSummary {
+                AIAccessibilitySummaryCard(summary: aiSummary)
+                    .padding(.bottom, 6)
+            }
+
             // Hairline between the action pills and the ask, per the design.
             Divider()
                 .padding(.bottom, 4)
@@ -632,6 +637,10 @@ struct MockPlaceDetailView: View {
     private var overviewContent: some View {
         let notes = store.noteSnippets(for: selectedFacility)
         return VStack(alignment: .leading, spacing: 24) {
+            if let aiSummary = store.aiSummary, !store.hasReviews(for: selectedFacility) {
+                AIAccessibilitySummaryCard(summary: aiSummary)
+            }
+
             WhatProvidedCard(
                 tags: providedTags,
                 isUnavailable: store.isUnavailable(selectedFacility),
@@ -901,7 +910,7 @@ struct MockPlaceDetailView: View {
         // several other share targets) take only the URL item when handed
         // both, so the message text silently vanished. Chat apps linkify the
         // https URL inside plain text on their own. The link redirects into
-        // the app — see DeepLinkRouter and the place-link Edge Function.
+        // the app — see DeepLinkRouter.
         var shareText = "Check out \(place.name) — \(gradeText) on Rollspot!"
         if let url = DeepLinkRouter.shareURL(for: place) {
             shareText += "\n\(url.absoluteString)"

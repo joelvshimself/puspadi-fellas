@@ -1,17 +1,11 @@
 import Foundation
 
-/// Where a review came from. Mirrors the `review_provenance` enum in Postgres.
+/// Reviews in the current data model are always authored by the community.
 enum ReviewProvenance: String, Hashable {
-    /// Written by a person using the app. The default, and the only value
-    /// submit-accessibility-review ever writes.
     case community
-    /// Brought in from an external dataset.
-    case imported
-    /// Derived from OpenStreetMap tags.
-    case osm
 
     init(rawValueOrCommunity raw: String?) {
-        self = ReviewProvenance(rawValue: raw ?? "") ?? .community
+        self = .community
     }
 
     /// Always nil — provenance is tracked in the database but no longer
@@ -30,13 +24,10 @@ struct PlaceFacilityReview: Identifiable, Hashable {
     let photoURLs: [String]
     /// Per-photo captions, parallel to `photoURLs` (same index order).
     let photoCaptions: [String]
-    /// Display-safe reviewer identity, joined server-side by the
-    /// `place-reviews` Edge Function (profiles are RLS-locked to their owner,
-    /// so the client can never read them directly). All nil for legacy rows
-    /// written before auth.
+    /// Display-safe reviewer identity joined by the Worker.
     ///
     /// `reviewerName` is a PSEUDONYM unless the account opted into showing its
-    /// real name — see the pseudonyms migration. It is stable per account, so
+    /// real name. It is stable per account, so
     /// a reader can recognise a contributor across places.
     var reviewerName: String? = nil
     var reviewerRole: String? = nil
@@ -45,27 +36,22 @@ struct PlaceFacilityReview: Identifiable, Hashable {
     /// Drives the small "handle" marker on the card — a made-up name presented
     /// with no qualifier reads as a real one.
     var reviewerIsPseudonym: Bool = false
-    /// Who authored the underlying review: a person using the app, or an
-    /// import from a data source. Anything but `.community` is labelled on the
-    /// card, because a machine-derived claim about a ramp must never be shown
-    /// as somebody's first-hand report of one.
     var provenance: ReviewProvenance = .community
-    /// For an imported row, the page the claim was read on. Shown as the
-    /// byline and opened on tap — quoting somebody else's words without
-    /// pointing at them is the part that would not be defensible.
     var sourceURL: URL? = nil
 
     /// What to put where a reviewer's name goes.
     ///
-    /// An imported row has no author in the app, and letting it fall through
-    /// to "Community" would credit a stranger's aside on a review site to this
-    /// app's contributors. The host is both the honest answer and the useful
-    /// one — a reader can weigh "tripadvisor.com" for themselves.
     var bylineName: String? {
-        if provenance != .community {
-            return sourceURL?.host?.replacingOccurrences(of: "www.", with: "")
-        }
-        return reviewerName
+        reviewerName
+    }
+
+    /// Keep reviewer cards compact and consistent: full legal names can be
+    /// long, while the first two name components remain recognisable.
+    var displayBylineName: String? {
+        guard let bylineName else { return nil }
+        let parts = bylineName.split(whereSeparator: \.isWhitespace)
+        guard !parts.isEmpty else { return nil }
+        return parts.prefix(2).joined(separator: " ")
     }
 
     var providedList: String {

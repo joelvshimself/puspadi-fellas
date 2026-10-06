@@ -1,3 +1,4 @@
+import GoogleSignIn
 import SwiftUI
 
 @main
@@ -20,6 +21,7 @@ struct RollspotApp: App {
                 }
             }
             .onOpenURL { url in
+                if GIDSignIn.sharedInstance.handle(url) { return }
                 DeepLinkRouter.shared.handle(url)
                 Task { await authSession.handleAuthCallback(url) }
             }

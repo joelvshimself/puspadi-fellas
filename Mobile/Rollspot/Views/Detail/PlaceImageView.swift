@@ -1,14 +1,8 @@
 import MapKit
 import SwiftUI
 
-/// A photo for a place, tried in order of usefulness/quality:
-///   1. Mapillary — open, CC BY-SA street-level photo cached server-side in
-///      Supabase Storage (real ground-level image, often shows the entrance).
-///   2. Look Around — Apple street-level imagery via MKLookAroundSnapshotter,
-///      where Mapillary has no coverage.
-///   3. Map snapshot (MKMapSnapshotter) — so there's never a broken box.
-/// All free, no per-call billing. Only the Mapillary image needs attribution
-/// (shown as an overlay), which its license requires.
+/// Apple imagery rendered on device: Look Around when available, followed by
+/// a standard MapKit snapshot.
 struct PlaceImageView: View {
     let coordinate: CLLocationCoordinate2D
     /// Cached Mapillary Storage URL from the enrich response; nil if none.
@@ -139,7 +133,7 @@ struct PlaceImageView: View {
         // thumbnail, and blanking it would put the spinner back.
         finishedLoading = false
 
-        // 1. Mapillary (cached, real street-level photo).
+        // 1. Community venue image when one is supplied by the API.
         if let remoteImageURL, let downloaded = await downloadImage(remoteImageURL) {
             image = downloaded
             shownAttribution = attribution

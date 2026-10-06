@@ -29,6 +29,7 @@ struct ProfileReviewsView: View {
     @State private var isDeleting = false
     @State private var showSuccessToast = false
     @State private var deleteError: String?
+    @State private var resolvedPlaces: [String: Place] = [:]
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -101,7 +102,7 @@ struct ProfileReviewsView: View {
             }
         }
         .task(id: auth.userId) {
-            await loadReviewsFromSupabase()
+            await loadReviews()
         }
         .sheet(isPresented: $showDeleteConfirmation) {
             deleteConfirmationSheet
@@ -125,7 +126,7 @@ struct ProfileReviewsView: View {
         }
     }
 
-    private func loadReviewsFromSupabase() async {
+    private func loadReviews() async {
         guard auth.userId != nil else {
             await MainActor.run { reviews = [] }
             return
@@ -135,10 +136,14 @@ struct ProfileReviewsView: View {
             let resolvedName = response.userName?.isEmpty == false ? response.userName! : (displayName.isEmpty ? "You" : displayName)
             let resolvedAvatar = response.profileImageUrl.flatMap(URL.init(string:)) ?? avatarURL
             let resolvedRole = response.userRole?.localized ?? mobilityLabel
+            var places: [String: Place] = [:]
+            for placeId in Set(response.reviews.map(\.placeId)) {
+                places[placeId] = await SavedPlaceSnapshotStore.resolve(placeId: placeId)
+            }
             let items = response.reviews
                 .sorted { $0.createdAt > $1.createdAt }
                 .map { row in
-                let resolved = SavedPlaceSnapshotStore.place(for: row.placeId)
+                let resolved = places[row.placeId]
                 return ProfileReviewItem(
                     id: row.id,
                     userName: resolvedName,
@@ -152,41 +157,23 @@ struct ProfileReviewsView: View {
                     photoURLs: row.photoURLs
                 )
             }
-            await MainActor.run { self.reviews = items }
+            self.resolvedPlaces = places
+            self.reviews = items
         } catch {
-            print("ProfileReviewsView: Failed to fetch reviews from Supabase: \(error)")
+            print("ProfileReviewsView: Failed to fetch reviews: \(error)")
         }
     }
 
-    /// Rebuilds the Place for navigation using the review's canonical
-    /// `loc_lat_lng` place id (same key as place detail + saves).
     private func place(for review: ProfileReviewItem) -> Place {
-        if let snap = SavedPlaceSnapshotStore.place(for: review.placeId) {
-            return snap
-        }
-        if let coordinate = Self.coordinate(fromCanonicalPlaceId: review.placeId) {
-            return Place.fromSearchResult(
-                name: review.placeName == review.placeId ? "Place".localized : review.placeName,
-                category: "Place",
-                coordinate: coordinate
-            )
+        if let resolved = resolvedPlaces[review.placeId] {
+            return resolved
         }
         return Place.fromSearchResult(
             name: review.placeName,
             category: "Place",
-            coordinate: .init(latitude: 0, longitude: 0)
+            coordinate: .init(latitude: 0, longitude: 0),
+            applePlaceId: review.placeId
         )
-    }
-
-    /// Parses `loc_-8.72000_115.20000` into a coordinate.
-    private static func coordinate(fromCanonicalPlaceId placeId: String) -> CLLocationCoordinate2D? {
-        guard placeId.hasPrefix("loc_") else { return nil }
-        let parts = placeId.dropFirst(4).split(separator: "_")
-        guard parts.count == 2,
-              let lat = Double(parts[0]),
-              let lng = Double(parts[1])
-        else { return nil }
-        return CLLocationCoordinate2D(latitude: lat, longitude: lng)
     }
 
     private func reviewCard(_ review: ProfileReviewItem) -> some View {
@@ -441,7 +428,7 @@ struct ProfileReviewsView: View {
     }
 
     private func confirmDelete() async {
-        guard let target = reviewToDelete else { return }
+        guard !isDeleting, let target = reviewToDelete else { return }
         isDeleting = true
         deleteError = nil
         defer { isDeleting = false }

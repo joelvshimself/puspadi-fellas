@@ -1,10 +1,10 @@
 import AuthenticationServices
 import CryptoKit
 import Foundation
-import Supabase
+import GoogleSignIn
 import SwiftUI
+import UIKit
 
-/// Apple identity captured on first authorization; Supabase sign-in waits until onboarding finishes.
 struct PendingAppleSignIn: Equatable {
     let idToken: String
     let rawNonce: String
@@ -14,145 +14,145 @@ struct PendingAppleSignIn: Equatable {
     let familyName: String?
 }
 
-/// Real email/password and Sign in with Apple sessions via Supabase Auth.
+struct AppSession: Equatable {
+    let userId: String
+    let email: String
+}
+
+private struct AuthUser: Decodable {
+    let id: String
+    let email: String
+}
+
+private struct AuthResponse: Decodable { let user: AuthUser? }
+private struct SessionResponse: Decodable { let user: AuthUser? }
+private struct EmailRegisteredResponse: Decodable { let registered: Bool }
+private struct ProvidersResponse: Decodable { let providers: [String] }
+private struct EmailBody: Encodable { let email: String }
+private struct EmailPasswordBody: Encodable { let email: String; let password: String }
+
+private struct EmailSignupBody: Encodable {
+    let name: String
+    let email: String
+    let password: String
+    let callbackURL: String
+}
+
+private struct VerificationEmailBody: Encodable {
+    let email: String
+    let callbackURL: String
+}
+
+private struct SocialSignInBody: Encodable {
+    struct IdentityToken: Encodable {
+        let token: String
+        let nonce: String?
+    }
+    let provider: String
+    let idToken: IdentityToken
+}
+
+private struct ChangePasswordBody: Encodable {
+    let currentPassword: String
+    let newPassword: String
+    let revokeOtherSessions: Bool
+}
+
+/// App authentication backed by Better Auth on the Cloudflare Worker.
 @MainActor
 final class AuthSessionStore: ObservableObject {
-    @Published private(set) var session: Session?
+    @Published private(set) var session: AppSession?
     @Published var lastError: String?
+    @Published private(set) var providers: Set<String> = []
 
-    private let client = SupabaseClientProvider.shared
-    private var listenTask: Task<Void, Never>?
+    private let client = CloudflareAPIClient.shared
+    private var authActionInFlight = false
 
     var isSignedIn: Bool { session != nil }
-    var userId: UUID? { session?.user.id }
-    var userEmail: String? {
-        session?.user.email?.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    /// Email/password identities can change password; Apple-only accounts cannot.
-    var canChangePassword: Bool {
-        guard let identities = session?.user.identities else { return false }
-        return identities.contains { $0.provider == "email" }
-    }
+    var userId: UUID? { session.flatMap { UUID(uuidString: $0.userId) } }
+    var userEmail: String? { session?.email.trimmingCharacters(in: .whitespacesAndNewlines) }
+    var canChangePassword: Bool { providers.contains("credential") }
 
     init() {
-        let client = self.client
-        listenTask = Task { [weak self] in
-            for await (event, session) in client.auth.authStateChanges {
-                await MainActor.run {
-                    AuthDebug.log("authStateChanges event=\(event) session=\(session?.user.id.uuidString ?? "nil")")
-                    self?.session = session
-                }
-            }
-        }
-    }
-
-    deinit {
-        listenTask?.cancel()
+        Task { await restoreSession() }
     }
 
     func emailRegistered(_ email: String) async throws -> Bool {
-        struct Params: Encodable {
-            let checkEmail: String
-            enum CodingKeys: String, CodingKey { case checkEmail = "check_email" }
-        }
-        let value: Bool = try await client
-            .rpc("email_registered", params: Params(checkEmail: email.trimmingCharacters(in: .whitespacesAndNewlines)))
-            .execute()
-            .value
-        return value
+        let response: EmailRegisteredResponse = try await client.post(
+            ["v1", "auth", "email-registered"],
+            body: EmailBody(email: normalizedEmail(email))
+        )
+        return response.registered
     }
 
     func signInWithEmail(email: String, password: String) async throws {
+        try beginAuthAction()
+        defer { authActionInFlight = false }
         lastError = nil
-        try await client.auth.signIn(email: email, password: password)
+        let response: AuthResponse = try await client.post(
+            ["api", "auth", "sign-in", "email"],
+            body: EmailPasswordBody(email: normalizedEmail(email), password: password),
+            capturesSession: true
+        )
+        try await accept(response.user)
+        providers.insert("credential")
     }
 
     func signUpWithEmail(email: String, password: String) async throws -> Bool {
-        lastError = nil
-        let response = try await client.auth.signUp(
-            email: email,
-            password: password,
-            redirectTo: SupabaseConfig.authRedirectURL
-        )
-        if response.session != nil {
-            return false
-        }
+        _ = try await signUp(email: email, password: password, displayName: "You")
         return true
     }
 
-    /// Registers the account and saves onboarding when a session is returned immediately.
-    /// Returns `.needsEmailConfirmation` when Supabase sends a confirmation link instead.
     func registerEmailAccount(
         email: String,
         password: String,
         displayName: String,
         mobilityAids: [String]
     ) async throws -> EmailSignupResult {
+        try beginAuthAction()
+        defer { authActionInFlight = false }
         lastError = nil
-        AuthDebug.log("registerEmailAccount email=\(email) passwordLen=\(password.count) name=\(displayName) aids=\(mobilityAids)")
-        let response = try await client.auth.signUp(
-            email: email,
-            password: password,
-            redirectTo: SupabaseConfig.authRedirectURL
-        )
-        AuthDebug.log(
-            "signUp response user=\(response.user.id.uuidString) "
-            + "session=\(response.session != nil ? "yes" : "no") "
-            + "confirmed=\(response.user.emailConfirmedAt != nil)"
-        )
-        if let newSession = response.session {
-            session = newSession
-            AuthDebug.log("registerEmailAccount saving profile (immediate session)")
-            try await updateOnboardingProfile(displayName: displayName, mobilityAids: mobilityAids)
-            AuthDebug.log("registerEmailAccount complete → ready")
-            return .ready
-        }
-        AuthDebug.log("registerEmailAccount complete → needsEmailConfirmation")
+        _ = try await signUp(email: email, password: password, displayName: displayName)
         return .needsEmailConfirmation
     }
 
-    func finishEmailOnboardingAfterConfirm(
-        displayName: String,
-        mobilityAids: [String]
-    ) async throws {
+    private func signUp(email: String, password: String, displayName: String) async throws -> AuthResponse {
+        try await client.post(
+            ["api", "auth", "sign-up", "email"],
+            body: EmailSignupBody(
+                name: displayName,
+                email: normalizedEmail(email),
+                password: password,
+                callbackURL: CloudflareConfig.authCallbackURL.absoluteString
+            )
+        )
+    }
+
+    func finishEmailOnboardingAfterConfirm(displayName: String, mobilityAids: [String]) async throws {
         try await updateOnboardingProfile(displayName: displayName, mobilityAids: mobilityAids)
     }
 
     func resendConfirmationEmail(email: String) async throws {
-        try await client.auth.resend(
-            email: email,
-            type: .signup,
-            emailRedirectTo: SupabaseConfig.authRedirectURL
+        let _: AuthResponse = try await client.post(
+            ["api", "auth", "send-verification-email"],
+            body: VerificationEmailBody(
+                email: normalizedEmail(email),
+                callbackURL: CloudflareConfig.authCallbackURL.absoluteString
+            )
         )
     }
 
-    /// Handles `puspadi://auth/callback` after the user taps the confirmation email link.
     func handleAuthCallback(_ url: URL) async {
-        guard url.scheme == SupabaseConfig.authRedirectURL.scheme else { return }
-        AuthDebug.log("handleAuthCallback url=\(url.absoluteString)")
-        do {
-            _ = try await client.auth.session(from: url)
-            AuthDebug.log("handleAuthCallback session established")
-        } catch {
-            // Email may already be confirmed even if tokens aren't in the URL —
-            // AuthVerifyEmailView can still sign in with password.
-            AuthDebug.log("handleAuthCallback session(from:) failed: \(error.localizedDescription)")
-            lastError = error.localizedDescription
-        }
+        guard url.scheme == CloudflareConfig.authCallbackURL.scheme else { return }
+        await restoreSession()
     }
 
     func signInAfterEmailConfirmed(email: String, password: String) async throws {
-        lastError = nil
-        try await client.auth.signIn(email: email, password: password)
+        try await signInWithEmail(email: email, password: password)
     }
 
     func updateOnboardingProfile(displayName: String, mobilityAids: [String]) async throws {
-        AuthDebug.log("updateOnboardingProfile name=\(displayName) aids=\(mobilityAids) userId=\(userId?.uuidString ?? "nil")")
-        try await ProfileService.shared.updateOnboarding(
-            displayName: displayName,
-            mobilityAids: mobilityAids
-        )
-        AuthDebug.log("updateOnboardingProfile success")
+        try await ProfileService.shared.updateOnboarding(displayName: displayName, mobilityAids: mobilityAids)
     }
 
     func profileNeedsOnboarding() async -> Bool {
@@ -165,165 +165,185 @@ final class AuthSessionStore: ObservableObject {
         from authorization: ASAuthorization,
         rawNonce: String
     ) throws -> (PendingAppleSignIn, String?) {
-        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
-            throw AuthFlowError.appleSignInFailed
-        }
-        guard let tokenData = credential.identityToken,
+        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+              let tokenData = credential.identityToken,
               let idToken = String(data: tokenData, encoding: .utf8) else {
             throw AuthFlowError.appleSignInFailed
         }
-
-        let appleEmail = credential.email?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let fullName = credential.fullName
-        let formattedName = fullName.map {
+        let fullName = credential.fullName.map {
             PersonNameComponentsFormatter.localizedString(from: $0, style: .default)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         } ?? ""
-
         let pending = PendingAppleSignIn(
             idToken: idToken,
             rawNonce: rawNonce,
-            appleEmail: appleEmail,
-            fullName: formattedName,
-            givenName: fullName?.givenName,
-            familyName: fullName?.familyName
+            appleEmail: credential.email?.trimmingCharacters(in: .whitespacesAndNewlines),
+            fullName: fullName,
+            givenName: credential.fullName?.givenName,
+            familyName: credential.fullName?.familyName
         )
-        let suggestedName = formattedName.isEmpty ? nil : formattedName
-        return (pending, suggestedName)
+        return (pending, fullName.isEmpty ? nil : fullName)
     }
 
-    /// First-time Apple: no Supabase calls until mobility Continue.
     func completeAppleSignup(
         pending: PendingAppleSignIn,
         displayName: String,
         mobilityAids: [String]
     ) async throws {
-        lastError = nil
-        let newSession = try await client.auth.signInWithIdToken(
-            credentials: .init(
-                provider: .apple,
-                idToken: pending.idToken,
-                nonce: pending.rawNonce
-            )
-        )
-        session = newSession
-
-        var metadata: [String: AnyJSON] = [:]
-        let resolvedName = displayName.isEmpty ? pending.fullName : displayName
-        if !resolvedName.isEmpty {
-            metadata["full_name"] = .string(resolvedName)
-        }
-        if let givenName = pending.givenName {
-            metadata["given_name"] = .string(givenName)
-        }
-        if let familyName = pending.familyName {
-            metadata["family_name"] = .string(familyName)
-        }
-        if let appleEmail = pending.appleEmail, !appleEmail.isEmpty {
-            metadata["email"] = .string(appleEmail)
-        }
-        if !metadata.isEmpty {
-            _ = try? await client.auth.update(user: UserAttributes(data: metadata))
-        }
-
-        try await updateOnboardingProfile(
-            displayName: resolvedName.isEmpty ? "You" : resolvedName,
-            mobilityAids: mobilityAids
-        )
+        try beginAuthAction()
+        defer { authActionInFlight = false }
+        let user = try await socialSignIn(provider: "apple", token: pending.idToken, nonce: pending.rawNonce)
+        try await accept(user)
+        providers.insert("apple")
+        let name = displayName.isEmpty ? (pending.fullName.isEmpty ? "You" : pending.fullName) : displayName
+        try await updateOnboardingProfile(displayName: name, mobilityAids: mobilityAids)
     }
 
-    /// Returning Apple user — sign in only, then route by onboarding state.
     @discardableResult
     func signInWithAppleReturningUser(
         authorization: ASAuthorization,
         rawNonce: String
     ) async throws -> String? {
-        lastError = nil
-        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
-            throw AuthFlowError.appleSignInFailed
-        }
-        guard let tokenData = credential.identityToken,
+        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+              let tokenData = credential.identityToken,
               let idToken = String(data: tokenData, encoding: .utf8) else {
             throw AuthFlowError.appleSignInFailed
         }
-
-        AuthDebug.log("signInWithAppleReturningUser starting")
-        let newSession = try await client.auth.signInWithIdToken(
-            credentials: .init(
-                provider: .apple,
-                idToken: idToken,
-                nonce: rawNonce
-            )
-        )
-        session = newSession
-        AuthDebug.log("signInWithAppleReturningUser session user=\(newSession.user.id.uuidString)")
+        try beginAuthAction()
+        defer { authActionInFlight = false }
+        let user = try await socialSignIn(provider: "apple", token: idToken, nonce: rawNonce)
+        try await accept(user)
+        providers.insert("apple")
         return nil
     }
 
-    /// True when Apple returned name or email — only happens on first authorization.
-    static func isFirstAppleAuthorization(_ authorization: ASAuthorization) -> Bool {
-        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
-            return false
-        }
-        if let email = credential.email?.trimmingCharacters(in: .whitespacesAndNewlines), !email.isEmpty {
-            return true
-        }
-        if let fullName = credential.fullName {
-            let formatted = PersonNameComponentsFormatter.localizedString(from: fullName, style: .default)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            if !formatted.isEmpty { return true }
-        }
-        return false
+    /// Returns Google's display name so a new account can prefill onboarding.
+    func signInWithGoogle() async throws -> String? {
+        try beginAuthAction()
+        defer { authActionInFlight = false }
+        guard !CloudflareConfig.googleClientID.isEmpty else { throw AuthFlowError.googleNotConfigured }
+        guard let presenter = Self.presentingViewController() else { throw AuthFlowError.googleSignInFailed }
+        GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: CloudflareConfig.googleClientID)
+        let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: presenter)
+        guard let idToken = result.user.idToken?.tokenString else { throw AuthFlowError.googleSignInFailed }
+        let user = try await socialSignIn(provider: "google", token: idToken, nonce: nil)
+        try await accept(user)
+        providers.insert("google")
+        return result.user.profile?.name
     }
 
-    func updatePassword(newPassword: String) async throws {
-        lastError = nil
-        guard AuthPasswordRules.isValid(newPassword) else {
-            throw AuthFlowError.invalidPassword
-        }
-        _ = try await client.auth.update(user: UserAttributes(password: newPassword))
+    private func socialSignIn(provider: String, token: String, nonce: String?) async throws -> AuthUser? {
+        let response: AuthResponse = try await client.post(
+            ["api", "auth", "sign-in", "social"],
+            body: SocialSignInBody(provider: provider, idToken: .init(token: token, nonce: nonce)),
+            capturesSession: true
+        )
+        return response.user
+    }
+
+    static func isFirstAppleAuthorization(_ authorization: ASAuthorization) -> Bool {
+        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else { return false }
+        let hasEmail = !(credential.email?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        let name = credential.fullName.map {
+            PersonNameComponentsFormatter.localizedString(from: $0, style: .default)
+        } ?? ""
+        return hasEmail || !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    func updatePassword(currentPassword: String, newPassword: String) async throws {
+        guard AuthPasswordRules.isValid(newPassword) else { throw AuthFlowError.invalidPassword }
+        let _: AuthResponse = try await client.post(
+            ["api", "auth", "change-password"],
+            body: ChangePasswordBody(
+                currentPassword: currentPassword,
+                newPassword: newPassword,
+                revokeOtherSessions: true
+            ),
+            authenticated: true
+        )
     }
 
     func updateMobilityProfile(_ profile: MobilityProfile) async throws {
-        lastError = nil
         try await ProfileService.shared.updateMobilityAids(profile.storageAids)
     }
 
     func signOut() async {
         lastError = nil
-        do {
-            try await client.auth.signOut()
-        } catch {
-            lastError = error.localizedDescription
-        }
+        try? await client.send(["api", "auth", "sign-out"], method: "POST", authenticated: true)
+        AuthTokenStore.clear()
+        GIDSignIn.sharedInstance.signOut()
         session = nil
+        providers = []
+        NotificationCenter.default.post(name: .rollspotAuthStateDidChange, object: nil)
+    }
+
+    private func restoreSession() async {
+        guard AuthTokenStore.load() != nil else { return }
+        do {
+            let response: SessionResponse = try await client.get(
+                ["api", "auth", "get-session"],
+                authenticated: true
+            )
+            try await accept(response.user)
+        } catch {
+            AuthTokenStore.clear()
+            session = nil
+        }
+    }
+
+    private func accept(_ user: AuthUser?) async throws {
+        guard let user else { throw APIClientError.missingSessionToken }
+        session = AppSession(userId: user.id, email: user.email)
+        if let response: ProvidersResponse = try? await client.get(
+            ["v1", "auth", "providers"],
+            authenticated: true
+        ) {
+            providers = Set(response.providers)
+        }
+        NotificationCenter.default.post(name: .rollspotAuthStateDidChange, object: nil)
+    }
+
+    private func beginAuthAction() throws {
+        if authActionInFlight { throw AuthFlowError.actionInProgress }
+        authActionInFlight = true
+    }
+
+    private func normalizedEmail(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private static func presentingViewController() -> UIViewController? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        var controller = scenes.flatMap(\.windows).first(where: \.isKeyWindow)?.rootViewController
+        while let presented = controller?.presentedViewController { controller = presented }
+        return controller
     }
 }
 
 enum AuthDebug {
     static func log(_ message: String, file: String = #file, line: Int = #line) {
         #if DEBUG
-        let name = (file as NSString).lastPathComponent
-        print("[Auth] \(name):\(line) \(message)")
+        print("[Auth] \((file as NSString).lastPathComponent):\(line) \(message)")
         #endif
     }
 }
 
-enum EmailSignupResult {
-    case ready
-    case needsEmailConfirmation
-}
+enum EmailSignupResult { case ready, needsEmailConfirmation }
 
 enum AuthFlowError: LocalizedError {
     case appleSignInFailed
+    case googleSignInFailed
+    case googleNotConfigured
     case invalidPassword
+    case actionInProgress
 
     var errorDescription: String? {
         switch self {
-        case .appleSignInFailed:
-            return "Sign in with Apple failed. Try again.".localized
-        case .invalidPassword:
-            return "Use at least 8 characters, including a number and a special character.".localized
+        case .appleSignInFailed: "Sign in with Apple failed. Try again.".localized
+        case .googleSignInFailed: "Sign in with Google failed. Try again.".localized
+        case .googleNotConfigured: "Google Sign-In has not been configured yet.".localized
+        case .invalidPassword: "Use at least 8 characters, including a number and a special character.".localized
+        case .actionInProgress: "Please wait for the current sign-in to finish.".localized
         }
     }
 }
@@ -331,8 +351,7 @@ enum AuthFlowError: LocalizedError {
 enum AppleSignInNonce {
     static func random(length: Int = 32) -> String {
         var bytes = [UInt8](repeating: 0, count: length)
-        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        guard status == errSecSuccess else {
+        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
             return UUID().uuidString.replacingOccurrences(of: "-", with: "")
         }
         let charset = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._")
@@ -346,16 +365,14 @@ enum AppleSignInNonce {
 
 enum AuthPasswordRules {
     static func isValid(_ password: String) -> Bool {
-        guard password.count >= 8 else { return false }
-        let hasNumber = password.contains { $0.isNumber }
-        let hasSpecial = password.contains { !$0.isLetter && !$0.isNumber }
-        return hasNumber && hasSpecial
+        password.count >= 8
+            && password.contains(where: \.isNumber)
+            && password.contains { !$0.isLetter && !$0.isNumber }
     }
 
     static func looksLikeEmail(_ value: String) -> Bool {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let at = trimmed.firstIndex(of: "@") else { return false }
-        let domain = trimmed[trimmed.index(after: at)...]
-        return trimmed.count >= 5 && domain.contains(".")
+        return trimmed.count >= 5 && trimmed[trimmed.index(after: at)...].contains(".")
     }
 }

@@ -299,6 +299,7 @@ struct FacilityPhotosView: View {
 
     @MainActor
     private func submitPhotos(_ submitted: [FacilityPhoto]) async {
+        guard !isUploading else { return }
         guard let place, let facilityKind else {
             store.add(submitted)
             goToGallery()
@@ -334,12 +335,10 @@ struct FacilityPhotosView: View {
         }
     }
 
-    /// Storage rejects an unauthenticated upload with a row-level-security
-    /// error, which is true but unreadable — say the thing the user can act on.
+    /// Turn authentication errors into a message the user can act on.
     private static func uploadErrorMessage(for error: Error) -> String {
         let text = "\(error)".lowercased()
-        if text.contains("row-level security")
-            || text.contains("sign in")
+        if text.contains("sign in")
             || text.contains("unauthorized")
             || text.contains("401")
             || text.contains("403") {

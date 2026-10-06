@@ -215,8 +215,6 @@ struct SearchSheet: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var searchTask: Task<Void, Never>?
-    /// Warms the detail page's caches for the visible results.
-    @State private var prefetchTask: Task<Void, Never>?
 
     private var query: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -465,14 +463,6 @@ struct SearchSheet: View {
     }
 
     private func performSearch(_ text: String) async {
-        // The curated directory answers alongside MapKit, not after it. It is
-        // the only source that knows a mall by every name it goes by —
-        // searching "beachwalk" finds the seeded row whether the place is
-        // indexed as "Beachwalk Bali" or "Beachwalk Shopping Center" — and it
-        // returns a grade with the result, so a directory hit renders complete
-        // rather than as a grey pin waiting on an enrich call.
-        async let directoryMatches = directoryResults(matching: text)
-
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = text
         request.region = searchRegion
@@ -480,94 +470,18 @@ struct SearchSheet: View {
         do {
             let response = try await MKLocalSearch(request: request).start()
             guard !Task.isCancelled else { return }
-            defer { prefetchDetails(for: results) }
-            let mapKitResults = response.mapItems.map { item in
-                Place.fromSearchResult(
-                    name: item.name ?? text,
-                    category: item.pointOfInterestCategory?.rawValue
-                        .replacingOccurrences(of: "MKPOICategory", with: "") ?? "Place",
-                    coordinate: item.placemark.coordinate,
-                    address: shortAddress(item.placemark),
+            results = response.mapItems.compactMap { item in
+                NearbyPlacesService.makePlace(
+                    from: item,
                     distance: distance(to: item.placemark.coordinate)
                 )
             }
-            results = NearbyPlacesService.merge(
-                directory: await directoryMatches,
-                mapKit: mapKitResults
-            )
             isLoading = false
         } catch {
             guard !Task.isCancelled else { return }
-            // MKErrorDomain code 4 is a normal "no matches here", not a crash,
-            // but the user still needs to see that something changed. A
-            // directory hit is still a result, though — if we have one, the
-            // search did NOT fail, whatever MapKit thinks.
-            let fallback = await directoryMatches
-            guard !Task.isCancelled else { return }
-            results = fallback
+            results = []
             isLoading = false
-            errorMessage = fallback.isEmpty ? (error as NSError).localizedDescription : nil
-            if !fallback.isEmpty { prefetchDetails(for: fallback) }
-        }
-    }
-
-    /// Directory places whose name contains the query, nearest first.
-    ///
-    /// Substring rather than fuzzy on purpose: the directory is small enough
-    /// that a prefix or word match covers real typing, and fuzzy matching over
-    /// a list this size mostly produces confident wrong answers.
-    private func directoryResults(matching text: String) async -> [Place] {
-        let needle = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        guard needle.count >= 2 else { return [] }
-
-        let rows = await PlaceDirectoryService.shared.nearby(coordinate: searchRegion.center)
-        return rows
-            .filter { $0.name.lowercased().contains(needle) || ($0.city?.lowercased().contains(needle) ?? false) }
-            .map { Place.fromDirectory($0, distance: distance(to: $0.coordinate)) }
-    }
-
-    /// Warms everything the Place Details page waits on, while the user is
-    /// still reading the results list: the accessibility grade (cached to disk
-    /// by PlaceCacheStore) and the street and review photos (cached by
-    /// URLCache, since NetworkRetry downloads through URLSession.shared).
-    /// Opening a result should then be instant rather than a page of spinners.
-    private func prefetchDetails(for places: [Place]) {
-        prefetchTask?.cancel()
-        // Three, not six. Each target costs an enrich, an image download and a
-        // review-photos call, so six was up to ~30 requests fired on every
-        // search — enough to make the whole app feel slow on a phone.
-        let targets = Array(places.prefix(3))
-        guard !targets.isEmpty else { return }
-
-        prefetchTask = Task(priority: .utility) {
-            _ = await mapWithLimit(targets, limit: 2) { place in
-                let lat = place.coordinate.latitude
-                let lng = place.coordinate.longitude
-
-                // The grade is the slowest thing the detail page waits on.
-                let enriched = try? await AccessibilityService.shared.enrich(
-                    lat: lat, lng: lng, name: place.name
-                )
-                guard !Task.isCancelled else { return }
-
-                // Decoding the street photo here also writes the blurred
-                // thumbnail, so a place opened for the very first time has a
-                // stand-in to show rather than an empty box.
-                if let url = enriched?.place?.imageUrl.flatMap(URL.init(string:)),
-                   let data = try? await NetworkRetry.download(from: url),
-                   let image = UIImage(data: data) {
-                    await MainActor.run {
-                        ImageStore.shared.store(
-                            image,
-                            for: ImageStore.key(for: place.coordinate)
-                        )
-                    }
-                }
-
-                // Community photos are deliberately NOT prefetched: they were
-                // the bulk of the requests and the least likely to be looked
-                // at. The detail page still loads them on demand.
-            }
+            errorMessage = (error as NSError).localizedDescription
         }
     }
 

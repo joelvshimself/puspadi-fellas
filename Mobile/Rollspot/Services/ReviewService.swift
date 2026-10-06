@@ -1,39 +1,30 @@
 import Foundation
-import Supabase
 
-/// Owner 3 Edge Functions — submit + read-back of community reviews.
-///
-/// `submit-accessibility-review` accepts the entrances/elevator/toilet
-/// contribution payload, writes `reviews` + `review_entrances`, fans signals
-/// into `accessibility_grade()`, and returns the live grade.
-///
-/// `place-review-photos` returns public photo URLs already stored on those
-/// rows, labeled by facility, for Place Detail.
-///
-/// Photo upload: JPEG bytes go to the public `review-photos` Storage bucket
-/// first; the resulting public URLs are sent as `photoUrls` on each facility
-/// review. DB columns store those URL arrays (not blobs).
-///
-/// NOTE: JWT auth is intentionally off on the backend for device testing
-/// (`user_id` is written as null via service_role) — see the Edge Function's
-/// own TODO to re-enable auth before production.
+private actor ReviewMutationGate {
+    private var active: Set<String> = []
+
+    func begin(_ key: String) -> Bool { active.insert(key).inserted }
+    func end(_ key: String) { active.remove(key) }
+}
+
+private struct ReviewMutationInProgress: LocalizedError {
+    var errorDescription: String? { "This review is already being saved." }
+}
+
+/// Submit and read back community reviews through the Cloudflare API.
+/// JPEG data is uploaded to R2 first; D1 then stores normalized photo metadata
+/// and structured facility answers under the authenticated user.
 final class ReviewService {
     static let shared = ReviewService()
 
-    private static let reviewPhotosBucket = "review-photos"
-
-    private let client: SupabaseClient
-
-    /// The RPC-derived `grade` rows come back snake_case (best_value, ...),
-    /// same as place-accessibility — see AccessibilityService's note.
-    private let decoder: JSONDecoder = {
-        let d = JSONDecoder()
-        d.keyDecodingStrategy = .convertFromSnakeCase
-        return d
-    }()
+    private let client = CloudflareAPIClient.shared
+    private let mutationGate = ReviewMutationGate()
 
     private init() {
-        client = SupabaseClientProvider.shared
+    }
+
+    private struct UploadResponse: Decodable {
+        let url: String
     }
 
     struct SubmitResponse: Decodable {
@@ -42,16 +33,6 @@ final class ReviewService {
         let placeId: String
         let grade: [AccessibilityFeatureGrade]
     }
-
-    private struct ReviewPhotosRequestBody: Encodable {
-        let lat: Double
-        let lng: Double
-        /// Same reason as the submission payload: without it the backend can
-        /// only key on the raw coordinate, which is not stable per venue.
-        let name: String?
-    }
-
-    private struct EmptyRequestBody: Encodable {}
 
     struct MyReviewsResponse: Decodable {
         let status: String
@@ -86,18 +67,22 @@ final class ReviewService {
 
     @discardableResult
     func submit(_ draft: ReviewDraft) async throws -> SubmitResponse {
+        let mutationKey = draft.submissionId.uuidString
+        guard await mutationGate.begin(mutationKey) else { throw ReviewMutationInProgress() }
         print("[ReviewService] Submitting review for place \(draft.appleMapsId)…")
-        let photoUrls = try await uploadAllPhotos(for: draft)
-        let payload = draft.buildSubmissionPayload(photoUrls: photoUrls)
         do {
-            let response: SubmitResponse = try await client.functions.invoke(
-                "submit-accessibility-review",
-                options: FunctionInvokeOptions(body: payload),
-                decoder: decoder
+            let photoUrls = try await uploadAllPhotos(for: draft)
+            let payload = draft.buildSubmissionPayload(photoUrls: photoUrls)
+            let response: SubmitResponse = try await client.post(
+                ["v1", "reviews"],
+                body: payload,
+                authenticated: true
             )
+            await mutationGate.end(mutationKey)
             print("[ReviewService] Review submitted successfully — reviewId: \(response.reviewId), placeId: \(response.placeId)")
             return response
         } catch {
+            await mutationGate.end(mutationKey)
             print("[ReviewService] Review submission FAILED: \(error)")
             throw error
         }
@@ -105,6 +90,9 @@ final class ReviewService {
 
     /// Uploads gallery photos for one facility and persists via submit-accessibility-review.
     func submitGalleryPhotos(place: Place, facility: FacilityKind, localPhotos: [FacilityPhoto]) async throws {
+        let mutationKey = "gallery:\(place.reviewPlaceId):\(facility.rawValue)"
+        guard await mutationGate.begin(mutationKey) else { throw ReviewMutationInProgress() }
+        defer { Task { await mutationGate.end(mutationKey) } }
         let jpegPhotos: [ReviewPhotoDraft] = localPhotos.compactMap { photo in
             guard case .local(let image) = photo.source,
                   let data = image.jpegData(compressionQuality: ReviewNoteDraft.jpegQuality)
@@ -117,7 +105,7 @@ final class ReviewService {
         }
         guard !jpegPhotos.isEmpty else { return }
 
-        let draft = ReviewDraft(appleMapsId: place.id.uuidString, coordinate: place.coordinate, name: place.name)
+        let draft = ReviewDraft(appleMapsId: place.reviewPlaceId, coordinate: place.coordinate, name: place.name)
         var urlMap = ReviewPhotoURLMap()
 
         // Photos only — no facility answers. This used to set
@@ -151,67 +139,21 @@ final class ReviewService {
         }
 
         let payload = draft.buildSubmissionPayload(photoUrls: urlMap)
-        let _: SubmitResponse = try await client.functions.invoke(
-            "submit-accessibility-review",
-            options: FunctionInvokeOptions(body: payload),
-            decoder: decoder
+        let _: SubmitResponse = try await client.post(
+            ["v1", "reviews"],
+            body: payload,
+            authenticated: true
         )
     }
 
-    /// Loads community review photos for the canonical place. The backend
-    /// resolves (lat, lng, name) onto an existing place_id where it knows one,
-    /// falling back to `loc_{lat4}_{lng4}` — same rule as submit and
-    /// place-accessibility, so all three agree on which place this is.
-    func fetchReviewPhotos(
-        lat: Double,
-        lng: Double,
-        name: String? = nil
-    ) async throws -> PlaceReviewPhotosResponse {
-        try await NetworkRetry.run {
-            try await client.functions.invoke(
-                "place-review-photos",
-                options: FunctionInvokeOptions(
-                    body: ReviewPhotosRequestBody(lat: lat, lng: lng, name: name)
-                ),
-                decoder: decoder
-            )
-        }
+    /// Loads community review photos for the Apple Place ID.
+    func fetchReviewPhotos(placeId: String) async throws -> PlaceReviewPhotosResponse {
+        try await client.get(["v1", "places", placeId, "review-photos"])
     }
 
-    /// Subscribes to new `reviews` rows for `placeId`. Yields on each insert so
-    /// Place Detail can refresh grade + photos while the sheet is open.
-    /// Cancelling the surrounding task removes the Realtime channel.
+    /// Realtime updates are intentionally absent; screens reload after local mutations.
     func watchReviewInserts(placeId: String) -> AsyncStream<Void> {
-        AsyncStream { continuation in
-            let task = Task {
-                // Unique suffix prevents Supabase from reusing a previously-subscribed
-                // channel with the same topic name, which causes a "Cannot add
-                // postgres_changes callbacks after subscribe()" error.
-                let channel = client.channel("place-reviews-\(placeId)-\(UUID().uuidString)")
-                defer {
-                    Task { await client.removeChannel(channel) }
-                }
-                let inserts = channel.postgresChange(
-                    InsertAction.self,
-                    schema: "public",
-                    table: "reviews",
-                    filter: .eq("place_id", value: placeId)
-                )
-                do {
-                    _ = try await channel.subscribeWithError()
-                    for await _ in inserts {
-                        if Task.isCancelled { break }
-                        continuation.yield(())
-                    }
-                } catch {
-                    print("Realtime subscription notice for \(placeId): \(error)")
-                }
-                continuation.finish()
-            }
-            continuation.onTermination = { _ in
-                task.cancel()
-            }
-        }
+        AsyncStream { $0.finish() }
     }
 
     // MARK: - Storage upload
@@ -262,140 +204,28 @@ final class ReviewService {
     ) async throws -> [String] {
         guard !photos.isEmpty else { return [] }
 
-        let folder = sanitizePathComponent(appleMapsId)
-        let storage = client.storage.from(Self.reviewPhotosBucket)
         var urls: [String] = []
         urls.reserveCapacity(photos.count)
 
         for photo in photos {
-            let path = "reviews/\(folder)/\(facility)/\(photo.id.uuidString).jpg"
-            try await NetworkRetry.run { () async throws -> Void in
-                try await storage.upload(
-                    path,
-                    data: photo.jpegData,
-                    options: FileOptions(contentType: "image/jpeg", upsert: true)
-                )
-            }
-            let publicURL = try storage.getPublicURL(path: path)
-            urls.append(publicURL.absoluteString)
+            let response: UploadResponse = try await client.putData(
+                ["v1", "media", "review-photos", appleMapsId, facility, photo.id.uuidString],
+                data: photo.jpegData,
+                contentType: "image/jpeg"
+            )
+            urls.append(response.url)
         }
         return urls
     }
 
-    /// Keeps Storage object keys URL-safe (Apple Maps ids can contain punctuation).
-    private func sanitizePathComponent(_ value: String) -> String {
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
-        let scalars = value.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }
-        let cleaned = String(scalars)
-        return cleaned.isEmpty ? "unknown" : cleaned
-    }
-
-    // MARK: - Direct DB Access
-
-    struct DBReviewRow: Decodable {
-        let id: UUID
-        let placeId: String
-        let notes: String?
-        let createdAt: String
-        let elevatorPhotoUrls: [String]?
-        let toiletPhotoUrls: [String]?
-    }
-
-    /// Uploads a single JPEG image to Supabase Storage in review-photos bucket and returns public URL.
-    func uploadPhoto(jpegData: Data, folderName: String = "uploads") async throws -> String {
-        let storage = client.storage.from(Self.reviewPhotosBucket)
-        let filename = "\(folderName)/\(UUID().uuidString).jpg"
-        try await storage.upload(
-            filename,
-            data: jpegData,
-            options: FileOptions(contentType: "image/jpeg", upsert: true)
-        )
-        let publicURL = try storage.getPublicURL(path: filename)
-        return publicURL.absoluteString
-    }
-
-    /// Fetches all submitted reviews from the Supabase `reviews` table.
-    func fetchAllReviews() async throws -> [DBReviewRow] {
-        try await client.from("reviews")
-            .select("id, place_id, notes, created_at, elevator_photo_urls, toilet_photo_urls")
-            .order("created_at", ascending: false)
-            .execute()
-            .value
-    }
-
-    /// Fetches reviews authored by the signed-in user via the `my-reviews` Edge Function.
+    /// Fetches reviews authored by the signed-in user.
     func fetchMyReviews() async throws -> MyReviewsResponse {
-        try await NetworkRetry.run {
-            try await client.functions.invoke(
-                "my-reviews",
-                options: FunctionInvokeOptions(body: EmptyRequestBody()),
-                decoder: decoder
-            )
-        }
+        try await client.get(["v1", "me", "reviews"], authenticated: true)
     }
 
-    /// Deletes the signed-in user's review row (cascades entrance children via FK).
+    /// Deletes the signed-in user's review and its photos.
     func deleteMyReview(id: UUID) async throws {
-        try await client.from("reviews")
-            .delete()
-            .eq("id", value: id)
-            .execute()
-    }
-
-    struct DBOwnedReviewRow: Decodable {
-        let id: UUID
-        let placeId: String
-        let createdAt: String
-        let notes: String?
-        let elevatorExists: Bool?
-        let elevatorWheelchairAccessible: Bool?
-        let elevatorBlockers: [String]?
-        let elevatorReviewText: String?
-        let elevatorPhotoUrls: [String]?
-        let hasDisabledToilet: Bool?
-        let toiletReviewText: String?
-        let toiletPhotoUrls: [String]?
-        let reviewEntrances: [DBReviewEntranceRow]?
-
-        var allPhotoURLs: [URL] {
-            var urls: [URL] = []
-            urls.append(contentsOf: (elevatorPhotoUrls ?? []).compactMap(URL.init(string:)))
-            urls.append(contentsOf: (toiletPhotoUrls ?? []).compactMap(URL.init(string:)))
-            for entrance in reviewEntrances ?? [] {
-                urls.append(contentsOf: (entrance.photoUrls ?? []).compactMap(URL.init(string:)))
-            }
-            return urls
-        }
-
-        var providedTags: [String] {
-            var tags: [String] = []
-            for entrance in reviewEntrances ?? [] {
-                tags.append(contentsOf: ReviewService.profileEntranceTags(from: entrance))
-            }
-            if elevatorExists == true { tags.append("Elevator") }
-            if hasDisabledToilet == true { tags.append("Toilet") }
-            var seen = Set<String>()
-            return tags.filter { seen.insert($0).inserted }
-        }
-
-        var primaryNotes: String {
-            if let notes, !notes.isEmpty { return notes }
-            if let text = elevatorReviewText, !text.isEmpty { return text }
-            if let text = toiletReviewText, !text.isEmpty { return text }
-            if let text = reviewEntrances?.compactMap(\.reviewText).first(where: { !$0.isEmpty }) {
-                return text
-            }
-            return "No review notes written."
-        }
-    }
-
-    static func profileEntranceTags(from row: DBReviewEntranceRow) -> [String] {
-        var tags: [String] = []
-        if row.hasDropoffRamp == true { tags.append("Ramp") }
-        if row.hasRails == true { tags.append("Handrail") }
-        if row.doorType == "automatic" { tags.append("Automatic Doors") }
-        if row.doorType == "manual" { tags.append("Manual Doors") }
-        return tags
+        try await client.delete(["v1", "reviews", id.uuidString])
     }
 
     static func profileDateLabel(_ createdAt: String) -> String {
@@ -413,7 +243,7 @@ final class ReviewService {
     private static let listDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = .current
-        formatter.dateFormat = "d MMM yyyy, h:mm a"
+        formatter.dateFormat = "d MMM yyyy"
         return formatter
     }()
 
@@ -495,24 +325,10 @@ final class ReviewService {
         let reviews: [DBPlaceReviewRow]
     }
 
-    private struct PlaceReviewsRequestBody: Encodable {
-        let placeId: String
-    }
-
-    /// Loads flattened review rows + entrance children + reviewer identity for
-    /// one canonical place, via the `place-reviews` Edge Function.
-    ///
-    /// An Edge Function rather than a direct table query, because reviewer
-    /// names live in `profiles` and RLS only lets a user read their own row —
-    /// the service role joins them server-side. Takes the place_id enrich()
-    /// resolved, which is the one the backend actually filed reviews under.
+    /// Loads flattened review rows and display-safe reviewer identity.
     func fetchPlaceReviews(placeId: String) async throws -> [PlaceFacilityReview] {
-        // Rows come back snake_case and DBPlaceReviewRow's CodingKeys already
-        // spell that out — the class-level convertFromSnakeCase decoder would
-        // fight them, so this call uses a plain decoder.
-        let response: PlaceReviewsResponse = try await client.functions.invoke(
-            "place-reviews",
-            options: FunctionInvokeOptions(body: PlaceReviewsRequestBody(placeId: placeId)),
+        let response: PlaceReviewsResponse = try await client.get(
+            ["v1", "places", placeId, "reviews"],
             decoder: JSONDecoder()
         )
         return Self.mapReviews(response.reviews)

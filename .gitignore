@@ -43,8 +43,8 @@ fastlane/test_output
 .env
 .env.*
 !.env.example
-backend/supabase/.temp/
 node_modules/
+backend/.wrangler/
 __pycache__/
 *.py[cod]
 .venv/

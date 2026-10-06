@@ -12,7 +12,7 @@ import UIKit
 /// so a first visit shows something real while the full image is still
 /// arriving, instead of an empty box with a spinner.
 ///
-/// Keyed by rounded coordinate (the same key PlaceCacheStore uses), not by
+/// Keyed by rounded coordinate, not by
 /// `place.id` — that is a fresh UUID per search result and would never hit.
 @MainActor
 final class ImageStore {
@@ -32,7 +32,7 @@ final class ImageStore {
     }
 
     static func key(for coordinate: CLLocationCoordinate2D) -> String {
-        PlaceCacheStore.key(lat: coordinate.latitude, lng: coordinate.longitude)
+        String(format: "%.5f,%.5f", coordinate.latitude, coordinate.longitude)
     }
 
     /// Remote photos are keyed by their URL — they are not tied to a place

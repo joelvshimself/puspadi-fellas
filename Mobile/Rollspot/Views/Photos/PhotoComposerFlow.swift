@@ -166,12 +166,10 @@ struct PhotoComposerFlow: ViewModifier {
         }
     }
 
-    /// Storage rejects an unauthenticated upload with a row-level-security
-    /// error, which is true but unreadable — say the thing the user can act on.
+    /// Turn authentication errors into a message the user can act on.
     static func errorMessage(for error: Error) -> String {
         let text = "\(error)".lowercased()
-        if text.contains("row-level security")
-            || text.contains("sign in")
+        if text.contains("sign in")
             || text.contains("unauthorized")
             || text.contains("401")
             || text.contains("403") {

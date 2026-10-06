@@ -1,0 +1,22 @@
+{
+  "name": "rollspot-cloudflare-api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "check": "tsc --noEmit",
+    "test": "tsc --noEmit",
+    "db:migrate:local": "wrangler d1 migrations apply rollspot --local",
+    "db:migrate:remote": "wrangler d1 migrations apply rollspot --remote"
+  },
+  "dependencies": {
+    "better-auth": "^1.7.3",
+    "jose": "^6.1.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "typescript": "^5.9.2",
+    "wrangler": "^4.35.0"
+  }
+}

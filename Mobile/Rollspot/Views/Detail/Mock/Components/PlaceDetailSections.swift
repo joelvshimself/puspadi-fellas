@@ -431,6 +431,56 @@ struct PlaceEmptyHeroPlaceholder: View {
     }
 }
 
+/// Card displaying a concise AI-synthesized accessibility overview for a venue.
+struct AIAccessibilitySummaryCard: View {
+    let summary: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [PhotoPalette.brandBlue, Color.purple],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                Text("AI ACCESSIBILITY OVERVIEW".localized)
+                    .font(.system(size: 12, weight: .bold))
+                    .tracking(0.3)
+                    .foregroundStyle(PhotoPalette.brandBlue)
+                Spacer()
+            }
+
+            Text(summary)
+                .font(.system(size: 14, weight: .regular))
+                .lineSpacing(3)
+                .foregroundStyle(.primary)
+
+            HStack(spacing: 5) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 11))
+                Text("Synthesized from public accessibility records. Be the first to verify it.".localized)
+                    .font(.system(size: 11))
+            }
+            .foregroundStyle(.secondary)
+            .padding(.top, 2)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.mockSectionBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(PhotoPalette.brandBlue.opacity(0.15), lineWidth: 1)
+        )
+    }
+}
+
 /// First-visit spotlight on the CONTRIBUTE pill (Figma "Intro to contribute"):
 /// the screen dims, a white callout explains why contributions matter, and a
 /// pointer aims at the pill — which stays bright above the dim.
