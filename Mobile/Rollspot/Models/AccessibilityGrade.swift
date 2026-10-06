@@ -1,3 +1,4 @@
+import Shared
 import SwiftUI
 
 /// One community-derived accessibility grade returned by the Cloudflare API.
@@ -40,10 +41,10 @@ struct AccessibilityFeatureGrade: Identifiable, Codable {
 /// Stable place identity returned by the API. Apple Maps remains responsible
 /// for all place names, coordinates, addresses, and other display data.
 struct PlaceCacheRow: Codable {
-    let placeId: String
+    let id: String?
 }
 
-/// Response shape of `GET /v1/places/:applePlaceId/accessibility`.
+/// Response shape of `GET /v1/places/:placeId/accessibility`.
 struct PlaceAccessibilityResponse: Codable {
     let status: String
     let place: PlaceCacheRow?
@@ -64,12 +65,12 @@ struct PlaceAccessibilityResponse: Codable {
 /// knowing whether a restroom is accessible is not evidence that it is not,
 /// and treating it as such punishes exactly the under-documented places a
 /// contributor should be sent to.
+///
+/// The rule itself lives in the shared module (places/Accessibility.kt) so
+/// Android applies exactly the same one.
 func collapseAccessibility(_ grades: [AccessibilityFeatureGrade]) -> OverallAccessibility {
-    let known = grades.filter { ["yes", "no", "limited"].contains($0.bestValue) }
-    guard !known.isEmpty else { return .noData }
-    if known.contains(where: { $0.bestValue == "no" }) { return .notAccessible }
-    if known.contains(where: { $0.bestValue == "limited" }) { return .partiallyAccessible }
-    return .accessible
+    let shared = grades.map { FeatureGrade(feature: $0.feature, bestValue: $0.bestValue, confidence: $0.confidence) }
+    return OverallAccessibility(AccessibilityKt.collapseAccessibility(grades: shared))
 }
 
 /// Overall accessibility badge shown on the grade card (green/yellow/red).

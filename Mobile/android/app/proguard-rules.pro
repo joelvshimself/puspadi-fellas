@@ -24,6 +24,4 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 
-# Keep Supabase models
--keep,allowobfuscation,allowshrinking class io.github.jan.supabase.** { *; }
 -keep,allowobfuscation,allowshrinking class com.rollspot.app.data.** { *; }

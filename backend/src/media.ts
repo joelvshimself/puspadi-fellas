@@ -22,7 +22,8 @@ export async function handleMediaUpload(
   const userId = await requireUserId(auth, request);
   if (!allowedFacilities.has(facility)) throw new HttpError(400, "Unknown photo facility.");
   const id = requiredString(photoId, "photo ID", 100);
-  const placeId = requiredString(decodeURIComponent(encodedPlaceId), "Apple Place ID", 500);
+  // Any place key works here: it only scopes the object key, and the review links the photo to the place.
+  const placeId = requiredString(decodeURIComponent(encodedPlaceId), "place key", 500);
   const type = request.headers.get("content-type")?.split(";")[0] ?? "";
   if (type !== "image/jpeg") throw new HttpError(415, "Review photos must be JPEG images.");
   const bytes = await request.arrayBuffer();

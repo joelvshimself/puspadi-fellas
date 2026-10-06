@@ -11,7 +11,7 @@ final class ReviewDraft: ObservableObject {
     /// for this submission identifier.
     let submissionId = UUID()
     /// Stable Apple Maps place identifier used by the backend.
-    let appleMapsId: String
+    let placeId: String
     /// Used only to restore an unfinished local draft in context.
     let coordinate: CLLocationCoordinate2D
     /// Used only to label an unfinished local draft.
@@ -26,8 +26,8 @@ final class ReviewDraft: ObservableObject {
     @Published var elevator = ElevatorDraft()
     @Published var toilet = ToiletDraft()
 
-    init(appleMapsId: String, coordinate: CLLocationCoordinate2D, name: String) {
-        self.appleMapsId = appleMapsId
+    init(placeId: String, coordinate: CLLocationCoordinate2D, name: String) {
+        self.placeId = placeId
         self.coordinate = coordinate
         self.name = name
     }

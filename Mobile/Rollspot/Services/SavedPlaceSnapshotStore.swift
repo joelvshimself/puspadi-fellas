@@ -1,7 +1,7 @@
 import MapKit
 
-/// Keeps Apple Maps results only for the current process. Saved records in D1
-/// contain just the Apple Place ID; current place data is resolved from MapKit.
+/// In-memory cache of saved places for this process; anything missing is
+/// fetched from the place directory by ID.
 @MainActor
 enum SavedPlaceSnapshotStore {
     private static var places: [String: Place] = [:]
@@ -25,15 +25,8 @@ enum SavedPlaceSnapshotStore {
 
     static func resolve(placeId: String) async -> Place? {
         if let place = places[placeId] { return place }
-        guard let identifier = MKMapItem.Identifier(rawValue: placeId) else { return nil }
-        do {
-            let item = try await MKMapItemRequest(mapItemIdentifier: identifier).mapItem
-            guard let place = NearbyPlacesService.makePlace(from: item) else { return nil }
-            places[placeId] = place
-            return place
-        } catch {
-            print("[SavedPlaceSnapshotStore] Apple Maps lookup failed: \(error)")
-            return nil
-        }
+        guard let place = await NearbyPlacesService.place(key: placeId) else { return nil }
+        places[placeId] = place
+        return place
     }
 }

@@ -1,17 +1,16 @@
 package com.rollspot.app
 
 import android.app.Application
-import com.rollspot.app.data.SupabaseClient
+import app.rollspot.shared.RollspotSdk
+import app.rollspot.shared.auth.AndroidTokenStore
 
 class RollspotApplication : Application() {
-    
+    /** Business logic lives in the shared module; the app creates it once here. */
+    lateinit var sdk: RollspotSdk
+        private set
+
     override fun onCreate() {
         super.onCreate()
-        
-        // Initialize Supabase client
-        SupabaseClient.initialize(
-            url = BuildConfig.SUPABASE_URL,
-            anonKey = BuildConfig.SUPABASE_ANON_KEY
-        )
+        sdk = RollspotSdk(BuildConfig.API_BASE_URL, AndroidTokenStore(this))
     }
 }

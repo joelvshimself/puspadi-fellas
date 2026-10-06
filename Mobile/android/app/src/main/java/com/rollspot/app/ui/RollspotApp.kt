@@ -29,7 +29,7 @@ fun RollspotApp() {
                 navArgument("placeId") { type = NavType.StringType }
             )
         ) { backStackEntry ->
-            val placeId = backStackEntry.arguments?.getString("placeId")
+            val placeId = backStackEntry.arguments?.getString("placeId").orEmpty()
             PlaceDetailScreen(
                 placeId = placeId,
                 onNavigateBack = { navController.popBackStack() }

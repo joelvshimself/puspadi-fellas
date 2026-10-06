@@ -69,7 +69,7 @@ final class ReviewService {
     func submit(_ draft: ReviewDraft) async throws -> SubmitResponse {
         let mutationKey = draft.submissionId.uuidString
         guard await mutationGate.begin(mutationKey) else { throw ReviewMutationInProgress() }
-        print("[ReviewService] Submitting review for place \(draft.appleMapsId)…")
+        print("[ReviewService] Submitting review for place \(draft.placeId)…")
         do {
             let photoUrls = try await uploadAllPhotos(for: draft)
             let payload = draft.buildSubmissionPayload(photoUrls: photoUrls)
@@ -105,7 +105,7 @@ final class ReviewService {
         }
         guard !jpegPhotos.isEmpty else { return }
 
-        let draft = ReviewDraft(appleMapsId: place.reviewPlaceId, coordinate: place.coordinate, name: place.name)
+        let draft = ReviewDraft(placeId: place.reviewPlaceId, coordinate: place.coordinate, name: place.name)
         var urlMap = ReviewPhotoURLMap()
 
         // Photos only — no facility answers. This used to set
@@ -119,21 +119,21 @@ final class ReviewService {
             draft.lobby.review.photos = jpegPhotos
             (urlMap.lobby, urlMap.lobbyCaptions) = try await uploadPhotosWithCaptions(
                 jpegPhotos,
-                appleMapsId: draft.appleMapsId,
+                placeId: draft.placeId,
                 facility: "lobby"
             )
         case .elevator:
             draft.elevator.review.photos = jpegPhotos
             (urlMap.elevator, urlMap.elevatorCaptions) = try await uploadPhotosWithCaptions(
                 jpegPhotos,
-                appleMapsId: draft.appleMapsId,
+                placeId: draft.placeId,
                 facility: "elevator"
             )
         case .toilet:
             draft.toilet.review.photos = jpegPhotos
             (urlMap.toilet, urlMap.toiletCaptions) = try await uploadPhotosWithCaptions(
                 jpegPhotos,
-                appleMapsId: draft.appleMapsId,
+                placeId: draft.placeId,
                 facility: "toilet"
             )
         }
@@ -162,22 +162,22 @@ final class ReviewService {
         var map = ReviewPhotoURLMap()
         (map.lobby, map.lobbyCaptions) = try await uploadPhotosWithCaptions(
             draft.lobby.review.photos,
-            appleMapsId: draft.appleMapsId,
+            placeId: draft.placeId,
             facility: "lobby"
         )
         (map.basement, map.basementCaptions) = try await uploadPhotosWithCaptions(
             draft.basement.review.photos,
-            appleMapsId: draft.appleMapsId,
+            placeId: draft.placeId,
             facility: "basement"
         )
         (map.elevator, map.elevatorCaptions) = try await uploadPhotosWithCaptions(
             draft.elevator.review.photos,
-            appleMapsId: draft.appleMapsId,
+            placeId: draft.placeId,
             facility: "elevator"
         )
         (map.toilet, map.toiletCaptions) = try await uploadPhotosWithCaptions(
             draft.toilet.review.photos,
-            appleMapsId: draft.appleMapsId,
+            placeId: draft.placeId,
             facility: "toilet"
         )
         return map
@@ -185,21 +185,21 @@ final class ReviewService {
 
     private func uploadPhotosWithCaptions(
         _ photos: [ReviewPhotoDraft],
-        appleMapsId: String,
+        placeId: String,
         facility: String
     ) async throws -> ([String], [String]) {
-        let urls = try await uploadPhotos(photos, appleMapsId: appleMapsId, facility: facility)
+        let urls = try await uploadPhotos(photos, placeId: placeId, facility: facility)
         let captions = photos.map {
             $0.caption.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         return (urls, captions)
     }
 
-    /// Uploads JPEGs to `reviews/{appleMapsId}/{facility}/{uuid}.jpg` and
+    /// Uploads JPEGs for `placeId`/`facility` (one object per photo UUID) and
     /// returns public URLs for the wire payload.
     private func uploadPhotos(
         _ photos: [ReviewPhotoDraft],
-        appleMapsId: String,
+        placeId: String,
         facility: String
     ) async throws -> [String] {
         guard !photos.isEmpty else { return [] }
@@ -209,7 +209,7 @@ final class ReviewService {
 
         for photo in photos {
             let response: UploadResponse = try await client.putData(
-                ["v1", "media", "review-photos", appleMapsId, facility, photo.id.uuidString],
+                ["v1", "media", "review-photos", placeId, facility, photo.id.uuidString],
                 data: photo.jpegData,
                 contentType: "image/jpeg"
             )

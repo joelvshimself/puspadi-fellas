@@ -8,8 +8,11 @@
     "API_BASE_URL": "https://api.rollspot.app",
     "APPLE_CLIENT_ID": "com.puspadifellas.app",
     "GOOGLE_IOS_CLIENT_ID": "replace-with-google-ios-client-id",
+    "GOOGLE_ANDROID_CLIENT_ID": "replace-with-google-android-client-id",
     "EMAIL_FROM": "Rollspot <hello@rollspot.app>"
   },
+  // Mondays 03:00 UTC: refresh the place directory from OpenStreetMap (src/sync.ts).
+  "triggers": { "crons": ["0 3 * * 1"] },
   "d1_databases": [
     {
       "binding": "DB",

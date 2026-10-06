@@ -15,7 +15,7 @@ struct Coordinate: Equatable {
 /// Wraps CLLocationManager so the map can center on wherever the user
 /// actually is instead of a hardcoded demo coordinate — this is what makes
 /// search/discover work anywhere in the world, not just San Francisco.
-/// MKLocalSearch itself has no geographic restriction; it only ever searches
+/// The place directory has no geographic restriction; it only ever searches
 /// near whatever region it's given.
 @MainActor
 final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {

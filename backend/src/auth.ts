@@ -18,6 +18,11 @@ async function appleClientSecret(env: Env): Promise<string> {
 }
 
 async function sendEmail(env: Env, to: string, subject: string, html: string): Promise<void> {
+  if (!env.RESEND_API_KEY) {
+    // Local development: no mail provider, so print the message (and its link) to the wrangler console.
+    console.log(`[email to ${to}] ${subject}\n${html}`);
+    return;
+  }
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -27,6 +32,28 @@ async function sendEmail(env: Env, to: string, subject: string, html: string): P
     body: JSON.stringify({ from: env.EMAIL_FROM, to: [to], subject, html }),
   });
   if (!response.ok) throw new Error(`Email delivery failed with status ${response.status}.`);
+}
+
+/**
+ * Only providers with credentials are enabled, so a local `wrangler dev` with
+ * an empty .dev.vars still serves email sign-in instead of failing every request.
+ * Google accepts ID tokens minted for any of our client IDs (web, iOS, Android).
+ */
+function socialProviders(env: Env) {
+  const googleClientIds = [env.GOOGLE_WEB_CLIENT_ID, env.GOOGLE_IOS_CLIENT_ID, env.GOOGLE_ANDROID_CLIENT_ID]
+    .filter((id): id is string => Boolean(id) && !id!.startsWith("replace-with"));
+  return {
+    ...(env.APPLE_PRIVATE_KEY && env.APPLE_KEY_ID && env.APPLE_TEAM_ID ? {
+      apple: async () => ({
+        clientId: env.APPLE_CLIENT_ID,
+        appBundleIdentifier: env.APPLE_CLIENT_ID,
+        clientSecret: await appleClientSecret(env),
+      }),
+    } : {}),
+    ...(googleClientIds.length ? {
+      google: { clientId: googleClientIds, clientSecret: env.GOOGLE_CLIENT_SECRET },
+    } : {}),
+  };
 }
 
 export function createAuth(env: Env) {
@@ -61,17 +88,7 @@ export function createAuth(env: Env) {
         );
       },
     },
-    socialProviders: {
-      apple: async () => ({
-        clientId: env.APPLE_CLIENT_ID,
-        appBundleIdentifier: env.APPLE_CLIENT_ID,
-        clientSecret: await appleClientSecret(env),
-      }),
-      google: {
-        clientId: [env.GOOGLE_WEB_CLIENT_ID, env.GOOGLE_IOS_CLIENT_ID],
-        clientSecret: env.GOOGLE_CLIENT_SECRET,
-      },
-    },
+    socialProviders: socialProviders(env),
     plugins: [bearer({ requireSignature: true })],
     advanced: {
       cookiePrefix: "rollspot",
