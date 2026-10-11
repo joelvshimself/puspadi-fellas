@@ -50,7 +50,7 @@ class ReviewModelTest {
 
         val submission = ReviewSubmission(submissionId = "sub-1", placeId = "p1")
         val photos = listOf(
-            PendingReviewPhoto(ReviewPhotoSlot.Lobby, "file1", jpeg = byteArrayOf(0xFF, 0xD8, 0xFF)),
+            PendingReviewPhoto(ReviewPhotoSlot.Lobby, "file1", jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte())),
         )
         val submitted = model.submit(submission, photos)
         assertEquals("r1", submitted.reviewId)

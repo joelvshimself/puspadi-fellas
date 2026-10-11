@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.rollspot.shared.RollspotSdk
 import app.rollspot.shared.api.Place
+import com.rollspot.app.BuildConfig
+import com.rollspot.app.data.MockPlaces
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,9 +46,16 @@ class HomeViewModel(private val sdk: RollspotSdk) : ViewModel() {
         viewModelScope.launch {
             try {
                 val places = sdk.places.nearby(lat, lng)
-                _state.update { it.copy(nearby = places, isLoading = false) }
+                _state.update { it.copy(nearby = places, isLoading = false, error = null) }
             } catch (error: Exception) {
-                _state.update { it.copy(isLoading = false, error = error.message) }
+                val fallback = debugMockPlaces("")
+                _state.update {
+                    it.copy(
+                        nearby = fallback,
+                        isLoading = false,
+                        error = if (fallback.isEmpty()) error.message else null,
+                    )
+                }
             }
         }
     }
@@ -54,15 +63,34 @@ class HomeViewModel(private val sdk: RollspotSdk) : ViewModel() {
     fun onQueryChange(query: String) {
         _state.update { it.copy(query = query) }
         searchJob?.cancel()
+        if (query.isBlank()) {
+            _state.update { it.copy(results = emptyList(), error = null) }
+            return
+        }
         searchJob = viewModelScope.launch {
             delay(300)
             val current = _state.value
+            val mocks = debugMockPlaces(query)
             try {
-                val results = sdk.places.search(query, current.centerLat, current.centerLng)
-                _state.update { it.copy(results = results, error = null) }
+                val api = sdk.places.search(query, current.centerLat, current.centerLng)
+                _state.update { it.copy(results = mergePlaces(mocks, api), error = null) }
             } catch (error: Exception) {
-                _state.update { it.copy(error = error.message) }
+                _state.update {
+                    it.copy(
+                        results = mocks,
+                        error = if (mocks.isEmpty()) error.message else null,
+                    )
+                }
             }
         }
+    }
+
+    private fun debugMockPlaces(query: String): List<Place> =
+        if (!BuildConfig.DEBUG) emptyList() else MockPlaces.filter(query)
+
+    private fun mergePlaces(mocks: List<Place>, api: List<Place>): List<Place> {
+        if (mocks.isEmpty()) return api
+        val seen = mocks.map { it.id }.toMutableSet()
+        return mocks + api.filter { it.id !in seen }
     }
 }

@@ -8,11 +8,21 @@ module `Mobile/shared`; this app only holds Android views and platform glue. See
 The Gradle root is `Mobile/`, not this folder. Open `Mobile/` in Android Studio.
 
 ```bash
-export JAVA_HOME=/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home   # JDK 25
 cd Mobile
+# `./gradlew` picks Android Studio's bundled JDK on macOS if JAVA_HOME is unset.
 ./gradlew :androidApp:assembleDebug
 ./gradlew :androidApp:installDebug        # on a running emulator/device
 ```
+
+**Emulator + install:** read **[EMULATOR.md](EMULATOR.md) first** (create `Pixel_9` AVD once, Wi‑Fi/DNS checklist).
+
+```bash
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+Mobile/scripts/run-android-debug.sh              # start Pixel_9 + install
+Mobile/scripts/run-android-debug.sh --create-avd # first time on a new machine
+```
+
+Do not run `./gradlew installDebug` until `start-pixel-9-emulator.sh` reports boot and network OK.
 
 ## Configuration (`Mobile/local.properties`, gitignored)
 

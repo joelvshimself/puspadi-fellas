@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.rollspot.shared.RollspotSdk
 import app.rollspot.shared.api.Place
+import com.rollspot.app.BuildConfig
+import com.rollspot.app.data.MockPlaces
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,10 +21,17 @@ class PlaceDetailViewModel(private val sdk: RollspotSdk, private val placeKey: S
     init {
         viewModelScope.launch {
             _state.value = try {
-                PlaceDetailUiState(place = sdk.places.place(placeKey), isLoading = false)
+                PlaceDetailUiState(place = loadPlace(placeKey), isLoading = false)
             } catch (error: Exception) {
                 PlaceDetailUiState(isLoading = false, error = error.message)
             }
         }
+    }
+
+    private suspend fun loadPlace(placeKey: String): Place {
+        if (BuildConfig.DEBUG) {
+            MockPlaces.find(placeKey)?.let { return it }
+        }
+        return sdk.places.place(placeKey)
     }
 }

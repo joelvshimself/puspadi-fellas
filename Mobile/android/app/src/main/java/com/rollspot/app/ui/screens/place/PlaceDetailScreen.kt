@@ -26,7 +26,11 @@ import com.rollspot.app.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PlaceDetailScreen(placeId: String, onNavigateBack: () -> Unit) {
+fun PlaceDetailScreen(
+    placeId: String,
+    onNavigateBack: () -> Unit,
+    onContribute: (String) -> Unit = {},
+) {
     val sdk = rollspotSdk()
     val viewModel: PlaceDetailViewModel = viewModel(key = placeId) { PlaceDetailViewModel(sdk, placeId) }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -47,14 +51,14 @@ fun PlaceDetailScreen(placeId: String, onNavigateBack: () -> Unit) {
             when {
                 state.isLoading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 state.error != null -> Text(state.error!!, Modifier.align(Alignment.Center).padding(24.dp))
-                state.place != null -> PlaceDetail(state.place!!)
+                state.place != null -> PlaceDetail(state.place!!, onContribute)
             }
         }
     }
 }
 
 @Composable
-private fun PlaceDetail(place: Place) {
+private fun PlaceDetail(place: Place, onContribute: (String) -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         GradeCard(place.overallAccessibility)
         place.address?.let {
@@ -72,6 +76,12 @@ private fun PlaceDetail(place: Place) {
             Text("No reviews yet. Be the first to review this place.")
         } else {
             place.grade.forEach { FeatureRow(it) }
+        }
+        Button(
+            onClick = { onContribute(place.id) },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Add Accessibility Review")
         }
         Text(PlaceRepository.ATTRIBUTION, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
     }
