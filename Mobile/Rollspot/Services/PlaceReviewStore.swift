@@ -1,10 +1,13 @@
 import Foundation
+import Shared
 
-/// The detail screen's source of truth. Each load reads current community data
-/// once; there is no second persistence cache to invalidate or reconcile.
+/// The detail screen's source of truth. Loading, review mapping and the facility
+/// rules all live in the shared `PlaceDetailModel`; this class only republishes
+/// its result as Swift view types, so Android renders exactly the same data.
 @MainActor
 final class PlaceReviewStore: ObservableObject {
     @Published private(set) var featureGrades: [AccessibilityFeatureGrade] = []
+    /// Newest first, one verdict per person per facility (decided in shared).
     @Published private(set) var facilityReviews: [PlaceFacilityReview] = [] {
         didSet { rebuildAllFacilityPhotos() }
     }
@@ -24,16 +27,22 @@ final class PlaceReviewStore: ObservableObject {
 
     let place: Place
     private(set) var placeId: String
+    private let model: Shared.PlaceDetailModel
+    private var detail: Shared.PlaceDetail?
     private var reloadRequested = false
 
     init(place: Place) {
         self.place = place
         self.placeId = place.reviewPlaceId
+        self.model = RollspotServices.sdk.placeDetailModel(placeKey: place.reviewPlaceId)
     }
+
+    deinit { model.close() }
 
     func adoptPlaceId(_ canonicalId: String) {
         guard !canonicalId.isEmpty else { return }
         placeId = canonicalId
+        model.adoptPlaceKey(canonical: canonicalId)
     }
 
     func load() async {
@@ -59,49 +68,41 @@ final class PlaceReviewStore: ObservableObject {
             reviewsAttempted = true
         }
 
-        async let gradeResult = try? AccessibilityService.shared.enrich(placeId: placeId)
-        async let reviewResult = loadFacilityReviews()
-        async let photoResult = loadReviewPhotos()
-        async let venueResult = PlacePhotoService.shared.photos(for: placeId)
-
-        let gradeResponse = await gradeResult
-        let reviews = await reviewResult
-        let photos = await photoResult
-        let venue = await venueResult
-        featureGrades = gradeResponse?.grade ?? []
-        facilityReviews = reviews ?? []
-        reviewsResolved = reviews != nil
-        if let photos {
-            reviewPhotos = photos.photos
+        let state: Shared.PlaceDetailState
+        do {
+            state = try await model.reload()
+        } catch {
+            return
         }
-        venuePhotos = venue
+        switch onEnum(of: state) {
+        case .loaded(let loaded):
+            apply(loaded.detail)
+        case .empty(let empty):
+            apply(empty.detail)
+        case .error(let failure):
+            // Keep whatever is on screen; reviewsResolved stays as it was so an
+            // outage never renders as "nobody has reviewed this place".
+            if !Task.isCancelled { print("[PlaceReviewStore] Load failed: \(failure.message)") }
+        case .loading:
+            break
+        }
+    }
+
+    private func apply(_ detail: Shared.PlaceDetail) {
+        self.detail = detail
+        featureGrades = detail.grades.map {
+            AccessibilityFeatureGrade(feature: $0.feature, bestValue: $0.bestValue, confidence: $0.confidence)
+        }
+        facilityReviews = detail.reviews.map { PlaceFacilityReview(shared: $0) }
+        reviewsResolved = true
+        reviewPhotosLoadFailed = detail.reviewPhotosLoadFailed
+        if !detail.reviewPhotosLoadFailed {
+            reviewPhotos = detail.reviewPhotos.map { ReviewPhoto(shared: $0) }
+        }
+        venuePhotos = detail.photos.map { PlacePhoto(shared: $0) }
         streetImageURL = nil
         imageAttribution = nil
-        aiSummary = await PlaceAISummaryService.shared.summary(
-            for: place,
-            featureGrades: featureGrades,
-            serverSummary: nil
-        )
-    }
-
-    private func loadFacilityReviews() async -> [PlaceFacilityReview]? {
-        do {
-            return try await ReviewService.shared.fetchPlaceReviews(placeId: placeId)
-        } catch {
-            if !Task.isCancelled { print("[PlaceReviewStore] Reviews failed: \(error)") }
-            return nil
-        }
-    }
-
-    private func loadReviewPhotos() async -> PlaceReviewPhotosResponse? {
-        do {
-            let response = try await ReviewService.shared.fetchReviewPhotos(placeId: placeId)
-            reviewPhotosLoadFailed = false
-            return response
-        } catch {
-            reviewPhotosLoadFailed = true
-            return nil
-        }
+        aiSummary = PlaceAISummaryService.shared.summary(serverSummary: nil)
     }
 
     /// Cloudflare requests are refreshed explicitly after a local submission.
@@ -109,9 +110,7 @@ final class PlaceReviewStore: ObservableObject {
     func startWatching() {}
 
     func reviews(for kind: FacilityKind) -> [PlaceFacilityReview] {
-        facilityReviews
-            .filter { $0.kind == kind }
-            .sorted { PlaceFacilityReview.isNewerFirst($0, $1) }
+        facilityReviews.filter { $0.kind == kind }
     }
 
     func hasReviews(for kind: FacilityKind) -> Bool { !reviews(for: kind).isEmpty }
@@ -124,37 +123,15 @@ final class PlaceReviewStore: ObservableObject {
     }
 
     func isUnavailable(_ kind: FacilityKind) -> Bool {
-        switch kind {
-        case .elevator, .toilet:
-            facilityReviews.contains { row in
-                row.kind == kind && row.providedTags.contains("NOT AVAILABLE")
-            }
-        case .entrance:
-            false
-        }
+        detail?.isUnavailable(kind: kind.shared) ?? false
     }
 
     func noteSnippets(for kind: FacilityKind, limit: Int = 3) -> [String] {
-        reviews(for: kind)
-            .filter(\.hasBodyText)
-            .prefix(limit)
-            .map(\.firstSentence)
-            .filter { !$0.isEmpty }
+        detail?.noteSnippets(kind: kind.shared, limit: Int32(limit)) ?? []
     }
 
     func photos(for kind: FacilityKind) -> [ReviewPhoto] {
-        reviewPhotos.filter { photo in
-            switch kind {
-            case .entrance:
-                let facility = photo.facility.lowercased()
-                return facility.contains("lobby") || facility.contains("basement")
-                    || facility.contains("entrance") || facility.contains("exit")
-            case .elevator:
-                return photo.facility.lowercased().contains("elevator")
-            case .toilet:
-                return photo.facility.lowercased().contains("toilet")
-            }
-        }
+        (detail?.photosFor(kind: kind.shared) ?? []).map { ReviewPhoto(shared: $0) }
     }
 
     private func rebuildAllFacilityPhotos() {

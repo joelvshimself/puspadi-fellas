@@ -150,10 +150,10 @@ struct MockPlaceDetailView: View {
             }
         }
         .overlay(alignment: .bottom) {
-            // The empty state carries its own filled Contribute button; a
-            // floating pill on top of it would be the same CTA twice. And no
-            // pill over the loading skeleton — it may resolve into that state.
-            if !isEmptyState && !isInitialLoading {
+            // The floating pill is the one Contribute CTA in every settled
+            // state, the empty one included (Figma "Empty"). Not shown over the
+            // loading skeleton — it may resolve into the empty state.
+            if !isInitialLoading {
                 ZStack(alignment: .bottom) {
                     ContributeGlow()
                     ContributeFloatingButton {
@@ -570,33 +570,43 @@ struct MockPlaceDetailView: View {
     }
 
     private var emptyStateContent: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(spacing: 20) {
             if let aiSummary = store.aiSummary {
                 AIAccessibilitySummaryCard(summary: aiSummary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.bottom, 6)
             }
 
             // Hairline between the action pills and the ask, per the design.
             Divider()
-                .padding(.bottom, 4)
+                .padding(.bottom, 24)
 
-            Text("Know something about the place?".localized)
-                .font(.system(size: 17, weight: .semibold))
-
-            Button { startReview() } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 17, weight: .semibold))
-                    Text("Contribute Information".localized)
-                        .font(.system(size: 17, weight: .semibold))
-                }
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 48)
-                .background(Color.accentColor, in: Capsule())
+            // TODO(design): swap for the exported "thinking person" illustration
+            // once the asset is in the catalog; this is an SF Symbols stand-in.
+            ZStack {
+                Circle()
+                    .fill(Color.mockSectionBackground)
+                    .frame(width: 138, height: 138)
+                Image(systemName: "person.fill.questionmark")
+                    .font(.system(size: 64))
+                    .foregroundStyle(PhotoPalette.brandBlue)
+                Image(systemName: "lightbulb.max.fill")
+                    .font(.system(size: 26))
+                    .foregroundStyle(.yellow)
+                    .offset(x: 52, y: -50)
             }
-            .buttonStyle(.plain)
+            .accessibilityHidden(true)
+
+            (Text("Be the ".localized)
+                + Text("first to contribute".localized).foregroundColor(PhotoPalette.brandBlue)
+                + Text(" and help others know about the place!!".localized))
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.bottom, 80)
     }
 
     private var facilityReviews: [PlaceFacilityReview] {
@@ -606,7 +616,8 @@ struct MockPlaceDetailView: View {
     /// The Reviews tab lists every facility's reviews together (the design's
     /// count is the place total, not the selected facility's).
     private var allReviews: [PlaceFacilityReview] {
-        store.facilityReviews.sorted { PlaceFacilityReview.isNewerFirst($0, $1) }
+        // Already newest-first from the shared module.
+        store.facilityReviews
     }
 
     /// Every tag the community confirmed for this facility, newest review

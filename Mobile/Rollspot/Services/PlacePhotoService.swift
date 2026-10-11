@@ -1,4 +1,5 @@
 import Foundation
+import Shared
 
 struct PlacePhoto: Identifiable, Hashable, Decodable {
     let id: UUID
@@ -11,21 +12,13 @@ struct PlacePhoto: Identifiable, Hashable, Decodable {
     var requiresCredit: Bool { credit?.isEmpty == false }
 }
 
-@MainActor
-final class PlacePhotoService {
-    static let shared = PlacePhotoService()
-    private let client = CloudflareAPIClient.shared
-    private init() {}
-
-    func photos(for placeId: String) async -> [PlacePhoto] {
-        do {
-            let rows: [PlacePhoto] = try await client.get(["v1", "places", placeId, "photos"])
-            return rows
-        } catch {
-            print("[PlacePhotoService] Fetch failed: \(error)")
-            return []
-        }
+extension PlacePhoto {
+    /// Venue photos are fetched by the shared `PlaceDetailModel`; this only adapts one.
+    init(shared photo: Shared.PlacePhoto) {
+        self.id = UUID(uuidString: photo.id) ?? .stable(from: photo.id)
+        self.url = photo.url
+        self.source = photo.source
+        self.credit = photo.credit
+        self.sortOrder = Int(photo.sortOrder)
     }
-
-    func invalidate(_ placeId: String) {}
 }

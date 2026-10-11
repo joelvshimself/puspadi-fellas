@@ -32,10 +32,12 @@ fun RollspotApp() {
             val placeId = backStackEntry.arguments?.getString("placeId").orEmpty()
             PlaceDetailScreen(
                 placeId = placeId,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navController.popBackStack() },
+                // Contribute is its own feature (F4); the place page only hands off to it.
+                onContribute = { navController.navigate("contribute") },
             )
         }
-        
+
         composable("saved") {
             SavedScreen(onNavigateBack = { navController.popBackStack() })
         }

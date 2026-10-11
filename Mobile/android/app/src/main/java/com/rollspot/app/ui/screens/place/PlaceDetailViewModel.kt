@@ -1,28 +1,26 @@
 package com.rollspot.app.ui.screens.place
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import app.rollspot.shared.RollspotSdk
-import app.rollspot.shared.api.Place
-import kotlinx.coroutines.flow.MutableStateFlow
+import app.rollspot.shared.place.PlaceDetailState
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 
-data class PlaceDetailUiState(val place: Place? = null, val isLoading: Boolean = true, val error: String? = null)
+/**
+ * Thin holder for the shared [app.rollspot.shared.place.PlaceDetailModel]: loading, review
+ * mapping and the facility rules live in Mobile/shared so iOS shows the same data.
+ */
+class PlaceDetailViewModel(sdk: RollspotSdk, placeKey: String) : ViewModel() {
+    private val model = sdk.placeDetailModel(placeKey)
 
-// TODO(F3 #34): replace with the shared PlaceDetailModel (reviews, photos, notes).
-class PlaceDetailViewModel(private val sdk: RollspotSdk, private val placeKey: String) : ViewModel() {
-    private val _state = MutableStateFlow(PlaceDetailUiState())
-    val state: StateFlow<PlaceDetailUiState> = _state.asStateFlow()
+    val state: StateFlow<PlaceDetailState> = model.state
 
     init {
-        viewModelScope.launch {
-            _state.value = try {
-                PlaceDetailUiState(place = sdk.places.place(placeKey), isLoading = false)
-            } catch (error: Exception) {
-                PlaceDetailUiState(isLoading = false, error = error.message)
-            }
-        }
+        model.load()
+    }
+
+    fun retry() = model.refresh()
+
+    override fun onCleared() {
+        model.close()
     }
 }
