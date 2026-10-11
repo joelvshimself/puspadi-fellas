@@ -25,16 +25,6 @@ enum NearbyPlacesService {
         }
     }
 
-    /// Text search over the directory, nearest matches first. Throws so the sheet can show the error.
-    static func search(text: String, near center: CLLocationCoordinate2D) async throws -> [Place] {
-        let places = try await RollspotServices.sdk.places.search(
-            query: text,
-            nearLat: KotlinDouble(value: center.latitude),
-            nearLng: KotlinDouble(value: center.longitude)
-        )
-        return places.map { makePlace(from: $0, distanceFrom: center) }
-    }
-
     static func place(key: String) async -> Place? {
         guard let place = try? await RollspotServices.sdk.places.place(key: key) else { return nil }
         return makePlace(from: place, distanceFrom: nil)
@@ -70,6 +60,15 @@ extension OverallAccessibility {
         case .partiallyAccessible: self = .partiallyAccessible
         case .notAccessible: self = .notAccessible
         default: self = .noData
+        }
+    }
+
+    var shared: Shared.OverallAccessibility {
+        switch self {
+        case .accessible: .accessible
+        case .partiallyAccessible: .partiallyAccessible
+        case .notAccessible: .notAccessible
+        case .noData: .noData
         }
     }
 }

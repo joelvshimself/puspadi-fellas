@@ -1,30 +1,66 @@
 package com.rollspot.app.ui.screens.home
 
 import android.Manifest
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.NearMe
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PriorityHigh
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import app.rollspot.shared.map.MapPin
+import app.rollspot.shared.places.OverallAccessibility
 import app.rollspot.shared.places.PlaceRepository
 import com.rollspot.app.data.LocationService
-import com.rollspot.app.ui.components.GlassButton
-import com.rollspot.app.ui.components.PlaceList
+import com.rollspot.app.ui.components.CameraTarget
+import com.rollspot.app.ui.components.PinMap
 import com.rollspot.app.ui.rollspotSdk
+import com.rollspot.app.ui.theme.RollspotBlue
+import com.rollspot.app.ui.theme.color
+import com.rollspot.app.ui.theme.label
+
+private val PeekHeight = 96.dp
+
+/** The light cyan of the filter button in the design. */
+private val FilterButtonTint = Color(0xFFD2F1F9)
+private val FilterGrades = listOf(
+    OverallAccessibility.ACCESSIBLE,
+    OverallAccessibility.PARTIALLY_ACCESSIBLE,
+    OverallAccessibility.NOT_ACCESSIBLE,
+)
 
 /**
- * Home. The map itself arrives with F2 (#33, OpenStreetMap tiles); until then
- * this shows the same nearby places and search results the map will pin.
+ * Home, per the Figma "Homepage" frames: full-screen OpenStreetMap map with no
+ * pins until a grade filter is chosen, filter button top-left, saved/profile
+ * pill top-right, location button bottom-right and a search sheet at the bottom.
+ * Every rule (which places, search, filter widening) lives in the shared MapModel.
  */
 @Composable
 fun HomeScreen(navController: NavController) {
@@ -33,61 +69,191 @@ fun HomeScreen(navController: NavController) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val location = remember { LocationService(context) }
+    var hasPermission by remember { mutableStateOf(location.hasPermission) }
+    var cameraTarget by remember { mutableStateOf<CameraTarget?>(null) }
+    var searchOpen by remember { mutableStateOf(false) }
+    var filterOpen by remember { mutableStateOf(false) }
+    var centeredOnUser by remember { mutableStateOf(false) }
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
 
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        location.lastKnownLocation()?.let { viewModel.loadNearby(it.latitude, it.longitude) }
+    fun flyTo(lat: Double, lng: Double, radiusMeters: Int? = null) {
+        cameraTarget = CameraTarget(lat, lng, (cameraTarget?.nonce ?: 0) + 1, radiusMeters)
     }
+
+    val scope = rememberCoroutineScope()
+    fun centerOnMe() {
+        scope.launch { location.currentLocation()?.let { flyTo(it.latitude, it.longitude) } }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        hasPermission = location.hasPermission
+        centerOnMe()
+    }
+    fun requestPermission() =
+        permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+
     LaunchedEffect(Unit) {
         if (location.hasPermission) {
-            location.lastKnownLocation()?.let { viewModel.loadNearby(it.latitude, it.longitude) }
+            if (!centeredOnUser) { centeredOnUser = true; centerOnMe() }
         } else {
-            permission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+            requestPermission()
         }
     }
+    // The filter widened the search area: move the camera to what it found.
+    LaunchedEffect(state.focus) {
+        state.focus?.let { flyTo(it.lat, it.lng, it.radiusMeters) }
+    }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .statusBarsPadding()
-            .padding(horizontal = 16.dp),
-    ) {
+    fun open(pin: MapPin) {
+        viewModel.select(pin)
+        searchOpen = false
+        navController.navigate("place/${pin.id}")
+    }
+
+    BackHandler(enabled = searchOpen || filterOpen) {
+        if (searchOpen) { searchOpen = false; viewModel.clearQuery() } else filterOpen = false
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        PinMap(
+            pins = state.visiblePins,
+            hasLocationPermission = hasPermission,
+            initialLat = state.centerLat,
+            initialLng = state.centerLng,
+            cameraTarget = cameraTarget,
+            onCameraIdle = viewModel::onRegionChanged,
+            onPinClick = { id -> state.pins.firstOrNull { it.id == id }?.let(::open) },
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        if (state.isLoading || state.isWidening) {
+            LinearProgressIndicator(Modifier.fillMaxWidth().statusBarsPadding())
+        }
+
+        // Top bar
         Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+            Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Rollspot", style = MaterialTheme.typography.headlineSmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                GlassButton(onClick = { navController.navigate("saved") }, icon = Icons.Default.Bookmark)
-                GlassButton(onClick = { navController.navigate("contribute") }, icon = Icons.Default.Person)
+            Box {
+                CircleButton(Icons.Default.FilterList, "Filter by accessibility", background = FilterButtonTint) { filterOpen = !filterOpen }
+                if (state.gradeFilter != null) {
+                    Box(
+                        Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-4).dp).size(18.dp)
+                            .background(RollspotBlue, CircleShape).border(2.dp, Color.White, CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) { Text("1", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                }
+            }
+            Row(
+                Modifier.height(48.dp).background(Color.White.copy(alpha = 0.92f), CircleShape).padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(22.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Default.Bookmark, "Saved places", Modifier.size(22.dp).clickable { navController.navigate("saved") })
+                Icon(Icons.Default.Person, "Profile", Modifier.size(22.dp).clickable { navController.navigate("contribute") })
             }
         }
-        OutlinedTextField(
-            value = state.query,
-            onValueChange = viewModel::onQueryChange,
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Find a place") },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-            singleLine = true,
-            shape = RoundedCornerShape(12.dp),
-        )
-        Spacer(Modifier.height(12.dp))
-        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if (state.isLoading && state.visiblePlaces.isEmpty()) {
-            Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+
+        // Location button and attribution, floated above the peek sheet
+        Row(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding()
+                .padding(start = 16.dp, end = 16.dp, bottom = PeekHeight + 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            Surface(shape = MaterialTheme.shapes.extraSmall, color = Color.White.copy(alpha = 0.85f)) {
+                Text(PlaceRepository.ATTRIBUTION, Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall)
+            }
+            CircleButton(Icons.Default.NearMe, "My location") {
+                if (hasPermission) centerOnMe() else requestPermission()
+            }
         }
-        PlaceList(
-            places = state.visiblePlaces,
-            fromLat = state.centerLat,
-            fromLng = state.centerLng,
-            onPlaceClick = { navController.navigate("place/${it.id}") },
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            PlaceRepository.ATTRIBUTION,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(vertical = 8.dp),
-        )
+
+        SearchPeek(onClick = { searchOpen = true }, modifier = Modifier.align(Alignment.BottomCenter))
+
+        state.error?.let {
+            // Under the top bar so it never covers the location button; tap to try again.
+            Surface(
+                Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 72.dp, start = 16.dp, end = 16.dp).clickable { viewModel.retry() },
+                shape = MaterialTheme.shapes.small,
+                color = MaterialTheme.colorScheme.errorContainer,
+            ) {
+                Text("$it Tap to retry.", Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onErrorContainer)
+            }
+        }
+
+        if (filterOpen) {
+            FilterPanel(
+                selected = state.gradeFilter,
+                onSelect = { viewModel.setGradeFilter(it); filterOpen = false },
+                onDismiss = { filterOpen = false },
+            )
+        }
+
+        if (searchOpen) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)))
+            SearchSheet(
+                state = state,
+                onQueryChange = viewModel::onQueryChanged,
+                onClose = { searchOpen = false; viewModel.clearQuery() },
+                onPick = ::open,
+                onSearchNearby = { focusManager.clearFocus() },
+                modifier = Modifier.padding(top = 12.dp),
+            )
+        }
     }
 }
+
+@Composable
+private fun CircleButton(
+    icon: ImageVector,
+    description: String,
+    background: Color = Color.White.copy(alpha = 0.92f),
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier.size(48.dp).background(background, CircleShape).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Icon(icon, contentDescription = description, Modifier.size(24.dp), tint = Color(0xFF1C1C1E)) }
+}
+
+/** The filter fan-out from the design: dimmed map, one round option per grade. */
+@Composable
+private fun FilterPanel(selected: OverallAccessibility?, onSelect: (OverallAccessibility) -> Unit, onDismiss: () -> Unit) {
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)).clickable(onClick = onDismiss))
+    Column(
+        Modifier.statusBarsPadding().padding(start = 16.dp + 48.dp + 12.dp, top = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        FilterGrades.forEach { grade ->
+            val isOn = selected == grade
+            Row(Modifier.clickable { onSelect(grade) }, verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(48.dp).background(grade.color, CircleShape)
+                        .then(if (isOn) Modifier.border(3.dp, Color.White, CircleShape) else Modifier),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(grade.filterIcon, contentDescription = null, tint = Color.White, modifier = Modifier.size(28.dp)) }
+                Text(
+                    grade.filterLabel,
+                    Modifier.padding(start = 14.dp),
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+    }
+}
+
+private val OverallAccessibility.filterIcon: ImageVector
+    get() = when (this) {
+        OverallAccessibility.ACCESSIBLE -> Icons.Default.Check
+        OverallAccessibility.PARTIALLY_ACCESSIBLE -> Icons.Default.PriorityHigh
+        else -> Icons.Default.Close
+    }
+
+/** The design says "Partially Accessible" here; the badge elsewhere says "Moderately". */
+private val OverallAccessibility.filterLabel: String
+    get() = if (this == OverallAccessibility.PARTIALLY_ACCESSIBLE) "Partially Accessible" else label

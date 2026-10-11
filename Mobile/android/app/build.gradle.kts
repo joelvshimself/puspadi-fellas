@@ -72,6 +72,7 @@ dependencies {
     implementation(libs.compose.material.icons)
     debugImplementation(libs.compose.ui.tooling)
 
+    implementation(libs.maplibre)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
 }

@@ -2,6 +2,8 @@ package app.rollspot.shared
 
 import app.rollspot.shared.api.RollspotApi
 import app.rollspot.shared.auth.TokenStore
+import app.rollspot.shared.map.PlaceSearchProvider
+import app.rollspot.shared.map.RepositoryPlaceSearchProvider
 import app.rollspot.shared.places.PlaceRepository
 import io.ktor.client.engine.HttpClientEngine
 
@@ -19,6 +21,9 @@ class RollspotSdk(
 ) {
     val api = RollspotApi(baseUrl, tokenStore, engine)
     val places = PlaceRepository(api)
+
+    /** What [app.rollspot.shared.map.MapModel] reads places from. */
+    val placeSearch: PlaceSearchProvider = RepositoryPlaceSearchProvider(places)
 
     companion object {
         const val PRODUCTION_URL = "https://api.rollspot.app"
