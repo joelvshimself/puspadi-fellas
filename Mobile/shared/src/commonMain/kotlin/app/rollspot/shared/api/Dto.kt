@@ -94,6 +94,9 @@ data class PlaceReview(
 internal data class PlaceReviewsResponse(val reviews: List<PlaceReview>)
 
 @Serializable
+data class ReviewById(val placeId: String, val review: PlaceReview)
+
+@Serializable
 data class ReviewPhoto(val url: String, val facility: String, val label: String, val caption: String = "")
 
 @Serializable

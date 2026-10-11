@@ -46,9 +46,10 @@ The Kotlin client in `Mobile/shared/.../api/RollspotApi.kt` mirrors this file. *
 | Method | Path | Notes |
 |---|---|---|
 | POST 🔒 | `/v1/reviews` | Body below. Idempotent per `submissionId`: a retry returns the original review. → `{ reviewId, placeId, grade }` |
+| GET | `/v1/reviews/:id` | One review (same shape as items in `/v1/places/:key/reviews`) plus `placeId`. → `{ placeId, review }` |
 | GET 🔒 | `/v1/me/reviews` | → `{ userName, userRole, profileImageUrl, reviews: { id, placeId, placeName, createdAt, reviewText, providedFeatures, photoUrls, photoCaptions }[] }` |
 | DELETE 🔒 | `/v1/reviews/:id` | Own reviews only. 204 |
-| PUT 🔒 | `/v1/media/review-photos/:placeKey/:facility/:photoId` | Raw `image/jpeg` body ≤ 10 MB. facility ∈ lobby, basement, elevator, toilet, exit_side, other, uploads. Same photoId = overwrite (safe retry). → `{ url }` |
+| PUT 🔒 | `/v1/media/review-photos/:placeKey/:submissionId/:fileId` | Raw `image/jpeg` body ≤ 10 MB. Reuse the review's `submissionId` and a stable per-photo `fileId`; same pair overwrites (safe retry). Facility is set on `POST /v1/reviews`, not in this path. → `{ url }` |
 | GET | `/v1/media/:objectKey` | Photo bytes |
 
 ```jsonc

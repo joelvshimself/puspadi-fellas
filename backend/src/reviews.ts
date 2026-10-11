@@ -430,7 +430,23 @@ export async function handleReviewById(
   auth: Auth,
   reviewId: string,
 ): Promise<Response> {
-  if (request.method !== "DELETE") return methodNotAllowed("DELETE");
+  if (request.method === "GET") {
+    const rows = await reviewRows(env, "r.id", reviewId);
+    const row = rows[0];
+    if (!row) throw new HttpError(404, "Review not found.");
+    const related = await relatedRows(env, [reviewId]);
+    return json({
+      status: "ok",
+      placeId: row.place_id,
+      review: reviewOutput(
+        env,
+        row,
+        related.entrances.filter((entrance) => entrance.review_id === reviewId),
+        related.photos.filter((photo) => photo.review_id === reviewId),
+      ),
+    });
+  }
+  if (request.method !== "DELETE") return methodNotAllowed("GET", "DELETE");
   const userId = await requireUserId(auth, request);
   const review = await env.DB.prepare(
     `SELECT id FROM reviews WHERE id = ? AND user_id = ?`,

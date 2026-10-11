@@ -3,8 +3,6 @@ import { requireUserId } from "./auth";
 import type { Env } from "./env";
 import { HttpError, json, methodNotAllowed, requiredString } from "./http";
 
-const allowedFacilities = new Set(["lobby", "basement", "elevator", "toilet", "exit_side", "other", "uploads"]);
-
 async function digest(value: string): Promise<string> {
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -15,13 +13,13 @@ export async function handleMediaUpload(
   env: Env,
   auth: Auth,
   encodedPlaceId: string,
-  facility: string,
-  photoId: string,
+  submissionId: string,
+  fileId: string,
 ): Promise<Response> {
   if (request.method !== "PUT") return methodNotAllowed("PUT");
   const userId = await requireUserId(auth, request);
-  if (!allowedFacilities.has(facility)) throw new HttpError(400, "Unknown photo facility.");
-  const id = requiredString(photoId, "photo ID", 100);
+  const submission = requiredString(submissionId, "submission ID", 100);
+  const file = requiredString(fileId, "file ID", 100);
   // Any place key works here: it only scopes the object key, and the review links the photo to the place.
   const placeId = requiredString(decodeURIComponent(encodedPlaceId), "place key", 500);
   const type = request.headers.get("content-type")?.split(";")[0] ?? "";
@@ -34,7 +32,7 @@ export async function handleMediaUpload(
   // Stable per photo: retrying an interrupted upload overwrites the same R2
   // object instead of creating an orphaned duplicate.
   const placeDigest = (await digest(placeId)).slice(0, 32);
-  const key = `reviews/${userId}/${placeDigest}/${facility}/${id}.jpg`;
+  const key = `reviews/${userId}/${placeDigest}/${submission}/${file}.jpg`;
   await env.MEDIA.put(key, bytes, { httpMetadata: { contentType: type } });
   await env.DB.prepare(
     `INSERT INTO media_uploads (object_key, owner_user_id, content_type, byte_size)

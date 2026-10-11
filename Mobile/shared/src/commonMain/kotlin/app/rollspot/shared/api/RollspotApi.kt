@@ -117,14 +117,18 @@ class RollspotApi(
     suspend fun myReviews(): MyReviews = call(HttpMethod.Get, listOf("v1", "me", "reviews"), auth = true)
 
     @Throws(Exception::class)
+    suspend fun getReview(reviewId: String): ReviewById =
+        call(HttpMethod.Get, listOf("v1", "reviews", reviewId))
+
+    @Throws(Exception::class)
     suspend fun deleteReview(reviewId: String) {
         send(HttpMethod.Delete, listOf("v1", "reviews", reviewId), auth = true)
     }
 
-    /** Uploads one JPEG and returns its URL for [ReviewNote.photoUrls]. Reusing [photoId] overwrites, so retries are safe. */
+    /** Uploads one JPEG and returns its URL for [ReviewNote.photoUrls]. Reusing [fileId] for the same [submissionId] overwrites, so retries are safe. */
     @Throws(Exception::class)
-    suspend fun uploadReviewPhoto(placeKey: String, facility: String, photoId: String, jpeg: ByteArray): String =
-        call<UploadedMedia>(HttpMethod.Put, listOf("v1", "media", "review-photos", placeKey, facility, photoId), auth = true) {
+    suspend fun uploadReviewPhoto(placeKey: String, submissionId: String, fileId: String, jpeg: ByteArray): String =
+        call<UploadedMedia>(HttpMethod.Put, listOf("v1", "media", "review-photos", placeKey, submissionId, fileId), auth = true) {
             contentType(ContentType.Image.JPEG)
             setBody(jpeg)
         }.url

@@ -3,6 +3,7 @@ package app.rollspot.shared
 import app.rollspot.shared.api.RollspotApi
 import app.rollspot.shared.auth.TokenStore
 import app.rollspot.shared.places.PlaceRepository
+import app.rollspot.shared.reviews.ReviewModel
 import io.ktor.client.engine.HttpClientEngine
 
 /**
@@ -19,6 +20,7 @@ class RollspotSdk(
 ) {
     val api = RollspotApi(baseUrl, tokenStore, engine)
     val places = PlaceRepository(api)
+    val reviews = ReviewModel(api)
 
     companion object {
         const val PRODUCTION_URL = "https://api.rollspot.app"
