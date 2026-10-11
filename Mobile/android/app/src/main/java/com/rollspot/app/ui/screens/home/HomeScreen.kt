@@ -46,7 +46,6 @@ import com.rollspot.app.ui.components.PinMap
 import com.rollspot.app.ui.rollspotSdk
 import com.rollspot.app.ui.theme.RollspotBlue
 import com.rollspot.app.ui.theme.color
-import com.rollspot.app.ui.theme.label
 
 private val PeekHeight = 96.dp
 
@@ -259,5 +258,10 @@ private val OverallAccessibility.filterIcon: ImageVector
 
 /** The design says "Partially Accessible" here; the badge elsewhere says "Moderately". */
 @Composable
-private fun OverallAccessibility.filterLabel(): String =
-    if (this == OverallAccessibility.PARTIALLY_ACCESSIBLE) stringResource(R.string.partially_accessible) else label
+private fun OverallAccessibility.filterLabel(): String = stringResource(
+    when (this) {
+        OverallAccessibility.ACCESSIBLE -> R.string.accessible
+        OverallAccessibility.PARTIALLY_ACCESSIBLE -> R.string.partially_accessible
+        else -> R.string.not_accessible
+    },
+)
