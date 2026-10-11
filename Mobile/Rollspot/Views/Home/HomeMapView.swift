@@ -347,7 +347,7 @@ struct HomeMapView: View {
             UserAnnotation()
 
             ForEach(displayedMalls) { place in
-                Annotation("", coordinate: place.coordinate, anchor: .bottom) {
+                Annotation("", coordinate: place.coordinate, anchor: .center) {
                     CustomPinpointMarkerView(
                         name: place.name,
                         grade: place.grade ?? .noData,
@@ -457,16 +457,16 @@ struct HomeMapView: View {
                         selectGrade(grade)
                     } label: {
                         HStack(spacing: 14) {
-                            Image(systemName: grade.symbolName)
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(isOn ? grade.badgeForeground : .primary)
-                                .frame(width: 44, height: 44)
-                                .background {
-                                    Circle().fill(isOn ? grade.badgeBackground : Color(uiColor: .secondarySystemGroupedBackground))
-                                }
+                            // Design: solid grade-colored disc with a ✓ / ! / ✕ glyph.
+                            Image(systemName: grade.filterGlyph)
+                                .font(.system(size: 22, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 48, height: 48)
+                                .background { Circle().fill(grade.pinColor) }
+                                .overlay { Circle().strokeBorder(.white, lineWidth: isOn ? 3 : 0) }
                                 .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
                             
-                            Text(grade.label)
+                            Text(grade.filterLabel)
                                 .font(.title3.weight(.semibold))
                                 .foregroundStyle(.white)
                                 .shadow(color: .black.opacity(0.35), radius: 4, y: 1)
@@ -623,6 +623,7 @@ struct HomeMapView: View {
     private func openPlace(_ place: Place) {
         isSearchActive = false
         mapStore.opened(place)
+        searchText = ""
         if !visitedPlaces.contains(where: { Self.gradeKey(for: $0) == Self.gradeKey(for: place) }) {
             visitedPlaces.append(place)
         }
@@ -637,50 +638,52 @@ struct HomeMapView: View {
             var grade: OverallAccessibility = .accessible
             var isSelected: Bool = false
             
+            /// The Figma pin: a grade-colored disc with a white ring and a ✓ / ! / ✕ glyph.
             var body: some View {
-                VStack(spacing: 4) {
-                    ZStack(alignment: .center) {
-                        // Teardrop colored pin body matching grade
-                        TeardropPinShape()
-                            .fill(
-                                LinearGradient(
-                                    colors: pinColors(for: grade),
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
-                            .shadow(color: .black.opacity(0.35), radius: 5, x: 0, y: 3)
-                        
-                        // Accessibility symbol in center of pin head
-                        Image(systemName: grade.symbolName)
-                            .font(.system(size: 13, weight: .bold))
+                ZStack {
+                    Circle()
+                        .fill(grade.pinColor)
+                        .frame(width: 28, height: 28)
+                        .overlay { Circle().strokeBorder(.white, lineWidth: 2.5) }
+                        .shadow(color: .black.opacity(0.3), radius: 3, y: 2)
+                    if let glyph = grade.pinGlyph {
+                        Image(systemName: glyph)
+                            .font(.system(size: 12, weight: .heavy))
                             .foregroundStyle(.white)
-                            .offset(y: -9)
                     }
-                    .frame(width: 32, height: 50)
-                    
-                    // Pin label tag
-                    Text(name)
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.primary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
-                        .shadow(color: .black.opacity(0.18), radius: 3, y: 2)
+                }
+                .scaleEffect(isSelected ? 1.25 : 1)
+                .animation(.snappy(duration: 0.2), value: isSelected)
+                .accessibilityLabel(name)
+                .accessibilityValue(grade.label)
+            }
+        }
+        
+        extension OverallAccessibility {
+            /// Same colors as Android's pins and badges.
+            var pinColor: Color {
+                switch self {
+                case .accessible: Color(red: 40 / 255, green: 180 / 255, blue: 69 / 255)
+                case .partiallyAccessible: Color(red: 255 / 255, green: 145 / 255, blue: 20 / 255)
+                case .notAccessible: Color(red: 235 / 255, green: 60 / 255, blue: 50 / 255)
+                case .noData: .gray
                 }
             }
             
-            private func pinColors(for grade: OverallAccessibility) -> [Color] {
-                switch grade {
-                case .accessible:
-                    [Color(red: 40 / 255, green: 180 / 255, blue: 70 / 255), Color(red: 25 / 255, green: 130 / 255, blue: 45 / 255)]
-                case .partiallyAccessible:
-                    [Color(red: 255 / 255, green: 145 / 255, blue: 20 / 255), Color(red: 220 / 255, green: 90 / 255, blue: 0 / 255)]
-                case .notAccessible:
-                    [Color(red: 235 / 255, green: 60 / 255, blue: 50 / 255), Color(red: 180 / 255, green: 30 / 255, blue: 20 / 255)]
-                case .noData:
-                    [Color(red: 140 / 255, green: 140 / 255, blue: 145 / 255), Color(red: 100 / 255, green: 100 / 255, blue: 105 / 255)]
+            var pinGlyph: String? {
+                switch self {
+                case .accessible: "checkmark"
+                case .partiallyAccessible: "exclamationmark"
+                case .notAccessible: "xmark"
+                case .noData: nil
                 }
+            }
+            
+            var filterGlyph: String { pinGlyph ?? "questionmark" }
+            
+            /// The filter says "Partially Accessible" (Figma); badges elsewhere keep "Moderately".
+            var filterLabel: String {
+                self == .partiallyAccessible ? "Partially Accessible".localized : label
             }
         }
         

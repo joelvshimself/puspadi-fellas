@@ -41,6 +41,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringArrayResource
+import androidx.compose.ui.res.stringResource
+import com.rollspot.app.R
+import kotlinx.coroutines.delay
 import app.rollspot.shared.map.MapPin
 import app.rollspot.shared.map.MapState
 import com.rollspot.app.ui.theme.RollspotBlue
@@ -73,7 +77,7 @@ fun SearchPeek(onClick: () -> Unit, modifier: Modifier = Modifier) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFF3C3C43))
-                Text("Search a place", Modifier.padding(start = 10.dp), color = Color(0xFF8A8A8E), fontSize = 17.sp)
+                TypewriterPlaceholder(Modifier.padding(start = 10.dp), color = Color(0xFF8A8A8E))
             }
         }
     }
@@ -109,7 +113,7 @@ fun SearchSheet(
                 ) {
                     Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFF3C3C43))
                     Box(Modifier.weight(1f).padding(start = 10.dp)) {
-                        if (field.text.isEmpty()) Text("Search a place", color = Color(0xFFB0B0B5), fontSize = 17.sp)
+                        if (field.text.isEmpty()) TypewriterPlaceholder(color = Color(0xFFB0B0B5))
                         BasicTextField(
                             value = field,
                             onValueChange = {
@@ -128,7 +132,7 @@ fun SearchSheet(
                 Box(
                     Modifier.size(48.dp).background(Color.White, CircleShape).clickable(onClick = onClose),
                     contentAlignment = Alignment.Center,
-                ) { Icon(Icons.Default.Close, contentDescription = "Close search", tint = Color(0xFF3C3C43)) }
+                ) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.close_search), tint = Color(0xFF3C3C43)) }
             }
             Spacer(Modifier.height(16.dp))
             if (state.isSearchActive) SearchResults(state, onSearchNearby, onPick) else NearbyList(state, onPick)
@@ -139,7 +143,7 @@ fun SearchSheet(
 @Composable
 private fun NearbyList(state: MapState, onPick: (MapPin) -> Unit) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
-        item { SectionHeader("Nearby Malls") }
+        item { SectionHeader(stringResource(R.string.nearby_malls)) }
         if (state.pins.isEmpty()) {
             item { Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
         }
@@ -157,11 +161,11 @@ private fun SearchResults(state: MapState, onSearchNearby: () -> Unit, onPick: (
         items(state.matchingRecents, key = { "recent-${it.id}" }) { pin ->
             ResultRow(Icons.Default.History, Color(0xFF636366), pin.place.name, subtitle(pin)) { onPick(pin) }
         }
-        item { ResultRow(Icons.Default.Search, RollspotBlue, query, "Search nearby", onSearchNearby) }
+        item { ResultRow(Icons.Default.Search, RollspotBlue, query, stringResource(R.string.search_nearby), onSearchNearby) }
         when {
             state.isSearching -> item { Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
             state.error != null -> item { Message(state.error!!) }
-            state.freshResults.isEmpty() && state.matchingRecents.isEmpty() -> item { Message("No places found for \"$query\" near here.") }
+            state.freshResults.isEmpty() && state.matchingRecents.isEmpty() -> item { Message(stringResource(R.string.no_places_found, query)) }
             else -> items(state.freshResults, key = { it.id }) { pin ->
                 ResultRow(Icons.Default.LocationOn, RollspotBlue, pin.place.name, subtitle(pin)) { onPick(pin) }
             }
@@ -197,4 +201,23 @@ private fun ResultRow(icon: androidx.compose.ui.graphics.vector.ImageVector, tin
             }
         }
     }
+}
+
+/** The rotating "Search Malls in around you..." hint from the iOS app: types, holds, deletes, next phrase. */
+@Composable
+private fun TypewriterPlaceholder(modifier: Modifier = Modifier, color: Color) {
+    val phrases = stringArrayResource(R.array.search_phrases)
+    var shown by remember { mutableStateOf("") }
+    LaunchedEffect(phrases.toList()) {
+        var index = 0
+        while (true) {
+            val phrase = phrases[index % phrases.size]
+            for (n in 1..phrase.length) { shown = phrase.take(n); delay(70) }
+            delay(2_200)
+            for (n in phrase.length - 1 downTo 0) { shown = phrase.take(n); delay(35) }
+            delay(350)
+            index++
+        }
+    }
+    Text(shown, modifier, color = color, fontSize = 17.sp, maxLines = 1)
 }

@@ -31,6 +31,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import com.rollspot.app.R
 import kotlinx.coroutines.launch
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -107,6 +109,7 @@ fun HomeScreen(navController: NavController) {
     fun open(pin: MapPin) {
         viewModel.select(pin)
         searchOpen = false
+        viewModel.clearQuery()
         navController.navigate("place/${pin.id}")
     }
 
@@ -137,7 +140,7 @@ fun HomeScreen(navController: NavController) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box {
-                CircleButton(Icons.Default.FilterList, "Filter by accessibility", background = FilterButtonTint) { filterOpen = !filterOpen }
+                CircleButton(Icons.Default.FilterList, stringResource(R.string.filter_accessibility), background = FilterButtonTint) { filterOpen = !filterOpen }
                 if (state.gradeFilter != null) {
                     Box(
                         Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-4).dp).size(18.dp)
@@ -151,8 +154,8 @@ fun HomeScreen(navController: NavController) {
                 horizontalArrangement = Arrangement.spacedBy(22.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Default.Bookmark, "Saved places", Modifier.size(22.dp).clickable { navController.navigate("saved") })
-                Icon(Icons.Default.Person, "Profile", Modifier.size(22.dp).clickable { navController.navigate("contribute") })
+                Icon(Icons.Default.Bookmark, stringResource(R.string.saved_places), Modifier.size(22.dp).clickable { navController.navigate("saved") })
+                Icon(Icons.Default.Person, stringResource(R.string.profile), Modifier.size(22.dp).clickable { navController.navigate("contribute") })
             }
         }
 
@@ -166,7 +169,7 @@ fun HomeScreen(navController: NavController) {
             Surface(shape = MaterialTheme.shapes.extraSmall, color = Color.White.copy(alpha = 0.85f)) {
                 Text(PlaceRepository.ATTRIBUTION, Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall)
             }
-            CircleButton(Icons.Default.NearMe, "My location") {
+            CircleButton(Icons.Default.NearMe, stringResource(R.string.my_location)) {
                 if (hasPermission) centerOnMe() else requestPermission()
             }
         }
@@ -180,7 +183,7 @@ fun HomeScreen(navController: NavController) {
                 shape = MaterialTheme.shapes.small,
                 color = MaterialTheme.colorScheme.errorContainer,
             ) {
-                Text("$it Tap to retry.", Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onErrorContainer)
+                Text(stringResource(R.string.tap_to_retry, it), Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onErrorContainer)
             }
         }
 
@@ -236,7 +239,7 @@ private fun FilterPanel(selected: OverallAccessibility?, onSelect: (OverallAcces
                     contentAlignment = Alignment.Center,
                 ) { Icon(grade.filterIcon, contentDescription = null, tint = Color.White, modifier = Modifier.size(28.dp)) }
                 Text(
-                    grade.filterLabel,
+                    grade.filterLabel(),
                     Modifier.padding(start = 14.dp),
                     color = Color.White,
                     fontSize = 20.sp,
@@ -255,5 +258,6 @@ private val OverallAccessibility.filterIcon: ImageVector
     }
 
 /** The design says "Partially Accessible" here; the badge elsewhere says "Moderately". */
-private val OverallAccessibility.filterLabel: String
-    get() = if (this == OverallAccessibility.PARTIALLY_ACCESSIBLE) "Partially Accessible" else label
+@Composable
+private fun OverallAccessibility.filterLabel(): String =
+    if (this == OverallAccessibility.PARTIALLY_ACCESSIBLE) stringResource(R.string.partially_accessible) else label

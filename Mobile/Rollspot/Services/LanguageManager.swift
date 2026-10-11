@@ -210,6 +210,10 @@ final class LanguageManager: ObservableObject {
 
         // Search & Sheet
         "Search a place": [.english: "Search a place", .indonesia: "Cari tempat"],
+        "Partially Accessible": [.english: "Partially Accessible", .indonesia: "Cukup Aksesibel"],
+        "Nearby": [.english: "Nearby", .indonesia: "Terdekat"],
+        "Search nearby": [.english: "Search nearby", .indonesia: "Cari di sekitar"],
+        "No places found for \"%@\" near here.": [.english: "No places found for \"%@\" near here.", .indonesia: "Tidak ada tempat ditemukan untuk \"%@\" di sekitar sini."],
         "Find nearby accessible spots": [.english: "Find nearby accessible spots", .indonesia: "Cari tempat aksesibel terdekat"],
         "Malls": [.english: "Malls", .indonesia: "Mall"],
         "Restaurants": [.english: "Restaurants", .indonesia: "Restoran"],

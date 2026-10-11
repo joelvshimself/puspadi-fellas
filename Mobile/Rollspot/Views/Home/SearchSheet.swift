@@ -361,7 +361,7 @@ struct SearchSheet: View {
                     } else if let errorMessage = store.errorMessage {
                         message(errorMessage)
                     } else if store.results.isEmpty && store.recents.isEmpty {
-                        message("No places found for \"\(query)\" near here.")
+                        message(String(format: "No places found for \"%@\" near here.".localized, query))
                     } else {
                         ForEach(store.results) { place in
                             resultRow(place, icon: "mappin")
@@ -399,7 +399,7 @@ struct SearchSheet: View {
                         .font(.system(size: SheetMetrics.rowTitleSize, weight: .semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
-                    Text("Search nearby")
+                    Text("Search nearby".localized)
                         .font(.system(size: SheetMetrics.rowSubtitleSize))
                         .foregroundStyle(.primary.opacity(0.7))
                 }

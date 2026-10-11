@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="search_a_place">Cari tempat</string>
+    <string name="search_nearby">Cari di sekitar</string>
+    <string name="nearby_malls">Mal Terdekat</string>
+    <string name="no_places_found">Tidak ada tempat ditemukan untuk \"%1$s\" di sekitar sini.</string>
+    <string name="close_search">Tutup pencarian</string>
+    <string name="filter_accessibility">Filter berdasarkan aksesibilitas</string>
+    <string name="partially_accessible">Cukup Aksesibel</string>
+    <string name="tap_to_retry">%1$s Ketuk untuk mencoba lagi.</string>
+    <string name="saved_places">Tempat tersimpan</string>
+    <string name="profile">Profil</string>
+    <string name="my_location">Lokasi saya</string>
+    <string-array name="search_phrases">
+        <item>Cari tempat...</item>
+        <item>Cari Mal di sekitar kamu...</item>
+        <item>Cari tempat aksesibel...</item>
+        <item>Cari pusat perbelanjaan...</item>
+    </string-array>
+</resources>
