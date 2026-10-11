@@ -1,4 +1,23 @@
 import Foundation
+import Shared
+
+extension FacilityKind {
+    init(shared kind: Shared.FacilityKind) {
+        switch kind {
+        case .entrance: self = .entrance
+        case .elevator: self = .elevator
+        case .toilet: self = .toilet
+        }
+    }
+
+    var shared: Shared.FacilityKind {
+        switch self {
+        case .entrance: .entrance
+        case .elevator: .elevator
+        case .toilet: .toilet
+        }
+    }
+}
 
 /// Reviews in the current data model are always authored by the community.
 enum ReviewProvenance: String, Hashable {
@@ -78,22 +97,6 @@ struct PlaceFacilityReview: Identifiable, Hashable {
         return caption(forPhotoAt: index)
     }
 
-    /// First sentence of the review body for notes snippets.
-    var firstSentence: String {
-        PlaceFacilityReview.firstSentence(from: bodyText)
-    }
-
-    static func firstSentence(from text: String) -> String {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return "" }
-        let terminators = CharacterSet(charactersIn: ".!?")
-        if let range = trimmed.rangeOfCharacter(from: terminators) {
-            let end = trimmed.index(after: range.lowerBound)
-            return String(trimmed[..<end]).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        return trimmed
-    }
-
     /// `true` when `lhs` should appear above `rhs` in a newest-first list.
     static func isNewerFirst(_ lhs: PlaceFacilityReview, _ rhs: PlaceFacilityReview) -> Bool {
         if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
@@ -111,6 +114,27 @@ struct PlaceFacilityReview: Identifiable, Hashable {
         case .elevator: return 1
         case .entrance: return 2
         }
+    }
+}
+
+extension PlaceFacilityReview {
+    /// Republishes a review the shared module already mapped, deduped and sorted.
+    /// No rules here: only the types the SwiftUI views were written against.
+    init(shared review: Shared.FacilityReview) {
+        self.init(
+            id: .stable(from: review.id),
+            reviewId: UUID(uuidString: review.reviewId) ?? .stable(from: review.reviewId),
+            kind: FacilityKind(shared: review.kind),
+            createdAt: ReviewService.parseDate(review.createdAt),
+            bodyText: review.bodyText,
+            providedTags: review.providedTags,
+            photoURLs: review.photoUrls,
+            photoCaptions: review.photoCaptions,
+            reviewerName: review.reviewerName,
+            reviewerRole: review.reviewerRole,
+            reviewerAvatarURL: review.reviewerAvatarUrl.flatMap(URL.init(string:)),
+            reviewerIsPseudonym: review.reviewerIsPseudonym
+        )
     }
 }
 
