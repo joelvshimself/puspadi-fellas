@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "Empty Thinking Person.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

@@ -3,6 +3,7 @@ package com.rollspot.app.ui.screens.place
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -57,6 +58,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -73,6 +75,7 @@ import app.rollspot.shared.places.OverallAccessibility
 import app.rollspot.shared.places.PlaceRepository
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.delay
+import com.rollspot.app.R
 import com.rollspot.app.ui.rollspotSdk
 import com.rollspot.app.ui.theme.RollspotBlue
 import com.rollspot.app.ui.theme.badgeBackground
@@ -316,10 +319,7 @@ private fun EmptyState() {
     ) {
         HorizontalDivider()
         Spacer(Modifier.height(8.dp))
-        // TODO(design): swap for the exported "thinking person" illustration, like iOS.
-        Box(Modifier.size(138.dp).clip(CircleShape).background(SectionBackground), contentAlignment = Alignment.Center) {
-            Icon(Icons.Default.Add, contentDescription = null, tint = RollspotBlue, modifier = Modifier.size(56.dp))
-        }
+        Image(painterResource(R.drawable.empty_thinking_person), contentDescription = null, modifier = Modifier.width(150.dp))
         Text(
             buildAnnotatedString {
                 append("Be the ")
@@ -331,6 +331,8 @@ private fun EmptyState() {
             color = Color.Gray,
             textAlign = TextAlign.Center,
         )
+        // Dashed arrow leading down to the floating Contribute pill (Figma "Empty").
+        Image(painterResource(R.drawable.empty_arrow), contentDescription = null, modifier = Modifier.padding(top = 8.dp).width(21.dp).height(123.dp))
     }
 }
 

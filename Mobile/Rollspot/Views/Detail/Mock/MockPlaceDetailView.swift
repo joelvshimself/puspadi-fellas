@@ -581,21 +581,11 @@ struct MockPlaceDetailView: View {
             Divider()
                 .padding(.bottom, 24)
 
-            // TODO(design): swap for the exported "thinking person" illustration
-            // once the asset is in the catalog; this is an SF Symbols stand-in.
-            ZStack {
-                Circle()
-                    .fill(Color.mockSectionBackground)
-                    .frame(width: 138, height: 138)
-                Image(systemName: "person.fill.questionmark")
-                    .font(.system(size: 64))
-                    .foregroundStyle(PhotoPalette.brandBlue)
-                Image(systemName: "lightbulb.max.fill")
-                    .font(.system(size: 26))
-                    .foregroundStyle(.yellow)
-                    .offset(x: 52, y: -50)
-            }
-            .accessibilityHidden(true)
+            Image("Empty Thinking Person")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 150)
+                .accessibilityHidden(true)
 
             (Text("Be the ".localized)
                 + Text("first to contribute".localized).foregroundColor(PhotoPalette.brandBlue)
@@ -604,6 +594,14 @@ struct MockPlaceDetailView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
+
+            // Dashed arrow leading down to the floating Contribute pill (Figma "Empty").
+            Image("Empty Arrow")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 21, height: 123)
+                .padding(.top, 8)
+                .accessibilityHidden(true)
         }
         .frame(maxWidth: .infinity)
         .padding(.bottom, 80)
