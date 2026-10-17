@@ -37,11 +37,12 @@ fi
 echo "Using JAVA_HOME=$JAVA_HOME"
 
 WAIT="${ROLLSPOT_ADB_WAIT:-0}"
-gradle_args=()
+# Extra Gradle args (avoid empty-array expansion with `set -u` on macOS bash 3.2).
+INSTALL_GRADLE_ARGS=()
 for arg in "$@"; do
   case "$arg" in
     --wait) WAIT=1 ;;
-    *) gradle_args+=("$arg") ;;
+    *) INSTALL_GRADLE_ARGS+=("$arg") ;;
   esac
 done
 
@@ -64,10 +65,25 @@ fi
 
 rollspot_prepare_install_target || exit 1
 
-if [ "${#gradle_args[@]}" -gt 0 ]; then
-  "$MOBILE_ROOT/gradlew" :androidApp:installDebug "${gradle_args[@]}"
-else
-  "$MOBILE_ROOT/gradlew" :androidApp:installDebug
+rollspot_gradlew_install_debug() {
+  if [ "${#INSTALL_GRADLE_ARGS[@]}" -gt 0 ]; then
+    "$MOBILE_ROOT/gradlew" :androidApp:installDebug "${INSTALL_GRADLE_ARGS[@]}"
+  else
+    "$MOBILE_ROOT/gradlew" :androidApp:installDebug
+  fi
+}
+
+install_log="$(mktemp -t rollspot_gradle_install)"
+if ! rollspot_gradlew_install_debug 2>&1 | tee "$install_log"; then
+  if grep -qE 'configuration-cache\.lock|Timeout waiting to lock Configuration Cache' "$install_log"; then
+    echo "Gradle configuration cache locked — stopping daemons and retrying once…" >&2
+    "$MOBILE_ROOT/gradlew" --stop >/dev/null 2>&1 || true
+    sleep 2
+    rollspot_gradlew_install_debug || exit 1
+  else
+    exit 1
+  fi
 fi
+rm -f "$install_log"
 
 rollspot_launch_rollspot_app

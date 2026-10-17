@@ -23,8 +23,11 @@ struct ContributeReviewFlowView: View {
     @StateObject private var draft: ReviewDraft
 
     @State private var selectedFacilities: Set<FacilityKind>
+    @State private var selectedCategories: Set<ContributeReviewCategory>
+    @State private var supplementalNotes: [ContributeReviewCategory: ReviewNoteDraft]
     @State private var screenIndex: Int
     @State private var entranceLocations: Set<EntranceLocation>
+    @State private var entranceSectionPhotos: ReviewNoteDraft = ReviewNoteDraft()
     @State private var lobbyEntranceTags: Set<ContributeTagOption> = []
     @State private var basementEntranceTags: Set<ContributeTagOption> = []
     /// Ramp/Handrail follow-up answers — UI-only (like `EntranceDraft.easeOfAccess`
@@ -69,8 +72,8 @@ struct ContributeReviewFlowView: View {
 
         let draft = ReviewDraft(placeId: place.reviewPlaceId, coordinate: place.coordinate, name: place.name)
         var startIndex = initialScreenIndex
-        // Every launch walks the full review: Entrance -> Elevator -> Toilet.
-        var facilities = Set(FacilityKind.allCases)
+        var categories = Set<ContributeReviewCategory>()
+        var facilities = Set<FacilityKind>()
         var entranceLocs = Set<EntranceLocation>()
         var lobbyTags = Set<ContributeTagOption>()
         var basementTags = Set<ContributeTagOption>()
@@ -80,7 +83,7 @@ struct ContributeReviewFlowView: View {
         if !ignoreDraftRestore, let snap = UnfinishedReviewStore.snapshot(for: place) {
             startIndex = snap.screenIndex
             facilities = Set(snap.selectedFacilities.compactMap(FacilityKind.init(rawValue:)))
-            facilities.formUnion(Set(FacilityKind.allCases))
+            categories = Set(facilities.compactMap(ContributeReviewCategory.init(facilityKind:)))
             entranceLocs = Set(snap.entranceLocations.compactMap(EntranceLocation.init(rawValue:)))
             lobbyTags = UnfinishedReviewStore.restoreTags(snap.lobbyEntranceTags, forEntrance: .lobby)
             basementTags = UnfinishedReviewStore.restoreTags(snap.basementEntranceTags, forEntrance: .basement)
@@ -92,8 +95,15 @@ struct ContributeReviewFlowView: View {
             draft.toilet.review.text = snap.toiletNote
         }
 
+        if let start = startingFacility, let cat = ContributeReviewCategory(facilityKind: start) {
+            categories = [cat]
+            facilities = [start]
+        }
+
         _draft = StateObject(wrappedValue: draft)
         _selectedFacilities = State(initialValue: facilities)
+        _selectedCategories = State(initialValue: categories)
+        _supplementalNotes = State(initialValue: [:])
         _screenIndex = State(initialValue: startIndex)
         _entranceLocations = State(initialValue: entranceLocs)
         _lobbyEntranceTags = State(initialValue: lobbyTags)
@@ -103,11 +113,16 @@ struct ContributeReviewFlowView: View {
     }
 
     private var orderedFacilities: [FacilityKind] {
-        [.entrance, .elevator, .toilet].filter { selectedFacilities.contains($0) }
+        [FacilityKind.entrance, .elevator, .toilet].compactMap { kind in
+            guard let cat = ContributeReviewCategory(facilityKind: kind),
+                  selectedCategories.contains(cat) else { return nil }
+            return kind
+        }
     }
 
     private enum FlowScreen: Equatable {
         case category
+        case entranceSectionPhotos
         case entranceLocation
         case entranceQuestion(EntranceLocation)
         case entranceRampFollowup(EntranceLocation)
@@ -117,6 +132,7 @@ struct ContributeReviewFlowView: View {
         case toiletInitial
         case toiletQuestion(ToiletQuestion)
         case toiletLocation
+        case supplementalNotes(ContributeReviewCategory)
         case facilityQuestion(FacilityKind)
         case facilityPhotos(FacilityKind)
         case finalReview
@@ -124,9 +140,13 @@ struct ContributeReviewFlowView: View {
 
     private var screens: [FlowScreen] {
         var list: [FlowScreen] = []
+        if startingFacility == nil {
+            list.append(.category)
+        }
         for kind in orderedFacilities {
             switch kind {
             case .entrance:
+                list.append(.entranceSectionPhotos)
                 list.append(.entranceLocation)
                 // Lobby before Basement when both are picked — matches
                 // EntranceLocation.allCases order.
@@ -161,6 +181,9 @@ struct ContributeReviewFlowView: View {
                 }
             }
         }
+        for category in ContributeReviewCategory.supplemental where selectedCategories.contains(category) {
+            list.append(.supplementalNotes(category))
+        }
         list.append(.finalReview)
         return list
     }
@@ -173,7 +196,10 @@ struct ContributeReviewFlowView: View {
 
     private var hasProgress: Bool {
         screenIndex > 0
+            || !selectedCategories.isEmpty
+            || supplementalNotes.values.contains(where: { !$0.text.isEmpty || !$0.photos.isEmpty })
             || !entranceLocations.isEmpty
+            || !entranceSectionPhotos.photos.isEmpty
             || !lobbyEntranceTags.isEmpty || !basementEntranceTags.isEmpty || !toiletTags.isEmpty
             || !elevatorAnswers.isEmpty || toiletInitialAnswer != nil
             || !draft.lobby.review.text.isEmpty || !draft.basement.review.text.isEmpty
@@ -257,10 +283,33 @@ struct ContributeReviewFlowView: View {
     private func screenView(_ screen: FlowScreen) -> some View {
         switch screen {
         case .category:
-            ContributeCategoryStepView(
-                placeName: place.name,
-                selection: $selectedFacilities,
+            ContributeReviewCategoryMenusView(
+                selection: $selectedCategories,
                 onBack: requestExit,
+                onContinue: {
+                    selectedFacilities = Set(orderedFacilities)
+                    goNext()
+                }
+            )
+            .onChange(of: selectedCategories) { _, _ in
+                selectedFacilities = Set(orderedFacilities)
+                clampScreenIndex()
+            }
+        case .supplementalNotes(let category):
+            ContributePhotosNotesStepView(
+                facilityName: category.menuTitle,
+                navTitle: category.menuTitle,
+                progress: progress(for: screen),
+                note: supplementalNoteBinding(for: category),
+                onBack: goBackOneStep,
+                onContinue: goNext
+            )
+        case .entranceSectionPhotos:
+            ContributeEntrancePhotosStepView(
+                progress: progress(for: screen),
+                subStepProgress: subProgress(for: screen),
+                note: $entranceSectionPhotos,
+                onBack: goBackOneStep,
                 onContinue: goNext
             )
         case .entranceLocation:
@@ -269,7 +318,10 @@ struct ContributeReviewFlowView: View {
                 progress: progress(for: screen),
                 selection: $entranceLocations,
                 onBack: goBackOneStep,
-                onContinue: goNext
+                onContinue: {
+                    applyEntranceSectionPhotos()
+                    goNext()
+                }
             )
         case .entranceQuestion(let location):
             ContributeFacilityQuestionStepView(
@@ -496,18 +548,18 @@ struct ContributeReviewFlowView: View {
 
     private func subProgress(for screen: FlowScreen) -> CGFloat {
         let stepNumber: Int = switch screen {
-        case .category, .entranceLocation, .entranceQuestion, .entranceRampFollowup, .entranceHandrailFollowup, .entrancePhotos: 1
+        case .category, .entranceSectionPhotos, .entranceLocation, .entranceQuestion, .entranceRampFollowup, .entranceHandrailFollowup, .entrancePhotos: 1
         case .elevatorQuestion: 2
         case .toiletInitial, .toiletQuestion, .toiletLocation: 3
-        case .facilityQuestion, .facilityPhotos, .finalReview: 4
+        case .facilityQuestion, .facilityPhotos, .supplementalNotes, .finalReview: 4
         }
 
         let stepScreens = screens.filter { s in
             switch s {
-            case .category, .entranceLocation, .entranceQuestion, .entranceRampFollowup, .entranceHandrailFollowup, .entrancePhotos: stepNumber == 1
+            case .category, .entranceSectionPhotos, .entranceLocation, .entranceQuestion, .entranceRampFollowup, .entranceHandrailFollowup, .entrancePhotos: stepNumber == 1
             case .elevatorQuestion: stepNumber == 2
             case .toiletInitial, .toiletQuestion, .toiletLocation: stepNumber == 3
-            case .facilityQuestion, .facilityPhotos, .finalReview: stepNumber == 4
+            case .facilityQuestion, .facilityPhotos, .supplementalNotes, .finalReview: stepNumber == 4
             }
         }
 
@@ -591,6 +643,13 @@ struct ContributeReviewFlowView: View {
         case .elevator: $elevatorTags
         case .toilet: $toiletTags
         }
+    }
+
+    private func supplementalNoteBinding(for category: ContributeReviewCategory) -> Binding<ReviewNoteDraft> {
+        Binding(
+            get: { supplementalNotes[category] ?? ReviewNoteDraft() },
+            set: { supplementalNotes[category] = $0 }
+        )
     }
 
     private func noteBinding(for kind: FacilityKind) -> Binding<ReviewNoteDraft> {
@@ -714,6 +773,20 @@ struct ContributeReviewFlowView: View {
         }
     }
 
+    private func applyEntranceSectionPhotos() {
+        let sectionPhotos = entranceSectionPhotos.photos
+        guard !sectionPhotos.isEmpty else { return }
+        let target: EntranceLocation = entranceLocations.contains(.lobby) ? .lobby : .basement
+        switch target {
+        case .lobby:
+            let existingIDs = Set(draft.lobby.review.photos.map(\.id))
+            draft.lobby.review.photos.append(contentsOf: sectionPhotos.filter { !existingIDs.contains($0.id) })
+        case .basement:
+            let existingIDs = Set(draft.basement.review.photos.map(\.id))
+            draft.basement.review.photos.append(contentsOf: sectionPhotos.filter { !existingIDs.contains($0.id) })
+        }
+    }
+
     private func applyEntranceMapping(for location: EntranceLocation) {
         let tags = entranceTags(for: location)
         let hasRamp = tags.contains { $0.label == "RAMP" }
@@ -834,8 +907,24 @@ struct ContributeReviewFlowView: View {
         // Free-text toilet location note is kept in toiletLocationNote, not auto-populated into main review text
     }
 
+    private func appendSupplementalNotesToDraft() {
+        var blocks: [String] = []
+        for category in ContributeReviewCategory.supplemental {
+            guard let note = supplementalNotes[category], !note.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            blocks.append("[\(category.menuTitle)]\n\(note.text.trimmingCharacters(in: .whitespacesAndNewlines))")
+        }
+        guard !blocks.isEmpty else { return }
+        let prefix = blocks.joined(separator: "\n\n")
+        if draft.toilet.review.text.isEmpty {
+            draft.toilet.review.text = prefix
+        } else {
+            draft.toilet.review.text = "\(prefix)\n\n\(draft.toilet.review.text)"
+        }
+    }
+
     private func submit() async {
         guard !isSubmitting else { return }
+        appendSupplementalNotesToDraft()
         isSubmitting = true
         defer { isSubmitting = false }
 

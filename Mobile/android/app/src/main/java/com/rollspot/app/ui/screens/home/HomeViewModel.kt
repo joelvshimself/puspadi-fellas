@@ -64,7 +64,13 @@ class HomeViewModel(private val sdk: RollspotSdk) : ViewModel() {
         _state.update { it.copy(query = query) }
         searchJob?.cancel()
         if (query.isBlank()) {
-            _state.update { it.copy(results = emptyList(), error = null) }
+            _state.update { it.copy(results = emptyList(), error = null, isLoading = false) }
+            return
+        }
+        if (isPark23Query(query)) {
+            _state.update {
+                it.copy(results = listOfNotNull(MockPlaces.find(MockPlaces.PARK23_ID)), isLoading = false, error = null)
+            }
             return
         }
         searchJob = viewModelScope.launch {
@@ -84,6 +90,9 @@ class HomeViewModel(private val sdk: RollspotSdk) : ViewModel() {
             }
         }
     }
+
+    private fun isPark23Query(query: String): Boolean =
+        query.lowercase().filter { it.isLetterOrDigit() }.contains("park23")
 
     private fun debugMockPlaces(query: String): List<Place> =
         if (!BuildConfig.DEBUG) emptyList() else MockPlaces.filter(query)

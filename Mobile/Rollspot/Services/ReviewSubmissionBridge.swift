@@ -17,10 +17,10 @@ private extension ReviewSubmissionPayload.EntranceReport {
     func asSharedEntrance() -> EntranceReport {
         EntranceReport(
             location: location,
-            hasDropoffRamp: hasDropoffRamp,
-            hasRails: hasRails,
+            hasDropoffRamp: hasDropoffRamp.asKotlinBoolean(),
+            hasRails: hasRails.asKotlinBoolean(),
             doorType: doorType,
-            isWideEnough: isWideEnough,
+            isWideEnough: isWideEnough.asKotlinBoolean(),
             review: review?.asSharedNote()
         )
     }
@@ -29,8 +29,8 @@ private extension ReviewSubmissionPayload.EntranceReport {
 private extension ReviewSubmissionPayload.ElevatorReport {
     func asSharedElevator() -> ElevatorReport {
         ElevatorReport(
-            exists: exists,
-            wheelchairAccessible: wheelchairAccessible,
+            exists: exists.asKotlinBoolean(),
+            wheelchairAccessible: wheelchairAccessible.asKotlinBoolean(),
             blockers: blockers,
             review: review?.asSharedNote()
         )
@@ -40,7 +40,7 @@ private extension ReviewSubmissionPayload.ElevatorReport {
 private extension ReviewSubmissionPayload.ToiletReport {
     func asSharedToilet() -> ToiletReport {
         ToiletReport(
-            hasDisabledToilet: hasDisabledToilet,
+            hasDisabledToilet: hasDisabledToilet.asKotlinBoolean(),
             review: review?.asSharedNote()
         )
     }

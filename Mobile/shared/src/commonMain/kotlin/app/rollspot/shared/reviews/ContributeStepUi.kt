@@ -12,8 +12,14 @@ enum class ContributeHeroAsset {
 object ContributeStepPresentation {
     val progressStepTitles = listOf("Entrance", "Elevator", "Toilets", "Review")
 
+    fun showsFacilityProgressBar(step: ContributeStep): Boolean = step !is ContributeStep.CategoryPick
+
     fun navTitle(step: ContributeStep): String = when (step) {
-        is ContributeStep.EntranceLocationPick,
+        ContributeStep.CategoryPick -> ""
+        is ContributeStep.SupplementalNotes ->
+            ContributeCategoryLabels.supplementalSectionTitle(step.category)
+        ContributeStep.EntrancePhotos,
+        ContributeStep.EntranceLocationPick,
         is ContributeStep.EntranceTags,
         is ContributeStep.EntranceRamp,
         is ContributeStep.EntranceHandrail,
@@ -28,7 +34,10 @@ object ContributeStepPresentation {
     }
 
     fun progressStep(step: ContributeStep): Int = when (step) {
-        is ContributeStep.EntranceLocationPick,
+        ContributeStep.CategoryPick -> 0
+        is ContributeStep.SupplementalNotes -> 4
+        ContributeStep.EntrancePhotos,
+        ContributeStep.EntranceLocationPick,
         is ContributeStep.EntranceTags,
         is ContributeStep.EntranceRamp,
         is ContributeStep.EntranceHandrail,
@@ -44,7 +53,9 @@ object ContributeStepPresentation {
     }
 
     fun subStepProgress(flow: ContributeFlow, step: ContributeStep): Float {
+        if (step is ContributeStep.CategoryPick) return 0.1f
         val stepNumber = progressStep(step)
+        if (stepNumber == 0) return 0.1f
         val section = flow.steps().filter { progressStep(it) == stepNumber }
         val index = section.indexOf(step)
         if (index < 0 || section.isEmpty()) return 0.35f
@@ -52,7 +63,12 @@ object ContributeStepPresentation {
     }
 
     fun heroAsset(step: ContributeStep): ContributeHeroAsset = when (step) {
-        ContributeStep.EntranceLocationPick -> ContributeHeroAsset.EntranceMall
+        ContributeStep.CategoryPick,
+        is ContributeStep.SupplementalNotes,
+        -> ContributeHeroAsset.None
+        ContributeStep.EntrancePhotos,
+        ContributeStep.EntranceLocationPick,
+        -> ContributeHeroAsset.Lobby
         is ContributeStep.EntranceTags -> when (step.location) {
             EntranceLocation.Lobby -> ContributeHeroAsset.Lobby
             EntranceLocation.Basement -> ContributeHeroAsset.Basement
@@ -95,7 +111,11 @@ object ContributeStepPresentation {
     }
 
     fun questionTitle(step: ContributeStep): String = when (step) {
-        ContributeStep.EntranceLocationPick -> "Which entrances did you use?"
+        ContributeStep.CategoryPick -> "Help make every visit easier"
+        is ContributeStep.SupplementalNotes ->
+            "Tell us about ${ContributeCategoryLabels.supplementalSectionTitle(step.category).lowercase()}"
+        ContributeStep.EntrancePhotos -> "Take or upload a photo"
+        ContributeStep.EntranceLocationPick -> "Where can you find the accessible entrances?"
         is ContributeStep.EntranceTags -> when (step.location) {
             EntranceLocation.Lobby -> "What does the lobby have?"
             EntranceLocation.Basement -> "What does the basement have?"
@@ -125,7 +145,11 @@ object ContributeStepPresentation {
     }
 
     fun questionSubtitle(step: ContributeStep): String? = when (step) {
-        ContributeStep.EntranceLocationPick -> "You can select multiple answers"
+        ContributeStep.CategoryPick ->
+            "Fill in at least one facility to help others know what to expect."
+        ContributeStep.EntrancePhotos -> "(Optional)"
+        ContributeStep.EntranceLocationPick -> "You can select multiple places"
+        is ContributeStep.SupplementalNotes -> "Add notes and photos for this area."
         else -> null
     }
 

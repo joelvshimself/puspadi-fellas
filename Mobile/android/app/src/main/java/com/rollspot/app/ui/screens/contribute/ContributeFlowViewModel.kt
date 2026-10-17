@@ -7,6 +7,7 @@ import app.rollspot.shared.api.ApiException
 import com.rollspot.app.data.MockPlaces
 import app.rollspot.shared.reviews.ContributeFlow
 import app.rollspot.shared.reviews.ContributeFlowState
+import app.rollspot.shared.reviews.ContributeReviewCategory
 import app.rollspot.shared.reviews.ContributeStep
 import app.rollspot.shared.reviews.ContributeStepPresentation
 import app.rollspot.shared.reviews.EntranceLocation
@@ -95,6 +96,19 @@ class ContributeFlowViewModel(
         publishFlow()
     }
 
+    fun toggleCategory(category: ContributeReviewCategory) {
+        mutate { flow.toggleCategory(category) }
+    }
+
+    fun setSupplementalNote(category: ContributeReviewCategory, text: String) {
+        mutate {
+            val next = flow.state.supplementalNotes.toMutableMap()
+            val existing = next[category] ?: FacilityNotes()
+            next[category] = existing.copy(text = text)
+            flow.state = flow.state.copy(supplementalNotes = next)
+        }
+    }
+
     fun toggleEntranceLocation(location: EntranceLocation) {
         mutate {
             val next = flow.state.entranceLocations.toMutableSet()
@@ -169,19 +183,38 @@ class ContributeFlowViewModel(
     fun addPhoto(jpeg: ByteArray, fileId: String) {
         mutate {
             val photo = LocalReviewPhoto(fileId, jpeg)
-            val notes = flow.state.toiletNotes.copy(photos = flow.state.toiletNotes.photos + photo)
-            flow.state = flow.state.copy(toiletNotes = notes)
+            val step = flow.currentStep()
+            when (step) {
+                ContributeStep.EntrancePhotos -> {
+                    flow.state = flow.state.copy(entrancePhotos = flow.state.entrancePhotos + photo)
+                }
+                is ContributeStep.SupplementalNotes -> {
+                    val category = step.category
+                    val next = flow.state.supplementalNotes.toMutableMap()
+                    val existing = next[category] ?: FacilityNotes()
+                    next[category] = existing.copy(photos = existing.photos + photo)
+                    flow.state = flow.state.copy(supplementalNotes = next)
+                }
+                ContributeStep.FinalReview -> {
+                    val notes = flow.state.toiletNotes.copy(photos = flow.state.toiletNotes.photos + photo)
+                    flow.state = flow.state.copy(toiletNotes = notes)
+                }
+                else -> Unit
+            }
         }
     }
 
     fun removePhoto(fileId: String) {
         mutate {
             fun strip(notes: FacilityNotes) = notes.copy(photos = notes.photos.filter { it.fileId != fileId })
+            val supplemental = flow.state.supplementalNotes.mapValues { (_, notes) -> strip(notes) }
             flow.state = flow.state.copy(
+                entrancePhotos = flow.state.entrancePhotos.filter { it.fileId != fileId },
                 lobbyNotes = strip(flow.state.lobbyNotes),
                 basementNotes = strip(flow.state.basementNotes),
                 elevatorNotes = strip(flow.state.elevatorNotes),
                 toiletNotes = strip(flow.state.toiletNotes),
+                supplementalNotes = supplemental,
             )
         }
     }

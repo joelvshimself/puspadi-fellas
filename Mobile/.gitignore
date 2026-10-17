@@ -30,3 +30,7 @@ signing.properties
 # Local configuration (credentials)
 local.properties
 .kotlin/
+
+# iOS debug API override (see Mobile/LOCAL_DEV_API.md — do not commit)
+Rollspot/Config/LocalAPIBaseURL.txt
+Rollspot/Config/LocalAPI.xcconfig

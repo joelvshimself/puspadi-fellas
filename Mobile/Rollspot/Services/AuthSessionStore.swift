@@ -1,8 +1,10 @@
 import AuthenticationServices
 import CryptoKit
 import Foundation
-import GoogleSignIn
 import SwiftUI
+#if canImport(GoogleSignIn)
+import GoogleSignIn
+#endif
 import UIKit
 
 struct PendingAppleSignIn: Equatable {
@@ -219,6 +221,8 @@ final class AuthSessionStore: ObservableObject {
 
     /// Returns Google's display name so a new account can prefill onboarding.
     func signInWithGoogle() async throws -> String? {
+        #if canImport(GoogleSignIn)
+        guard GoogleSignInAvailability.isLinked else { throw AuthFlowError.googleNotConfigured }
         try beginAuthAction()
         defer { authActionInFlight = false }
         guard !CloudflareConfig.googleClientID.isEmpty else { throw AuthFlowError.googleNotConfigured }
@@ -230,6 +234,9 @@ final class AuthSessionStore: ObservableObject {
         try await accept(user)
         providers.insert("google")
         return result.user.profile?.name
+        #else
+        throw AuthFlowError.googleNotConfigured
+        #endif
     }
 
     private func socialSignIn(provider: String, token: String, nonce: String?) async throws -> AuthUser? {
@@ -271,7 +278,11 @@ final class AuthSessionStore: ObservableObject {
         lastError = nil
         try? await client.send(["api", "auth", "sign-out"], method: "POST", authenticated: true)
         AuthTokenStore.clear()
-        GIDSignIn.sharedInstance.signOut()
+        #if canImport(GoogleSignIn)
+        if GoogleSignInAvailability.isLinked {
+            GIDSignIn.sharedInstance.signOut()
+        }
+        #endif
         session = nil
         providers = []
         NotificationCenter.default.post(name: .rollspotAuthStateDidChange, object: nil)

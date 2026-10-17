@@ -1,0 +1,3 @@
+// Debug builds only. Production URL unless overridden locally (see LOCAL_DEV_API.md).
+ROLLSPOT_API_BASE_URL = https://api.rollspot.app
+#include? "Rollspot/Config/LocalAPI.xcconfig"

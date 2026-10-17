@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.painterResource
 import app.rollspot.shared.reviews.ContributeCatalog
 import app.rollspot.shared.reviews.ContributeHeroAsset
+import app.rollspot.shared.reviews.ContributeReviewCategory
 import com.rollspot.app.R
 
 @DrawableRes
@@ -26,6 +27,14 @@ fun tagChipDrawable(tag: String): Int? = when (tag) {
     "WHEELCHAIRS AVAILABLE" -> R.drawable.chip_wheelchair_available
     "ELEVATOR" -> R.drawable.chip_elevator
     "DISABLED PARKING" -> R.drawable.chip_disabled_parking
+    else -> null
+}
+
+@DrawableRes
+fun categoryMenuIcon(category: ContributeReviewCategory): Int? = when (category) {
+    ContributeReviewCategory.Entrance -> R.drawable.contribute_entrance_mall
+    ContributeReviewCategory.Elevator -> R.drawable.contribute_elevator_question
+    ContributeReviewCategory.Toilet -> R.drawable.contribute_toilet_survey
     else -> null
 }
 

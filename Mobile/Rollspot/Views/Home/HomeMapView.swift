@@ -33,6 +33,8 @@ struct HomeMapView: View {
     /// place; this screen owns the navigation stack, so it does the routing.
     @ObservedObject private var deepLinks = DeepLinkRouter.shared
     @State private var homeCover: HomeFullScreenCover?
+    /// Park23 search result always opens the contribute category menu.
+    @State private var showPark23Contribute = false
     /// One-time intro sheet after signup. The flag persists so it is shown
     /// exactly once per device; the sheet stacks over the search sheet so it
     /// takes the same Liquid Glass treatment.
@@ -245,6 +247,16 @@ struct HomeMapView: View {
                         // ignored, the peek pill floating mid-screen. From up
                         // here the sheet never moves: the cover slides over it
                         // and dismissing the cover simply reveals it again.
+                        .fullScreenCover(isPresented: $showPark23Contribute) {
+                            ContributeReviewFlowView(
+                                place: .park23Demo,
+                                initialScreenIndex: 0,
+                                ignoreDraftRestore: true
+                            ) {
+                                showPark23Contribute = false
+                            }
+                            .environmentObject(auth)
+                        }
                         .fullScreenCover(item: $homeCover) { cover in
                             switch cover {
                             case .analysing:
@@ -797,6 +809,11 @@ struct HomeMapView: View {
     }
 
     private func openPlace(_ place: Place) {
+        if place.isPark23Demo {
+            isSearchActive = false
+            showPark23Contribute = true
+            return
+        }
         isSearchActive = false
         if !visitedPlaces.contains(where: { Self.gradeKey(for: $0) == Self.gradeKey(for: place) }) {
             visitedPlaces.append(place)

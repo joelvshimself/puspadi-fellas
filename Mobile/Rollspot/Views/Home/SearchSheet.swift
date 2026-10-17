@@ -449,6 +449,14 @@ struct SearchSheet: View {
         }
 
         if !isExpanded { isExpanded = true }
+
+        if NearbyPlacesService.normalized(trimmed).contains("park23") {
+            results = [.park23Demo]
+            isLoading = false
+            errorMessage = nil
+            return
+        }
+
         isLoading = true
         errorMessage = nil
 

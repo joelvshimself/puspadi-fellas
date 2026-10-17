@@ -5,9 +5,13 @@ enum CloudflareConfig {
     /// provider secret belongs in the app; only public client identifiers do.
     static let apiBaseURL: URL = {
         #if DEBUG
-        // Point a debug build at a local `npm run dev` without touching the plist:
-        // Xcode scheme → Run → Environment: ROLLSPOT_API_BASE_URL=http://localhost:8787
-        if let value = ProcessInfo.processInfo.environment["ROLLSPOT_API_BASE_URL"], let url = URL(string: value) {
+        // Xcode scheme → Run → Environment: ROLLSPOT_API_BASE_URL=http://192.168.x.x:8787
+        if let value = ProcessInfo.processInfo.environment["ROLLSPOT_API_BASE_URL"],
+           let url = URL(string: value) {
+            return url
+        }
+        // Gitignored: Mobile/scripts/write-ios-local-api-url.sh — see Mobile/LOCAL_DEV_API.md
+        if let url = localDevURLFromBundleFile() {
             return url
         }
         #endif
@@ -24,4 +28,16 @@ enum CloudflareConfig {
     }()
 
     static let authCallbackURL = URL(string: "puspadi://auth/callback")!
+
+    #if DEBUG
+    private static func localDevURLFromBundleFile() -> URL? {
+        guard let fileURL = Bundle.main.url(forResource: "LocalAPIBaseURL", withExtension: "txt") else {
+            return nil
+        }
+        guard let raw = try? String(contentsOf: fileURL, encoding: .utf8) else { return nil }
+        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !text.contains("REPLACE_WITH") else { return nil }
+        return URL(string: text)
+    }
+    #endif
 }

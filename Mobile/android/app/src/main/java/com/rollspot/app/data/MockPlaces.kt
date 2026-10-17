@@ -4,11 +4,13 @@ import app.rollspot.shared.api.Place
 
 /** Fake directory rows for debug builds — form navigation only, not real API ids. */
 object MockPlaces {
+    const val PARK23_ID = "mock-park-23"
+
     private const val LAT = -8.7200
     private const val LNG = 115.1700
 
     val all: List<Place> = listOf(
-        place("mock-park-23", "Park 23", "Jl. Mock 23, Denpasar"),
+        place(PARK23_ID, "Park 23", "Jl. Mock 23, Denpasar"),
         place("mock-park-22", "Park 22", "Jl. Mock 22, Denpasar"),
         place("mock-park-21", "Park 21", "Jl. Mock 21, Denpasar"),
         place("mock-mall-sunset", "Sunset Mall (mock)", "Badung"),

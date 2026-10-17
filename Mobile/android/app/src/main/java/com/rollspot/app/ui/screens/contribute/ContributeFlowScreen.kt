@@ -56,7 +56,13 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
     }
 
     if (ui.submitted) {
-        ContributeSubmittedScreen(onDone = onFinished)
+        ContributeSubmittedScreen(
+            onDone = onFinished,
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding(),
+        )
         return
     }
 
@@ -111,10 +117,24 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
     val isFinal = step is ContributeStep.FinalReview
     val ctaTitle = if (isFinal) "Submit review" else "Continue"
 
-    Column(Modifier.fillMaxSize()) {
-        ContributeFlowHeader(title = ui.navTitle, onBack = { vm.goBack(onFinished) })
-        if (step !is ContributeStep.Submitted) {
-            ContributeStepProgressBar(currentStep = ui.progressStep, subStepProgress = ui.subStepProgress)
+    val isCategoryPick = step is ContributeStep.CategoryPick
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .navigationBarsPadding(),
+    ) {
+        ContributeFlowHeader(
+            title = if (isCategoryPick) "" else ui.navTitle,
+            onBack = { vm.goBack(onFinished) },
+        )
+        when {
+            isCategoryPick -> ContributeCategoryPickProgress()
+            step !is ContributeStep.Submitted &&
+                ContributeStepPresentation.showsFacilityProgressBar(step) -> {
+                ContributeStepProgressBar(currentStep = ui.progressStep, subStepProgress = ui.subStepProgress)
+            }
         }
 
         Column(
@@ -124,17 +144,40 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
                 .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            if (hero != ContributeHeroAsset.None) {
+            if (!isCategoryPick && hero != ContributeHeroAsset.None) {
                 ContributeHeroImage(hero)
             }
 
             ContributeQuestionBlock(
-                eyebrow = ContributeStepPresentation.eyebrow(step),
+                eyebrow = if (isCategoryPick) null else ContributeStepPresentation.eyebrow(step),
                 title = ContributeStepPresentation.questionTitle(step),
                 subtitle = ContributeStepPresentation.questionSubtitle(step),
             )
 
             when (step) {
+                ContributeStep.CategoryPick -> {
+                    ContributeCategoryMenusGrid(
+                        selected = ui.flowSnapshot?.selectedCategories ?: emptySet(),
+                        onToggle = vm::toggleCategory,
+                    )
+                }
+                is ContributeStep.SupplementalNotes -> {
+                    val notes = ui.flowSnapshot?.supplementalNotes?.get(step.category)
+                    ContributePhotosSection(
+                        note = notes?.text ?: "",
+                        photos = notes?.photos ?: emptyList(),
+                        onNoteChange = { vm.setSupplementalNote(step.category, it) },
+                        onAddPhoto = { photoPicker.launch("image/*") },
+                        onRemovePhoto = vm::removePhoto,
+                    )
+                }
+                ContributeStep.EntrancePhotos -> {
+                    ContributeAddPhotosBox(
+                        photos = ui.flowSnapshot?.entrancePhotos ?: emptyList(),
+                        onAddPhoto = { photoPicker.launch("image/*") },
+                        onRemovePhoto = vm::removePhoto,
+                    )
+                }
                 ContributeStep.EntranceLocationPick -> {
                     EntranceLocation.entries.forEach { loc ->
                         ContributeEntranceLocationRow(
@@ -224,7 +267,7 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
                 ContributeStep.FinalReview -> {
                     val snap = ui.flowSnapshot
                     val photos = snap?.let {
-                        it.lobbyNotes.photos + it.basementNotes.photos +
+                        it.entrancePhotos + it.lobbyNotes.photos + it.basementNotes.photos +
                             it.elevatorNotes.photos + it.toiletNotes.photos
                     } ?: emptyList()
                     ContributePhotosSection(

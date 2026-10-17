@@ -257,14 +257,12 @@ fun ContributeEntranceLocationRow(label: String, selected: Boolean, onClick: () 
 }
 
 @Composable
-fun ContributePhotosSection(
-    note: String,
+fun ContributeAddPhotosBox(
     photos: List<LocalReviewPhoto>,
-    onNoteChange: (String) -> Unit,
     onAddPhoto: () -> Unit,
     onRemovePhoto: (String) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         OutlinedCard(
             onClick = onAddPhoto,
             modifier = Modifier.fillMaxWidth(),
@@ -276,7 +274,7 @@ fun ContributePhotosSection(
             ) {
                 Icon(Icons.Outlined.Photo, contentDescription = null, tint = RollspotBlue, modifier = Modifier.size(32.dp))
                 Spacer(Modifier.height(8.dp))
-                Text("Add Photos", fontWeight = FontWeight.SemiBold)
+                Text("Add Photos", fontWeight = FontWeight.SemiBold, color = RollspotBlue)
             }
         }
         if (photos.isNotEmpty()) {
@@ -309,6 +307,19 @@ fun ContributePhotosSection(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun ContributePhotosSection(
+    note: String,
+    photos: List<LocalReviewPhoto>,
+    onNoteChange: (String) -> Unit,
+    onAddPhoto: () -> Unit,
+    onRemovePhoto: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        ContributeAddPhotosBox(photos = photos, onAddPhoto = onAddPhoto, onRemovePhoto = onRemovePhoto)
         Text("Notes", fontWeight = FontWeight.SemiBold)
         OutlinedTextField(
             value = note,
@@ -321,8 +332,8 @@ fun ContributePhotosSection(
 }
 
 @Composable
-fun ContributeSubmittedScreen(onDone: () -> Unit) {
-    Box(Modifier.fillMaxSize()) {
+fun ContributeSubmittedScreen(onDone: () -> Unit, modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxSize()) {
         Box(
             Modifier
                 .fillMaxWidth()

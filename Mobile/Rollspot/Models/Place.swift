@@ -40,6 +40,9 @@ struct Place: Identifiable, Hashable {
     /// The ID every API call uses. Previews and fixtures have no directory ID.
     var reviewPlaceId: String { placeId ?? "preview:\(id.uuidString)" }
 
+    /// Search shortcut that opens the contribute category menu.
+    var isPark23Demo: Bool { placeId == Self.park23DemoPlaceId }
+
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
     }
@@ -86,4 +89,27 @@ extension Place {
             website: website
         )
     }
+
+    static let park23DemoPlaceId = "mock:park23"
+
+    /// Always-available search result. Tapping it opens the contribute
+    /// category menu instead of a live place page.
+    static let park23Demo = Place(
+        id: UUID(uuidString: "C23A0000-0000-4000-8000-000000002323")!,
+        name: "Park23 Mall",
+        category: "Mall",
+        distance: "",
+        address: "Denpasar, Bali",
+        ratingLabel: "",
+        summary: "",
+        description: "",
+        coordinate: CLLocationCoordinate2D(latitude: -8.6708, longitude: 115.2165),
+        accentColor: .accentColor,
+        gallerySymbols: [],
+        facilitySymbols: [],
+        elevatorDetails: [],
+        reviewsSummary: "",
+        placeId: park23DemoPlaceId,
+        isLiveResult: false
+    )
 }

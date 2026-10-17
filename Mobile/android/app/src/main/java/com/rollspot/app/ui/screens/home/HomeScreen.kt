@@ -18,6 +18,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import app.rollspot.shared.places.PlaceRepository
 import com.rollspot.app.data.LocationService
+import com.rollspot.app.data.MockPlaces
 import com.rollspot.app.ui.components.GlassButton
 import com.rollspot.app.ui.components.PlaceList
 import com.rollspot.app.ui.rollspotSdk
@@ -80,7 +81,13 @@ fun HomeScreen(navController: NavController) {
             places = state.visiblePlaces,
             fromLat = state.centerLat,
             fromLng = state.centerLng,
-            onPlaceClick = { navController.navigate("place/${it.id}") },
+            onPlaceClick = { place ->
+                if (place.id == MockPlaces.PARK23_ID) {
+                    navController.navigate("contribute/flow/${place.id}")
+                } else {
+                    navController.navigate("place/${place.id}")
+                }
+            },
             modifier = Modifier.weight(1f),
         )
         Text(

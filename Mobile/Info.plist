@@ -2,16 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>ROLLSPOT_API_BASE_URL</key>
-	<string>https://api.rollspot.app</string>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<!-- Lets debug builds reach a local `wrangler dev`; does not relax HTTPS for the internet. -->
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
-	</dict>
-	<key>GOOGLE_IOS_CLIENT_ID</key>
-	<string>REPLACE_WITH_GOOGLE_IOS_CLIENT_ID</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -45,5 +35,14 @@
 			</array>
 		</dict>
 	</array>
+	<key>GOOGLE_IOS_CLIENT_ID</key>
+	<string>REPLACE_WITH_GOOGLE_IOS_CLIENT_ID</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>ROLLSPOT_API_BASE_URL</key>
+	<string>https://api.rollspot.app</string>
 </dict>
 </plist>

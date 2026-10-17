@@ -1,0 +1,2 @@
+// Copy to LocalAPI.xcconfig (gitignored) or run: Mobile/scripts/write-ios-local-api-url.sh
+ROLLSPOT_API_BASE_URL = http://REPLACE_WITH_YOUR_MAC_LAN_IP:8787

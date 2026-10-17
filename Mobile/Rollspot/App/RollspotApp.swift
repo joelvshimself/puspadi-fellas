@@ -1,11 +1,19 @@
-import GoogleSignIn
 import SwiftUI
+#if canImport(GoogleSignIn)
+import GoogleSignIn
+#endif
 
 @main
 struct RollspotApp: App {
     @StateObject private var languageManager = LanguageManager.shared
     @StateObject private var authSession = AuthSessionStore()
     @State private var showSplash = true
+
+    init() {
+        #if DEBUG
+        print("[Rollspot] API base URL: \(CloudflareConfig.apiBaseURL.absoluteString)")
+        #endif
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -21,7 +29,9 @@ struct RollspotApp: App {
                 }
             }
             .onOpenURL { url in
-                if GIDSignIn.sharedInstance.handle(url) { return }
+                #if canImport(GoogleSignIn)
+                if GoogleSignInAvailability.isLinked, GIDSignIn.sharedInstance.handle(url) { return }
+                #endif
                 DeepLinkRouter.shared.handle(url)
                 Task { await authSession.handleAuthCallback(url) }
             }

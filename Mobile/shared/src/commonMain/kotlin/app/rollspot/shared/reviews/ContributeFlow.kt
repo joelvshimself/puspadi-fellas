@@ -27,6 +27,8 @@ enum class ToiletSurveyQuestion {
 }
 
 sealed class ContributeStep {
+    data object CategoryPick : ContributeStep()
+    data object EntrancePhotos : ContributeStep()
     data object EntranceLocationPick : ContributeStep()
     data class EntranceTags(val location: EntranceLocation) : ContributeStep()
     data class EntranceRamp(val location: EntranceLocation) : ContributeStep()
@@ -35,6 +37,7 @@ sealed class ContributeStep {
     data object ToiletInitial : ContributeStep()
     data class Toilet(val question: ToiletSurveyQuestion) : ContributeStep()
     data object ToiletLocation : ContributeStep()
+    data class SupplementalNotes(val category: ContributeReviewCategory) : ContributeStep()
     data object FinalReview : ContributeStep()
     data object Submitted : ContributeStep()
 }
@@ -55,6 +58,9 @@ data class ContributeFlowState(
     val placeName: String,
     val submissionId: String,
     val stepIndex: Int = 0,
+    val selectedCategories: Set<ContributeReviewCategory> = emptySet(),
+    val supplementalNotes: Map<ContributeReviewCategory, FacilityNotes> = emptyMap(),
+    val entrancePhotos: List<LocalReviewPhoto> = emptyList(),
     val entranceLocations: Set<EntranceLocation> = emptySet(),
     val lobbyTags: Set<String> = emptySet(),
     val basementTags: Set<String> = emptySet(),
@@ -118,32 +124,53 @@ class ContributeFlow(
     fun steps(): List<ContributeStep> {
         val s = state
         val list = mutableListOf<ContributeStep>()
-        list += ContributeStep.EntranceLocationPick
-        for (location in EntranceLocation.entries) {
-            if (!s.entranceLocations.contains(location)) continue
-            list += ContributeStep.EntranceTags(location)
-            val tags = tagsFor(location)
-            if (tags.contains(ContributeCatalog.TAG_RAMP)) list += ContributeStep.EntranceRamp(location)
-            if (tags.contains(ContributeCatalog.TAG_HANDRAIL)) list += ContributeStep.EntranceHandrail(location)
+        list += ContributeStep.CategoryPick
+        if (ContributeReviewCategory.Entrance in s.selectedCategories) {
+            list += ContributeStep.EntrancePhotos
+            list += ContributeStep.EntranceLocationPick
+            for (location in EntranceLocation.entries) {
+                if (!s.entranceLocations.contains(location)) continue
+                list += ContributeStep.EntranceTags(location)
+                val tags = tagsFor(location)
+                if (tags.contains(ContributeCatalog.TAG_RAMP)) list += ContributeStep.EntranceRamp(location)
+                if (tags.contains(ContributeCatalog.TAG_HANDRAIL)) list += ContributeStep.EntranceHandrail(location)
+            }
         }
-        list += ContributeStep.Elevator(ElevatorQuestion.WideEntrance)
-        if (s.elevatorAnswers[ElevatorQuestion.WideEntrance] != "No") {
-            list += ContributeStep.Elevator(ElevatorQuestion.SpaceToManeuver)
-            list += ContributeStep.Elevator(ElevatorQuestion.ReachableButtons)
+        if (ContributeReviewCategory.Elevator in s.selectedCategories) {
+            list += ContributeStep.Elevator(ElevatorQuestion.WideEntrance)
+            if (s.elevatorAnswers[ElevatorQuestion.WideEntrance] != "No") {
+                list += ContributeStep.Elevator(ElevatorQuestion.SpaceToManeuver)
+                list += ContributeStep.Elevator(ElevatorQuestion.ReachableButtons)
+            }
         }
-        list += ContributeStep.ToiletInitial
-        if (s.toiletInitialAnswer == "Yes") {
-            ToiletSurveyQuestion.entries.forEach { list += ContributeStep.Toilet(it) }
-            list += ContributeStep.ToiletLocation
+        if (ContributeReviewCategory.Toilet in s.selectedCategories) {
+            list += ContributeStep.ToiletInitial
+            if (s.toiletInitialAnswer == "Yes") {
+                ToiletSurveyQuestion.entries.forEach { list += ContributeStep.Toilet(it) }
+                list += ContributeStep.ToiletLocation
+            }
+        }
+        for (category in ContributeReviewCategory.supplemental) {
+            if (category in s.selectedCategories) {
+                list += ContributeStep.SupplementalNotes(category)
+            }
         }
         list += ContributeStep.FinalReview
         return list
     }
 
+    fun toggleCategory(category: ContributeReviewCategory) {
+        val next = state.selectedCategories.toMutableSet()
+        if (category in next) next.remove(category) else next.add(category)
+        state = state.copy(selectedCategories = next)
+    }
+
     fun currentStep(): ContributeStep? = steps().getOrNull(state.stepIndex)
 
     fun canContinue(step: ContributeStep): Boolean = when (step) {
-        is ContributeStep.EntranceLocationPick -> state.entranceLocations.isNotEmpty()
+        ContributeStep.CategoryPick -> state.selectedCategories.isNotEmpty()
+        ContributeStep.EntrancePhotos -> true
+        ContributeStep.EntranceLocationPick -> state.entranceLocations.isNotEmpty()
         is ContributeStep.EntranceTags -> tagsFor(step.location).isNotEmpty()
         is ContributeStep.EntranceRamp -> rampAnswer(step.location) != null
         is ContributeStep.EntranceHandrail -> handrailAnswer(step.location) != null
@@ -151,6 +178,7 @@ class ContributeFlow(
         ContributeStep.ToiletInitial -> state.toiletInitialAnswer != null
         is ContributeStep.Toilet -> state.toiletAnswers[step.question] != null
         ContributeStep.ToiletLocation -> true
+        is ContributeStep.SupplementalNotes -> true
         ContributeStep.FinalReview -> true
         ContributeStep.Submitted -> true
     }
@@ -185,6 +213,8 @@ class ContributeFlow(
     fun hasProgress(): Boolean {
         val s = state
         return s.stepIndex > 0 ||
+            s.selectedCategories.isNotEmpty() ||
+            s.supplementalNotes.values.any { it.text.isNotBlank() || it.photos.isNotEmpty() } ||
             s.entranceLocations.isNotEmpty() ||
             s.lobbyTags.isNotEmpty() ||
             s.basementTags.isNotEmpty() ||
@@ -217,14 +247,38 @@ class ContributeFlow(
         EntranceLocation.Basement -> state.basementNotes
     }
 
+    fun supplementalNotesFor(category: ContributeReviewCategory): FacilityNotes =
+        state.supplementalNotes[category] ?: FacilityNotes()
+
     fun allPhotos(): List<LocalReviewPhoto> =
-        state.lobbyNotes.photos + state.basementNotes.photos +
-            state.elevatorNotes.photos + state.toiletNotes.photos
+        state.entrancePhotos +
+            state.lobbyNotes.photos + state.basementNotes.photos +
+            state.elevatorNotes.photos + state.toiletNotes.photos +
+            state.supplementalNotes.values.flatMap { it.photos }
+
+    /** Section-level entrance photos attach to Lobby when selected, otherwise Basement. */
+    fun primaryEntranceForSectionPhotos(): EntranceLocation? = when {
+        EntranceLocation.Lobby in state.entranceLocations -> EntranceLocation.Lobby
+        EntranceLocation.Basement in state.entranceLocations -> EntranceLocation.Basement
+        else -> null
+    }
+
+    fun entranceNotesForReport(location: EntranceLocation): FacilityNotes {
+        val base = notesFor(location)
+        if (location != primaryEntranceForSectionPhotos() || state.entrancePhotos.isEmpty()) {
+            return base
+        }
+        return base.copy(photos = state.entrancePhotos + base.photos)
+    }
 
     fun toSubmission(): ReviewSubmission {
         val s = state
-        val lobby = entranceReport(EntranceLocation.Lobby, s.lobbyTags, s.lobbyNotes)
-        val basement = entranceReport(EntranceLocation.Basement, s.basementTags, s.basementNotes)
+        val lobby = entranceReport(EntranceLocation.Lobby, s.lobbyTags, entranceNotesForReport(EntranceLocation.Lobby))
+        val basement = entranceReport(
+            EntranceLocation.Basement,
+            s.basementTags,
+            entranceNotesForReport(EntranceLocation.Basement),
+        )
         val entrances = listOfNotNull(lobby, basement).filter { it.hasContent() }
         val elevator = elevatorReport()
         val toilet = toiletReport()
@@ -240,10 +294,14 @@ class ContributeFlow(
     fun pendingPhotos(): List<PendingReviewPhoto> {
         fun map(slot: ReviewPhotoSlot, notes: FacilityNotes) =
             notes.photos.map { PendingReviewPhoto(slot, it.fileId, it.jpeg, it.caption) }
-        return map(ReviewPhotoSlot.Lobby, state.lobbyNotes) +
-            map(ReviewPhotoSlot.Basement, state.basementNotes) +
+        val supplemental = ContributeReviewCategory.supplemental.flatMap { category ->
+            map(ReviewPhotoSlot.Toilet, supplementalNotesFor(category))
+        }
+        return map(ReviewPhotoSlot.Lobby, entranceNotesForReport(EntranceLocation.Lobby)) +
+            map(ReviewPhotoSlot.Basement, entranceNotesForReport(EntranceLocation.Basement)) +
             map(ReviewPhotoSlot.Elevator, state.elevatorNotes) +
-            map(ReviewPhotoSlot.Toilet, state.toiletNotes)
+            map(ReviewPhotoSlot.Toilet, state.toiletNotes) +
+            supplemental
     }
 
     private fun entranceReport(location: EntranceLocation, tags: Set<String>, notes: FacilityNotes): EntranceReport {
@@ -284,6 +342,17 @@ class ContributeFlow(
         )
     }
 
+    /** Interim: fold supplemental category notes into toilet review until API has dedicated fields. */
+    private fun supplementalTextBlock(): String = buildString {
+        for (category in ContributeReviewCategory.supplemental) {
+            val notes = supplementalNotesFor(category)
+            if (notes.text.isBlank()) continue
+            if (isNotEmpty()) append("\n\n")
+            append("[${ContributeCategoryLabels.supplementalSectionTitle(category)}]\n")
+            append(notes.text.trim())
+        }
+    }
+
     private fun toiletReport(): ToiletReport {
         val has = when (state.toiletInitialAnswer) {
             "Yes" -> true
@@ -291,16 +360,25 @@ class ContributeFlow(
             else -> null
         }
         val noteText = buildString {
-            if (state.toiletNotes.text.isNotBlank()) append(state.toiletNotes.text)
+            val supplemental = supplementalTextBlock()
+            if (supplemental.isNotBlank()) {
+                append(supplemental)
+            }
+            if (state.toiletNotes.text.isNotBlank()) {
+                if (isNotEmpty()) append("\n\n")
+                append(state.toiletNotes.text)
+            }
             if (state.toiletLocationNote.isNotBlank()) {
                 if (isNotEmpty()) append("\n")
                 append(state.toiletLocationNote)
             }
         }
-        val notes = if (noteText.isBlank() && state.toiletNotes.photos.isEmpty()) {
+        val supplementalPhotos = ContributeReviewCategory.supplemental.flatMap { supplementalNotesFor(it).photos }
+        val allToiletPhotos = state.toiletNotes.photos + supplementalPhotos
+        val notes = if (noteText.isBlank() && allToiletPhotos.isEmpty()) {
             FacilityNotes()
         } else {
-            state.toiletNotes.copy(text = noteText)
+            state.toiletNotes.copy(text = noteText, photos = allToiletPhotos)
         }
         return ToiletReport(
             hasDisabledToilet = has,

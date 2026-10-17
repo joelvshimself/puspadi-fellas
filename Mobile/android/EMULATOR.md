@@ -2,6 +2,28 @@
 
 Use this workflow **before** Gradle installs, API debugging, or “no internet” rabbit holes.
 
+## Copy-paste (most days)
+
+From the **repo root** (not inside `Mobile/` twice):
+
+```bash
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+Mobile/scripts/run-android-debug.sh
+```
+
+That starts **Pixel_9**, installs the debug APK, and opens Rollspot. Do **not** run `./gradlew :androidApp:installDebug` by hand unless the emulator already says **Android ready**.
+
+Optional: `source Mobile/scripts/android-env.sh` so `adb` works in your terminal.
+
+| Symptom | Fix |
+|--------|-----|
+| `Unable to locate a Java Runtime` | `export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"` |
+| `command not found: adb` | Use the script above, or `source Mobile/scripts/android-env.sh` |
+| `No connected devices` / `OFFLINE` | Run `run-android-debug.sh` (or `start-pixel-9-emulator.sh` and wait for **Android ready**) |
+| `Wrong emulator: AVD 'Pixel_9OK'` | Quit other emulators; only **Pixel_9** should run (`start-pixel-9-emulator.sh`) |
+| `Timeout waiting to lock Configuration Cache` | `cd Mobile && ./gradlew --stop`, then `run-android-debug.sh` again |
+| SKIE / Maven download hung 1h+ | Network/VPN; retry when online — Android-only build does not need iOS SKIE if you use `run-android-debug.sh` |
+
 Rollspot’s standard AVD matches the window title **Android Emulator - Pixel_9:5554**.
 
 ## Canonical device

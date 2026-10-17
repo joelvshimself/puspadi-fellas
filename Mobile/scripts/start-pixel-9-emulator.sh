@@ -10,7 +10,7 @@ rollspot_resolve_android_sdk
 LOG=/tmp/pixel_9_emulator.log
 PIDFILE=/tmp/pixel_9_emulator.pid
 
-adb start-server >/dev/null 2>&1 || true
+"$ADB" start-server >/dev/null 2>&1 || true
 
 if ! rollspot_avd_exists "$AVD_NAME"; then
   echo "AVD '${AVD_NAME}' not found." >&2

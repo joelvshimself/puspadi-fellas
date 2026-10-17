@@ -34,7 +34,7 @@ struct ContributeEntranceLocationStepView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    Image("Entrance Mall Asset")
+                    Image("Lobby Asset")
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(maxWidth: .infinity)
@@ -42,9 +42,9 @@ struct ContributeEntranceLocationStepView: View {
                         .frame(height: 180)
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Which entrances did you use?".localized)
+                        Text("Where can you find the accessible entrances?".localized)
                             .font(.title2.bold())
-                        Text("You can select multiple answers".localized)
+                        Text("You can select multiple places".localized)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
