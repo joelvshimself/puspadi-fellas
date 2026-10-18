@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import com.rollspot.app.ui.theme.RollspotBlue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import app.rollspot.shared.reviews.ContributeCodes
 import app.rollspot.shared.reviews.ContributeHeroAsset
 import app.rollspot.shared.reviews.ContributeStep
 import app.rollspot.shared.reviews.ContributeReviewCategory
@@ -33,7 +34,7 @@ import com.rollspot.app.ui.rollspotSdk
 import com.rollspot.app.ui.screens.contribute.components.*
 import java.io.ByteArrayOutputStream
 
-/** Primary-user (wheelchair) contribute flow. The secondary-user flow is not built yet. */
+/** Contribute flow. Question titles follow the signed-in mobility profile. */
 @Composable
 fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
     val sdk = rollspotSdk()
@@ -80,10 +81,10 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
         return
     }
 
-    fun locationPhotos(location: EntranceLocation) = when (location) {
-        EntranceLocation.Lobby -> ui.flowSnapshot?.lobbyNotes?.photos
-        EntranceLocation.Basement -> ui.flowSnapshot?.basementNotes?.photos
-    }.orEmpty()
+    fun entranceEvidence(location: EntranceLocation, question: String) = when (location) {
+        EntranceLocation.Lobby -> ui.flowSnapshot?.lobbyEvidence
+        EntranceLocation.Basement -> ui.flowSnapshot?.basementEvidence
+    }?.get(question).orEmpty()
 
     val step = ui.currentStep
     if (step == null) {
@@ -133,10 +134,8 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
 
     val hero = ContributeStepPresentation.heroAsset(step)
     val canContinue = vm.canContinueCurrentStep()
-    val isFinal = step is ContributeStep.FinalReview
-    val ctaTitle = if (isFinal) "Submit review" else "Continue"
-
     val isCategoryPick = step is ContributeStep.CategoryPick
+    val ctaTitle = if (isCategoryPick) "Submit review" else "Continue"
 
     Column(
         Modifier
@@ -195,7 +194,7 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
 
             ContributeQuestionBlock(
                 eyebrow = if (isCategoryPick) null else ContributeStepPresentation.eyebrow(step),
-                title = ContributeStepPresentation.questionTitle(step),
+                title = ContributeStepPresentation.questionTitle(step, ui.persona),
                 subtitle = ContributeStepPresentation.questionSubtitle(step),
                 onInfo = if (step is ContributeStep.EntranceLocationPick) {
                     { showEntranceInfo = true }
@@ -207,8 +206,8 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
             when (step) {
                 ContributeStep.CategoryPick -> {
                     ContributeCategoryMenusGrid(
-                        selected = ui.flowSnapshot?.selectedCategories ?: emptySet(),
-                        onToggle = vm::toggleCategory,
+                        status = ui.flowSnapshot?.sectionStatus ?: emptyMap(),
+                        onOpen = vm::openCategory,
                     )
                 }
                 ContributeStep.SeatingPhotos -> {
@@ -285,12 +284,13 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
                 }
                 is ContributeStep.SupplementalNotes -> {
                     val notes = ui.flowSnapshot?.supplementalNotes?.get(step.category)
-                    ContributePhotosSection(
-                        note = notes?.text ?: "",
-                        photos = notes?.photos ?: emptyList(),
-                        onNoteChange = { vm.setSupplementalNote(step.category, it) },
-                        onAddPhoto = { photoPicker.launch("image/*") },
-                        onRemovePhoto = vm::removePhoto,
+                    OutlinedTextField(
+                        value = notes?.text ?: "",
+                        onValueChange = { vm.setSupplementalNote(step.category, it) },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp),
+                        placeholder = { Text("Tell us more about your experience …") },
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                        minLines = 5,
                     )
                 }
                 ContributeStep.EntrancePhotos -> {
@@ -302,7 +302,7 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
                 }
                 ContributeStep.ElevatorPhotos -> {
                     ContributeAddPhotosBox(
-                        photos = ui.flowSnapshot?.elevatorNotes?.photos ?: emptyList(),
+                        photos = ui.flowSnapshot?.elevatorPhotos ?: emptyList(),
                         onAddPhoto = { photoPicker.launch("image/*") },
                         onRemovePhoto = vm::removePhoto,
                     )
@@ -357,7 +357,8 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
                     }
                     if (selected == "Not sure") {
                         FollowUpPhotosRow(
-                            photos = locationPhotos(step.location),
+                            photos = entranceEvidence(step.location, ContributeCodes.RAMP),
+                            canAdd = vm.canAddPhoto(),
                             onAddPhoto = { photoPicker.launch("image/*") },
                             onRemovePhoto = vm::removePhoto,
                         )
@@ -377,7 +378,8 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
                     }
                     if (selected == "Not sure") {
                         FollowUpPhotosRow(
-                            photos = locationPhotos(step.location),
+                            photos = entranceEvidence(step.location, ContributeCodes.HANDRAIL),
+                            canAdd = vm.canAddPhoto(),
                             onAddPhoto = { photoPicker.launch("image/*") },
                             onRemovePhoto = vm::removePhoto,
                         )
@@ -392,10 +394,19 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
                             onClick = { vm.setElevatorAnswer(step.question, opt) },
                         )
                     }
+                    val question = ContributeCodes.elevatorQuestion(step.question)
+                    if (selected == "Not Sure") {
+                        FollowUpPhotosRow(
+                            photos = ui.flowSnapshot?.elevatorEvidence?.get(question) ?: emptyList(),
+                            canAdd = vm.canAddPhoto(),
+                            onAddPhoto = { photoPicker.launch("image/*") },
+                            onRemovePhoto = vm::removePhoto,
+                        )
+                    }
                 }
                 ContributeStep.ElevatorLocation -> {
                     OutlinedTextField(
-                        value = ui.flowSnapshot?.elevatorNotes?.text ?: "",
+                        value = ui.flowSnapshot?.elevatorLocation ?: "",
                         onValueChange = vm::setElevatorLocation,
                         modifier = Modifier.fillMaxWidth(),
                         placeholder = { Text("Describe what's around ...") },
@@ -429,9 +440,11 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
                             onClick = { vm.setToiletAnswer(step.question, opt) },
                         )
                     }
-                    if (selected == "Not sure") {
+                    val question = ContributeCodes.toiletQuestion(step.question)
+                    if (selected == "Not sure" && question != null) {
                         FollowUpPhotosRow(
-                            photos = ui.flowSnapshot?.toiletPhotos ?: emptyList(),
+                            photos = ui.flowSnapshot?.toiletEvidence?.get(question) ?: emptyList(),
+                            canAdd = vm.canAddPhoto(),
                             onAddPhoto = { photoPicker.launch("image/*") },
                             onRemovePhoto = vm::removePhoto,
                         )
@@ -455,26 +468,6 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
                         )
                     }
                 }
-                ContributeStep.FinalReview -> {
-                    val snap = ui.flowSnapshot
-                    val photos = snap?.let {
-                        it.completedEntrancePasses.flatMap { pass ->
-                            pass.photos + pass.lobbyNotes.photos + pass.basementNotes.photos
-                        } +
-                        it.entrancePhotos + it.lobbyNotes.photos + it.basementNotes.photos +
-                            it.completedElevatorPasses.flatMap { pass -> pass.notes.photos } +
-                            it.elevatorNotes.photos +
-                            it.completedToiletPasses.flatMap { pass -> pass.photos } +
-                            it.toiletPhotos + it.toiletNotes.photos + it.seatingPhotos + it.parkingPhotos
-                    } ?: emptyList()
-                    ContributePhotosSection(
-                        note = snap?.toiletNotes?.text ?: "",
-                        photos = photos,
-                        onNoteChange = vm::setFinalNote,
-                        onAddPhoto = { photoPicker.launch("image/*") },
-                        onRemovePhoto = vm::removePhoto,
-                    )
-                }
                 ContributeStep.Submitted -> Unit
             }
             Spacer(Modifier.height(8.dp))
@@ -489,7 +482,7 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
                 enabled = canContinue,
                 loading = ui.isSubmitting,
                 onClick = {
-                    if (isFinal) vm.submit() else vm.goNext()
+                    if (isCategoryPick) vm.submit() else vm.goNext()
                 },
             )
         }

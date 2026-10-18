@@ -20,7 +20,7 @@ export default {
       return await route(request, env);
     } catch (error) {
       if (error instanceof HttpError) {
-        return json({ error: "request_failed", message: error.message }, error.status);
+        return json({ error: error.code, message: error.message }, error.status);
       }
       const status = typeof error === "object" && error && "status" in error && typeof error.status === "number"
         ? error.status

@@ -17,6 +17,8 @@ struct ContributeAccessFollowupStepView: View {
     let photoRevealOption: String
     @Binding var selection: String?
     @Binding var note: ReviewNoteDraft
+    /// Cap for this photo box. Evidence boxes pass the pass-wide remainder.
+    var photoLimit: Int = ReviewNoteDraft.maxPhotos
     var stepNumber: Int = 1
     var subStepProgress: CGFloat = 0.35
     /// Tapping a choice continues immediately and hides the Continue button.
@@ -150,7 +152,7 @@ struct ContributeAccessFollowupStepView: View {
         .photosPicker(
             isPresented: $showPhotosPicker,
             selection: $photoPickerItems,
-            maxSelectionCount: ReviewNoteDraft.maxPhotos - note.photos.count,
+            maxSelectionCount: max(photoLimit - note.photos.count, 0),
             matching: .images
         )
         .onChange(of: photoPickerItems) { _, newItems in
@@ -163,7 +165,7 @@ struct ContributeAccessFollowupStepView: View {
         .fullScreenCover(isPresented: $showCamera) {
             CameraPicker(
                 onCapture: { image in
-                    note.addPhoto(from: image)
+                    note.addPhoto(from: image, limit: photoLimit)
                     showCamera = false
                 },
                 onCancel: { showCamera = false }
@@ -231,7 +233,7 @@ struct ContributeAccessFollowupStepView: View {
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
-                        if note.canAddMorePhotos {
+                        if note.photos.count < photoLimit {
                             addPhotoButtonTile(isWide: false)
                         }
 
@@ -273,8 +275,8 @@ struct ContributeAccessFollowupStepView: View {
             }
         }
         .buttonStyle(.plain)
-        .disabled(!note.canAddMorePhotos)
-        .opacity(note.canAddMorePhotos ? 1 : 0.4)
+        .disabled(note.photos.count >= photoLimit)
+        .opacity(note.photos.count < photoLimit ? 1 : 0.4)
         .popover(isPresented: $showPhotoOptions, attachmentAnchor: .point(.center), arrowEdge: .top) {
             VStack(alignment: .leading, spacing: 16) {
                 Button {
@@ -354,10 +356,10 @@ struct ContributeAccessFollowupStepView: View {
     @MainActor
     private func loadPhotos(from items: [PhotosPickerItem]) async {
         for item in items {
-            guard note.canAddMorePhotos else { break }
+            guard note.photos.count < photoLimit else { break }
             if let data = try? await item.loadTransferable(type: Data.self),
                let image = UIImage(data: data) {
-                note.addPhoto(from: image)
+                note.addPhoto(from: image, limit: photoLimit)
             }
         }
     }

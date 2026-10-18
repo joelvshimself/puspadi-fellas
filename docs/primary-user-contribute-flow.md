@@ -1,67 +1,21 @@
 # Primary-user contribute flow
 
-Wheelchair user path for contributing a place review. The same sequence runs on iOS and Android. The secondary-user flow is not built yet.
+Wheelchair user path for contributing a place review. The same sequence runs on iOS and Android. Secondary users (anyone whose mobility profile is not Wheelchair) walk the same screens. Eight questions use third-person wording; every option and skip stays the same. The submission records `persona` as `wheelchair` or `secondary`.
 
 Update this file in the same change whenever the contribute form flow changes (steps, skips, questions, or options).
 
 Step order lives in `Mobile/shared/src/commonMain/kotlin/app/rollspot/shared/reviews/ContributeFlow.kt`. iOS mirrors it in `ContributeReviewFlowView`.
 
-The progress bar is Entrance, Elevator, Toilets, Review. At least one category is required. Sections the user did not pick are skipped. Within a picked section, some answers skip later questions.
+The progress bar is Entrance, Elevator, Toilets, Review. At least one category is required. The contributor opens one category from the menu, finishes it, and returns to the menu. Sections they do not open are skipped. Within a picked section, some answers skip later questions. Every category ends with an optional descriptive review, then the menu. Submit review on the menu sends every completed section.
 
 ```mermaid
 flowchart TD
-  start[Category pick]
-  start --> entrance{Entrance selected}
-  entrance -->|yes| entrancePhotos[Entrance photo optional]
-  entrancePhotos --> entranceWhere[Where are the accessible entrances]
-  entranceWhere --> lobby{Lobby selected}
-  lobby -->|yes| lobbyTags[What does the lobby have]
-  lobbyTags --> lobbyRamp{Ramp tag}
-  lobbyRamp -->|yes| lobbyRampQ[Lobby ramp question]
-  lobbyRamp -->|no| lobbyRail{Handrail tag}
-  lobbyRampQ --> lobbyRail
-  lobbyRail -->|yes| lobbyRailQ[Lobby handrail question]
-  lobbyRail -->|no| basement{Basement selected}
-  lobbyRailQ --> basement
-  lobby -->|no| basement
-  basement -->|yes| basementTags[What does the basement have]
-  basementTags --> basementRamp{Ramp tag}
-  basementRamp -->|yes| basementRampQ[Basement ramp question]
-  basementRamp -->|no| basementRail{Handrail tag}
-  basementRampQ --> basementRail
-  basementRail -->|yes| basementRailQ[Basement handrail question]
-  basementRail -->|no| anotherEntrance{Review another entrance}
-  basementRailQ --> anotherEntrance
-  basement -->|no| anotherEntrance
-  anotherEntrance -->|Yes| entrancePhotos
-  anotherEntrance -->|No| elevatorGate{Elevator selected}
-  entrance -->|no| elevatorGate
-
-  elevatorGate -->|yes| elevatorPhotos[Elevator photo optional]
-  elevatorPhotos --> wide[Could you enter the elevator]
-  wide -->|not No| space[Space to maneuver]
-  space --> buttons[Reachable control buttons]
-  buttons --> elevatorWhere[Where is the elevator optional]
-  wide -->|No| elevatorWhere
-  elevatorWhere --> another{Review another elevator}
-  another -->|Yes| elevatorPhotos
-  another -->|No| toiletGate{Toilet selected}
-  elevatorGate -->|no| toiletGate
-
-  toiletGate -->|yes| toiletPhotos[Toilet photo optional]
-  toiletPhotos --> toiletDoor[Door kind]
-  toiletDoor --> toiletSeat[Toilet seat]
-  toiletSeat --> grab[Grab bars]
-  grab --> toiletSpace[Space to maneuver]
-  toiletSpace --> sink[Sink]
-  sink --> emergency[Emergency aid]
-  emergency --> toiletWhere[Where is the accessible toilet optional]
-  toiletWhere --> anotherToilet{Review another accessible toilet}
-  anotherToilet -->|Yes| toiletPhotos
-  anotherToilet -->|No| supplemental[Outdoor pathways seating parking]
-  toiletGate -->|no| supplemental
-  supplemental --> finalReview[Final review]
-  finalReview --> submitted[Submitted]
+  menu[Category menu]
+  menu -->|open a category| form[Category questions]
+  form -->|"Review another? Yes"| form
+  form -->|"last question or Review another? No"| notes[Descriptive review optional]
+  notes -->|Continue| menu
+  menu -->|Submit review| submitted[Submitted]
 ```
 
 ## 1. Category pick
@@ -79,11 +33,11 @@ Categories, in menu order:
 - Seating
 - Parking
 
-Continue stays off until one category is selected.
+Submit review stays off until one category is complete. It sends the review. There is no separate final screen.
 
 ## 2. Entrance
 
-Shown only when Entrance is selected. Lobby is asked before Basement when both are selected. After that walk, the contributor can review another entrance. Yes starts again at the photo screen. No leaves the section.
+Shown only when Entrance is selected. Lobby is asked before Basement when both are selected. After that walk, the contributor can review another entrance. Yes starts again at the photo screen. No opens the descriptive review, and Continue there returns to the menu.
 
 | Screen | Question | Continues when |
 | --- | --- | --- |
@@ -106,11 +60,11 @@ Ramp and handrail play a looping video. The info button explains slope and landi
 
 Other tags only record that the thing is present. They do not add a screen.
 
-Going back from a restarted photo screen, before anything new is entered, returns to Review another entrance? for the pass just saved. Each saved entrance is submitted as its own entrance report.
+Going back from a restarted photo screen, before anything new is entered, returns to Review another entrance? for the pass just saved. Each saved entrance is its own pass, with its own photo screen and its own points.
 
 ## 3. Elevator
 
-Shown only when Elevators is selected. The contributor can review more than one elevator. Each pass is photo, questions, then location. Yes on the last question starts a blank pass. No leaves the section.
+Shown only when Elevators is selected. The contributor can review more than one elevator. Each pass is photo, questions, then location. Yes on the last question starts a blank pass. No opens the descriptive review, and Continue there returns to the menu.
 
 | Screen | Question | Continues when |
 | --- | --- | --- |
@@ -131,11 +85,11 @@ On iOS, Not Sure on a question reveals an optional photo box.
 
 Going back from a restarted photo screen, before anything new is entered, returns to Review another elevator? for the pass just saved.
 
-The review API stores one elevator. Every pass is folded into that report: inaccessible if any pass answered No, `too_small` when a pass failed width or space, and each location plus answers written into the elevator note. Photos from every pass stay on the elevator.
+Each elevator is its own pass: section photos, the answers, the optional location, and any "Not sure" evidence photos. The place grade uses the most accessible pass.
 
 ## 4. Accessible toilets
 
-Shown only when Toilet is selected. The contributor can review more than one toilet. Each pass is photo, questions, then location. Yes on the last question starts a blank pass. No leaves the section.
+Shown only when Toilet is selected. The contributor can review more than one toilet. Each pass is photo, questions, then location. Yes on the last question starts a blank pass. No opens the descriptive review, and Continue there returns to the menu.
 
 | Screen | Question | Continues when |
 | --- | --- | --- |
@@ -162,12 +116,44 @@ Choosing Not sure on seat, grab bars, space, sink, or emergency reveals an optio
 
 Going back from a restarted photo screen, before anything new is entered, returns to Review another accessible toilet? for the pass just saved.
 
-The review API stores one toilet. Every pass is folded into that report: `hasDisabledToilet` is true when any pass has answers, a location, or photos, and each location plus answers is written into the toilet note. Photos from every pass stay on the toilet.
+Each toilet is its own pass: section photos, the six answers, the optional location, and any "Not sure" evidence photos. The place grade uses the most accessible pass.
 
 ## 5. Supplemental areas
 
-Outdoor Pathways, Seating, and Parking each get one screen when selected: **Tell us about [area].** Notes and photos are optional. They are stored with the toilet review until the API has its own fields.
+Outdoor Pathways, Seating, and Parking each start with an optional photo screen (up to 5), then one question, then the descriptive review. Pathways stores the selected notices. Seating and parking store yes, no, or not sure. They are posted as their own sections.
 
-## 6. Final review
+## 6. Descriptive review
 
-**Add notes and photos to support your review.** Submitting sends the review. A confirmation screen follows.
+Each category ends with **Tell us about the {category}.** The note is optional free text. Continue returns to the category menu and marks the section complete. Going back returns to the category's last question. For entrance, elevator, and toilet, that restores the pass just saved onto Review another?
+
+The note is stored with that section (`notes` on the section object, max 4000 characters). A section left in progress stays on the device and is not sent.
+
+## 7. Submit from the menu
+
+Submit review sends every completed section together. A confirmation screen follows.
+
+## Photos
+
+Nothing is uploaded until submit. Each photo is a JPEG kept on the device with a stable file id, then `PUT` to `/v1/media/review-photos/:place/:submissionId/:fileId`, then referenced by the returned URL.
+
+| Kind | Where it is taken | Limit |
+| --- | --- | --- |
+| Section | "Take or upload a photo" at the start of a pass, and the photo screen for pathways, seating, and parking | 5 per pass |
+| Evidence | The box that appears after "Not sure" | 3 per pass, across every question of that pass |
+
+Evidence is kept only while the answer stays "Not sure". Changing the answer deletes those photos. Entrance section photos stay on the pass. They are not copied onto lobby or basement.
+
+## Secondary wording
+
+| Screen | Secondary question |
+| --- | --- |
+| Ramp | Could someone on a wheelchair go up the ramp without help? |
+| Handrail | Could someone in a wheelchair reach and grip the handrail? |
+| Elevator entrance | Could someone in a wheelchair enter the elevator? |
+| Elevator space | Could someone in a wheelchair turn freely inside? |
+| Elevator buttons | Could you reach the control buttons from a seated position? |
+| Toilet space | Could someone in a wheelchair turn freely inside? |
+| Toilet sink | Can someone in a wheelchair reach the sink faucet comfortably? |
+| Toilet emergency | Could you reach the emergency aid from a seated or fallen position? |
+
+Every other question uses the primary wording for both personas.

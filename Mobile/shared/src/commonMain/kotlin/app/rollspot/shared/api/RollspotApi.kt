@@ -114,6 +114,10 @@ class RollspotApi(
         call(HttpMethod.Post, listOf("v1", "reviews"), auth = true) { jsonBody(submission) }
 
     @Throws(Exception::class)
+    suspend fun submitContribution(submission: ContributionSubmission): ReviewSubmitted =
+        call(HttpMethod.Post, listOf("v1", "reviews"), auth = true) { jsonBody(submission) }
+
+    @Throws(Exception::class)
     suspend fun myReviews(): MyReviews = call(HttpMethod.Get, listOf("v1", "me", "reviews"), auth = true)
 
     @Throws(Exception::class)

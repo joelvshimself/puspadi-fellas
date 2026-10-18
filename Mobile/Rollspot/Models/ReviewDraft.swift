@@ -160,8 +160,8 @@ struct ReviewNoteDraft {
 
     var canAddMorePhotos: Bool { photos.count < Self.maxPhotos }
 
-    mutating func addPhoto(from image: UIImage) {
-        guard canAddMorePhotos,
+    mutating func addPhoto(from image: UIImage, limit: Int = maxPhotos) {
+        guard photos.count < limit,
               let jpegData = image.jpegData(compressionQuality: Self.jpegQuality)
         else { return }
         photos.append(ReviewPhotoDraft(image: image, jpegData: jpegData))

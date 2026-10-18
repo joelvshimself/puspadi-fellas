@@ -64,6 +64,24 @@ final class ReviewService {
     }
 
     @discardableResult
+    func submit(contribution: AssembledContribution) async throws -> SubmitResponse {
+        let mutationKey = contribution.submission.submissionId
+        guard await mutationGate.begin(mutationKey) else { throw ReviewMutationInProgress() }
+        do {
+            let submitted = try await reviews.submitContribution(
+                submission: contribution.submission,
+                photos: contribution.photos
+            )
+            let response = submitted.asSubmitResponse()
+            await mutationGate.end(mutationKey)
+            return response
+        } catch {
+            await mutationGate.end(mutationKey)
+            throw error
+        }
+    }
+
+    @discardableResult
     func submit(_ draft: ReviewDraft) async throws -> SubmitResponse {
         let mutationKey = draft.submissionId.uuidString
         guard await mutationGate.begin(mutationKey) else { throw ReviewMutationInProgress() }

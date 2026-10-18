@@ -549,17 +549,18 @@ fun ContributeEntranceLocationRow(label: String, selected: Boolean, onClick: () 
 @Composable
 fun FollowUpPhotosRow(
     photos: List<LocalReviewPhoto>,
+    canAdd: Boolean = true,
     onAddPhoto: () -> Unit,
     onRemovePhoto: (String) -> Unit,
 ) {
     if (photos.isEmpty()) {
-        FollowUpAddPhotoTile(wide = true, onClick = onAddPhoto)
+        if (canAdd) FollowUpAddPhotoTile(wide = true, onClick = onAddPhoto)
     } else {
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            FollowUpAddPhotoTile(wide = false, onClick = onAddPhoto)
+            if (canAdd) FollowUpAddPhotoTile(wide = false, onClick = onAddPhoto)
             photos.forEach { photo ->
                 val bitmap = remember(photo.fileId) {
                     BitmapFactory.decodeByteArray(photo.jpeg, 0, photo.jpeg.size)?.asImageBitmap()

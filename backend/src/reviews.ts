@@ -1,5 +1,6 @@
 import type { Auth } from "./auth";
 import { requireUserId } from "./auth";
+import { assertPhotoOwnership, parseContributionV2, SECTION_NAMES, type NormalizedContribution, type Persona, type SectionName } from "./contribution";
 import type { Env } from "./env";
 import { HttpError, json, methodNotAllowed, readJson, requiredString, uuid } from "./http";
 import { findPlaceId, loadGrade, requirePlaceId } from "./places";
@@ -24,6 +25,13 @@ interface Entrance {
 }
 
 interface ReviewPayload {
+  version?: unknown;
+  persona?: unknown;
+  entrance?: unknown;
+  pathways?: unknown;
+  seating?: unknown;
+  parking?: unknown;
+  final?: unknown;
   submissionId?: unknown;
   /** Rollspot place ID, or osm:<type>/<id>. */
   placeId?: unknown;
@@ -62,6 +70,9 @@ interface ReviewRow {
   elevator_review_text: string | null;
   has_disabled_toilet: number | null;
   toilet_review_text: string | null;
+  schema_version: number;
+  persona: string | null;
+  final_text: string | null;
   created_at: string;
   display_name: string | null;
   pseudonym: string | null;
@@ -79,6 +90,44 @@ interface EntranceRow {
   is_wide_enough: number | null;
   review_text: string | null;
   sort_order: number;
+  pass_index: number;
+  tags: string;
+  ramp_answer: string | null;
+  handrail_answer: string | null;
+}
+
+interface ElevatorPassRow {
+  review_id: string;
+  pass_index: number;
+  wide_entrance: string;
+  space_to_maneuver: string | null;
+  reachable_buttons: string | null;
+  location_text: string | null;
+}
+
+interface ToiletPassRow {
+  review_id: string;
+  pass_index: number;
+  door: string;
+  seat: string;
+  grab_bars: string;
+  space: string;
+  sink: string;
+  emergency: string;
+  location_text: string | null;
+}
+
+interface AreaRow {
+  review_id: string;
+  area: string;
+  answer: string | null;
+  notices: string;
+}
+
+interface SectionNoteRow {
+  review_id: string;
+  section: SectionName;
+  text: string;
 }
 
 interface PhotoRow {
@@ -88,6 +137,11 @@ interface PhotoRow {
   facility: Facility;
   caption: string;
   sort_order: number;
+  section: string;
+  pass_index: number | null;
+  entrance_location: string | null;
+  kind: string;
+  question: string | null;
 }
 
 function bool(value: unknown): boolean | null {
@@ -181,6 +235,8 @@ export async function handleReviewsRoot(request: Request, env: Env, auth: Auth):
   const placeId = await requirePlaceId(env, requiredString(body.placeId, "placeId", 200));
 
   await ensureProfile(env, userId);
+  if (body.version === 2) return insertContribution(env, userId, placeId, submissionId, body);
+
   const entrances = normalizeEntrances(env, body.entrances);
   const elevatorExists = bool(body.elevator?.exists);
   const elevatorAccessible = elevatorExists === true ? bool(body.elevator?.wheelchairAccessible) : null;
@@ -255,6 +311,158 @@ export async function handleReviewsRoot(request: Request, env: Env, auth: Auth):
   return json({ status: "ok", reviewId, placeId, grade: await loadGrade(env, placeId) }, 201);
 }
 
+async function insertContribution(
+  env: Env,
+  userId: string,
+  placeId: string,
+  submissionId: string,
+  body: ReviewPayload,
+): Promise<Response> {
+  const contribution = parseContributionV2(body, `${env.API_BASE_URL}/v1/media/`);
+  await assertOwnedPhotos(env, contribution, userId, submissionId);
+  const persona = contribution.persona ?? await personaFor(env, userId);
+  const reviewId = uuid();
+  const legacy = contribution.legacy;
+  const statements: D1PreparedStatement[] = [
+    env.DB.prepare(
+      `INSERT INTO reviews (
+        id, submission_id, user_id, place_id, notes, schema_version, persona, final_text,
+        elevator_exists, elevator_wheelchair_accessible, elevator_blockers,
+        elevator_review_text, has_disabled_toilet, toilet_review_text
+      ) VALUES (?, ?, ?, ?, ?, 2, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      reviewId, submissionId, userId, placeId, legacy.notes, persona, contribution.finalText,
+      legacy.elevatorExists === null ? null : Number(legacy.elevatorExists),
+      legacy.elevatorAccessible === null ? null : Number(legacy.elevatorAccessible),
+      JSON.stringify(legacy.elevatorBlockers),
+      legacy.elevatorText,
+      legacy.hasDisabledToilet === null ? null : Number(legacy.hasDisabledToilet),
+      legacy.toiletText,
+    ),
+  ];
+
+  contribution.entrancePasses.forEach((pass, passIndex) => {
+    pass.points.forEach((point, pointIndex) => {
+      const doorType = point.tags.includes("automatic_doors")
+        ? "automatic"
+        : point.tags.includes("manual_doors") ? "manual" : null;
+      statements.push(env.DB.prepare(
+        `INSERT INTO review_entrances (
+          id, review_id, location, has_dropoff_ramp, has_rails, door_type,
+          is_wide_enough, review_text, sort_order, pass_index, tags, ramp_answer, handrail_answer
+        ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)`,
+      ).bind(
+        uuid(), reviewId, point.location,
+        point.tags.includes("ramp") ? 1 : null,
+        point.tags.includes("handrail") ? 1 : null,
+        doorType,
+        entranceSummary(point),
+        passIndex * 2 + pointIndex,
+        passIndex,
+        JSON.stringify(point.tags),
+        point.ramp,
+        point.handrail,
+      ));
+    });
+  });
+
+  contribution.elevatorPasses.forEach((pass, passIndex) => {
+    statements.push(env.DB.prepare(
+      `INSERT INTO review_elevators (
+        id, review_id, pass_index, wide_entrance, space_to_maneuver, reachable_buttons, location_text
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      uuid(), reviewId, passIndex, pass.wideEntrance, pass.spaceToManeuver, pass.reachableButtons, pass.location,
+    ));
+  });
+
+  contribution.toiletPasses.forEach((pass, passIndex) => {
+    statements.push(env.DB.prepare(
+      `INSERT INTO review_toilets (
+        id, review_id, pass_index, door, seat, grab_bars, space, sink, emergency, location_text
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      uuid(), reviewId, passIndex, pass.door, pass.seat, pass.grabBars, pass.space, pass.sink, pass.emergency, pass.location,
+    ));
+  });
+
+  if (contribution.pathways) {
+    statements.push(env.DB.prepare(
+      `INSERT INTO review_areas (review_id, area, answer, notices) VALUES (?, 'pathways', NULL, ?)`,
+    ).bind(reviewId, JSON.stringify(contribution.pathways.notices)));
+  }
+  for (const area of ["seating", "parking"] as const) {
+    const value = contribution[area];
+    if (!value) continue;
+    statements.push(env.DB.prepare(
+      `INSERT INTO review_areas (review_id, area, answer, notices) VALUES (?, ?, ?, '[]')`,
+    ).bind(reviewId, area, value.answer));
+  }
+
+  for (const section of SECTION_NAMES) {
+    const text = contribution.sectionNotes[section];
+    if (!text) continue;
+    statements.push(env.DB.prepare(
+      `INSERT INTO review_section_notes (review_id, section, text) VALUES (?, ?, ?)`,
+    ).bind(reviewId, section, text));
+  }
+
+  for (const photo of contribution.photos) {
+    statements.push(env.DB.prepare(
+      `INSERT OR IGNORE INTO review_photos (
+        id, review_id, object_key, facility, caption, sort_order, section, pass_index, entrance_location, kind, question
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      uuid(), reviewId, photo.objectKey, photo.facility, photo.caption, photo.sortOrder,
+      photo.section, photo.passIndex, photo.entranceLocation, photo.kind, photo.question,
+    ));
+  }
+
+  for (const [feature, value] of [
+    ["entrance", contribution.signals.entrance],
+    ["elevator", contribution.signals.elevator],
+    ["restroom", contribution.signals.restroom],
+  ] as const) {
+    if (!value) continue;
+    statements.push(env.DB.prepare(
+      `INSERT INTO accessibility_signals (place_id, user_id, feature, value, review_id)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(place_id, user_id, feature) DO UPDATE SET
+         value = excluded.value, review_id = excluded.review_id,
+         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`,
+    ).bind(placeId, userId, feature, value, reviewId));
+  }
+
+  await env.DB.batch(statements);
+  return json({ status: "ok", reviewId, placeId, grade: await loadGrade(env, placeId) }, 201);
+}
+
+async function assertOwnedPhotos(env: Env, contribution: NormalizedContribution, userId: string, submissionId: string) {
+  const keys = contribution.photos.map((photo) => photo.objectKey);
+  if (!keys.length) return;
+  const placeholders = keys.map(() => "?").join(",");
+  const owned = await env.DB.prepare(
+    `SELECT object_key FROM media_uploads WHERE owner_user_id = ? AND object_key IN (${placeholders})`,
+  ).bind(userId, ...keys).all<{ object_key: string }>();
+  assertPhotoOwnership(keys, userId, submissionId, new Set(owned.results.map((row) => row.object_key)));
+}
+
+async function personaFor(env: Env, userId: string): Promise<Persona> {
+  const profile = await env.DB.prepare(
+    `SELECT mobility_aids FROM profiles WHERE user_id = ?`,
+  ).bind(userId).first<{ mobility_aids: string }>();
+  const aids = profile?.mobility_aids ? JSON.parse(profile.mobility_aids) as string[] : [];
+  return aids.includes("Wheelchair") ? "wheelchair" : "secondary";
+}
+
+function entranceSummary(point: NormalizedContribution["entrancePasses"][number]["points"][number]): string | null {
+  const lines = [
+    point.ramp ? `Ramp: ${point.ramp}` : null,
+    point.handrail ? `Handrail: ${point.handrail}` : null,
+  ].filter((line): line is string => line != null);
+  return lines.length ? lines.join("\n") : null;
+}
+
 function addPhotos(
   statements: D1PreparedStatement[],
   env: Env,
@@ -284,19 +492,45 @@ async function reviewRows(env: Env, where: string, value: string): Promise<Revie
 }
 
 async function relatedRows(env: Env, reviewIds: string[]) {
-  if (!reviewIds.length) return { entrances: [] as EntranceRow[], photos: [] as PhotoRow[] };
+  const empty = {
+    entrances: [] as EntranceRow[],
+    photos: [] as PhotoRow[],
+    elevators: [] as ElevatorPassRow[],
+    toilets: [] as ToiletPassRow[],
+    areas: [] as AreaRow[],
+    sectionNotes: [] as SectionNoteRow[],
+  };
+  if (!reviewIds.length) return empty;
   const placeholders = reviewIds.map(() => "?").join(",");
-  const [entrances, photos] = await env.DB.batch<EntranceRow | PhotoRow>([
+  const [entrances, photos, elevators, toilets, areas, sectionNotes] = await env.DB.batch<
+    EntranceRow | PhotoRow | ElevatorPassRow | ToiletPassRow | AreaRow | SectionNoteRow
+  >([
     env.DB.prepare(
-      `SELECT * FROM review_entrances WHERE review_id IN (${placeholders}) ORDER BY sort_order`,
+      `SELECT * FROM review_entrances WHERE review_id IN (${placeholders}) ORDER BY pass_index, sort_order`,
     ).bind(...reviewIds),
     env.DB.prepare(
       `SELECT * FROM review_photos WHERE review_id IN (${placeholders}) ORDER BY sort_order`,
+    ).bind(...reviewIds),
+    env.DB.prepare(
+      `SELECT * FROM review_elevators WHERE review_id IN (${placeholders}) ORDER BY pass_index`,
+    ).bind(...reviewIds),
+    env.DB.prepare(
+      `SELECT * FROM review_toilets WHERE review_id IN (${placeholders}) ORDER BY pass_index`,
+    ).bind(...reviewIds),
+    env.DB.prepare(
+      `SELECT * FROM review_areas WHERE review_id IN (${placeholders})`,
+    ).bind(...reviewIds),
+    env.DB.prepare(
+      `SELECT * FROM review_section_notes WHERE review_id IN (${placeholders})`,
     ).bind(...reviewIds),
   ]);
   return {
     entrances: (entrances?.results ?? []) as EntranceRow[],
     photos: (photos?.results ?? []) as PhotoRow[],
+    elevators: (elevators?.results ?? []) as ElevatorPassRow[],
+    toilets: (toilets?.results ?? []) as ToiletPassRow[],
+    areas: (areas?.results ?? []) as AreaRow[],
+    sectionNotes: (sectionNotes?.results ?? []) as SectionNoteRow[],
   };
 }
 
@@ -306,9 +540,38 @@ function role(mobilityJson: string | null): string | null {
   return aids.includes("Wheelchair") ? "Wheelchair User" : "Community Contributor";
 }
 
-function reviewOutput(env: Env, row: ReviewRow, entrances: EntranceRow[], photos: PhotoRow[]) {
+function photoJson(env: Env, photos: PhotoRow[]) {
+  const url = (key: string) => `${env.API_BASE_URL}/v1/media/${key}`;
+  return photos.map((photo) => ({
+    url: url(photo.object_key),
+    caption: photo.caption,
+    section: photo.section,
+    kind: photo.kind,
+    question: photo.question,
+    pass_index: photo.pass_index,
+    location: photo.entrance_location,
+  }));
+}
+
+function reviewOutput(
+  env: Env,
+  row: ReviewRow,
+  entrances: EntranceRow[],
+  photos: PhotoRow[],
+  elevators: ElevatorPassRow[] = [],
+  toilets: ToiletPassRow[] = [],
+  areas: AreaRow[] = [],
+  sectionNotes: SectionNoteRow[] = [],
+) {
   const facilityPhotos = (facility: Facility) => photos.filter((photo) => photo.facility === facility);
   const url = (key: string) => `${env.API_BASE_URL}/v1/media/${key}`;
+  const passPhotos = (section: string, passIndex: number, kind: string, question?: string, location?: string) =>
+    photos.filter((photo) => photo.section === section
+      && photo.pass_index === passIndex
+      && photo.kind === kind
+      && (question == null || photo.question === question)
+      && (location == null || photo.entrance_location === location));
+  const areaRow = (area: string) => areas.find((item) => item.area === area) ?? null;
   return {
     id: row.id,
     created_at: row.created_at,
@@ -340,6 +603,88 @@ function reviewOutput(env: Env, row: ReviewRow, entrances: EntranceRow[], photos
     reviewer_role: role(row.mobility_aids),
     reviewer_avatar_url: row.avatar_key ? url(row.avatar_key) : null,
     reviewer_is_pseudonym: !row.display_name?.trim(),
+    schema_version: row.schema_version ?? 1,
+    persona: row.persona,
+    final_text: row.final_text,
+    final_photos: photoJson(env, photos.filter((photo) => photo.kind === "final")),
+    entrance_passes: row.schema_version === 2 ? entrancePassesJson(env, entrances, passPhotos) : [],
+    elevator_passes: elevators.map((pass) => ({
+      wide_entrance: pass.wide_entrance,
+      space_to_maneuver: pass.space_to_maneuver,
+      reachable_buttons: pass.reachable_buttons,
+      location: pass.location_text,
+      photos: photoJson(env, passPhotos("elevator", pass.pass_index, "section")),
+      evidence: {
+        wideEntrance: photoJson(env, passPhotos("elevator", pass.pass_index, "evidence", "wideEntrance")),
+        spaceToManeuver: photoJson(env, passPhotos("elevator", pass.pass_index, "evidence", "spaceToManeuver")),
+        reachableButtons: photoJson(env, passPhotos("elevator", pass.pass_index, "evidence", "reachableButtons")),
+      },
+    })),
+    toilet_passes: toilets.map((pass) => ({
+      door: pass.door,
+      seat: pass.seat,
+      grab_bars: pass.grab_bars,
+      space: pass.space,
+      sink: pass.sink,
+      emergency: pass.emergency,
+      location: pass.location_text,
+      photos: photoJson(env, passPhotos("toilet", pass.pass_index, "section")),
+      evidence: {
+        seat: photoJson(env, passPhotos("toilet", pass.pass_index, "evidence", "seat")),
+        grabBars: photoJson(env, passPhotos("toilet", pass.pass_index, "evidence", "grabBars")),
+        space: photoJson(env, passPhotos("toilet", pass.pass_index, "evidence", "space")),
+        sink: photoJson(env, passPhotos("toilet", pass.pass_index, "evidence", "sink")),
+        emergency: photoJson(env, passPhotos("toilet", pass.pass_index, "evidence", "emergency")),
+      },
+    })),
+    areas: {
+      pathways: areaJson(env, areaRow("pathways"), photos, "pathways"),
+      seating: areaJson(env, areaRow("seating"), photos, "seating"),
+      parking: areaJson(env, areaRow("parking"), photos, "parking"),
+    },
+    section_notes: sectionNotesJson(sectionNotes),
+  };
+}
+
+function sectionNotesJson(notes: SectionNoteRow[]) {
+  const text = (section: SectionName) => notes.find((note) => note.section === section)?.text ?? null;
+  return {
+    entrance: text("entrance"),
+    elevator: text("elevator"),
+    toilet: text("toilet"),
+    pathways: text("pathways"),
+    seating: text("seating"),
+    parking: text("parking"),
+  };
+}
+
+function entrancePassesJson(
+  env: Env,
+  entrances: EntranceRow[],
+  passPhotos: (section: string, passIndex: number, kind: string, question?: string, location?: string) => PhotoRow[],
+) {
+  const indexes = [...new Set(entrances.map((entrance) => entrance.pass_index ?? 0))].sort((a, b) => a - b);
+  return indexes.map((passIndex) => ({
+    photos: photoJson(env, passPhotos("entrance", passIndex, "section")),
+    points: entrances.filter((entrance) => (entrance.pass_index ?? 0) === passIndex).map((entrance) => ({
+      location: entrance.location,
+      tags: JSON.parse(entrance.tags || "[]") as string[],
+      ramp: entrance.ramp_answer,
+      handrail: entrance.handrail_answer,
+      evidence: {
+        ramp: photoJson(env, passPhotos("entrance", passIndex, "evidence", "ramp", entrance.location)),
+        handrail: photoJson(env, passPhotos("entrance", passIndex, "evidence", "handrail", entrance.location)),
+      },
+    })),
+  }));
+}
+
+function areaJson(env: Env, row: AreaRow | null, photos: PhotoRow[], section: string) {
+  if (!row) return null;
+  return {
+    answer: row.answer,
+    notices: JSON.parse(row.notices || "[]") as string[],
+    photos: photoJson(env, photos.filter((photo) => photo.section === section && photo.kind === "section")),
   };
 }
 
@@ -356,6 +701,10 @@ export async function handlePlaceReviews(request: Request, env: Env, encodedPlac
       row,
       related.entrances.filter((entrance) => entrance.review_id === row.id),
       related.photos.filter((photo) => photo.review_id === row.id),
+      related.elevators.filter((pass) => pass.review_id === row.id),
+      related.toilets.filter((pass) => pass.review_id === row.id),
+      related.areas.filter((area) => area.review_id === row.id),
+      related.sectionNotes.filter((note) => note.review_id === row.id),
     )),
   });
 }
@@ -366,8 +715,9 @@ export async function handleReviewPhotos(request: Request, env: Env, encodedPlac
   if (!placeId) return json({ status: "ok", placeId: null, photos: [] });
   const rows = await reviewRows(env, "r.place_id", placeId);
   const related = await relatedRows(env, rows.map((row) => row.id));
-  const label: Record<Facility, string> = {
+  const label: Record<string, string> = {
     lobby: "Lobby", basement: "Basement", elevator: "Elevator", toilet: "Toilet", exit_side: "Exit side", other: "Other",
+    pathways: "Outdoor Pathways", seating: "Seating", parking: "Accessible Parking", general: "Review",
   };
   return json({
     status: "ok",
@@ -394,22 +744,30 @@ export async function handleMyReviews(request: Request, env: Env, auth: Auth): P
   const reviews = rows.map((row) => {
     const entrances = related.entrances.filter((entry) => entry.review_id === row.id);
     const photos = related.photos.filter((entry) => entry.review_id === row.id);
+    const areas = related.areas.filter((entry) => entry.review_id === row.id);
     const features = new Set<string>();
     for (const entrance of entrances) {
-      if (entrance.has_dropoff_ramp === 1) features.add("Ramp");
-      if (entrance.has_rails === 1) features.add("Handrail");
-      if (entrance.door_type === "automatic") features.add("Automatic Doors");
-      if (entrance.door_type === "manual") features.add("Manual Doors");
+      const tags = JSON.parse(entrance.tags || "[]") as string[];
+      if (entrance.has_dropoff_ramp === 1 || tags.includes("ramp")) features.add("Ramp");
+      if (entrance.has_rails === 1 || tags.includes("handrail")) features.add("Handrail");
+      if (entrance.door_type === "automatic" || tags.includes("automatic_doors")) features.add("Automatic Doors");
+      if (entrance.door_type === "manual" || tags.includes("manual_doors")) features.add("Manual Doors");
+      if (tags.includes("security_assistance")) features.add("Security Assistance");
+      if (tags.includes("wheelchairs_available")) features.add("Wheelchairs Available");
+      if (tags.includes("disabled_parking")) features.add("Disabled Parking");
     }
     if (row.elevator_exists === 1) features.add("Elevator");
     if (row.has_disabled_toilet === 1) features.add("Toilet");
+    if (areas.some((area) => area.area === "pathways")) features.add("Outdoor Pathways");
+    if (areas.some((area) => area.area === "seating" && area.answer === "yes")) features.add("Seating");
+    if (areas.some((area) => area.area === "parking" && area.answer === "yes")) features.add("Accessible Parking");
     const photoUrls = photos.map((photo) => `${env.API_BASE_URL}/v1/media/${photo.object_key}`);
     return {
       id: row.id,
       placeId: row.place_id,
       placeName: row.place_name ?? "Place",
       createdAt: row.created_at,
-      reviewText: row.notes?.trim() || "No review notes written.",
+      reviewText: row.final_text?.trim() || row.notes?.trim() || "No review notes written.",
       providedFeatures: [...features],
       photoUrls,
       photoCaptions: photos.map((photo) => photo.caption),
@@ -443,6 +801,10 @@ export async function handleReviewById(
         row,
         related.entrances.filter((entrance) => entrance.review_id === reviewId),
         related.photos.filter((photo) => photo.review_id === reviewId),
+        related.elevators.filter((pass) => pass.review_id === reviewId),
+        related.toilets.filter((pass) => pass.review_id === reviewId),
+        related.areas.filter((area) => area.review_id === reviewId),
+        related.sectionNotes.filter((note) => note.review_id === reviewId),
       ),
     });
   }

@@ -47,11 +47,11 @@ enum ElevatorQuestion: String, CaseIterable {
         case (.spaceToManeuver, .wheelchair):
             "Could you turn your wheelchair freely inside?"
         case (.spaceToManeuver, .everyone):
-            "Could someone turn their wheelchair freely inside?"
+            "Could someone in a wheelchair turn freely inside?"
         case (.reachableButtons, .wheelchair):
             "Could you reach the control buttons from your wheelchair?"
         case (.reachableButtons, .everyone):
-            "Could someone in a wheelchair reach the control buttons?"
+            "Could you reach the control buttons from a seated position?"
         }
     }
 

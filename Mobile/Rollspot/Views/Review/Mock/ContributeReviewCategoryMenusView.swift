@@ -1,9 +1,17 @@
 import SwiftUI
 
+enum ContributeCategoryStatus: Equatable {
+    case inProgress
+    case complete
+}
+
 /// "Contribute Review Category Menus" — first step of the contribute wizard.
 struct ContributeReviewCategoryMenusView: View {
-    @Binding var selection: Set<ContributeReviewCategory>
+    let status: [ContributeReviewCategory: ContributeCategoryStatus]
+    let canContinue: Bool
+    var isSubmitting: Bool = false
     let onBack: () -> Void
+    let onOpen: (ContributeReviewCategory) -> Void
     let onContinue: () -> Void
 
     private let cardWidth: CGFloat = 181
@@ -42,7 +50,9 @@ struct ContributeReviewCategoryMenusView: View {
             }
 
             ContributeContinueButton(
-                isEnabled: !selection.isEmpty,
+                title: "Submit review",
+                isLoading: isSubmitting,
+                isEnabled: canContinue,
                 action: onContinue
             )
             .padding(.bottom, 8)
@@ -66,11 +76,9 @@ struct ContributeReviewCategoryMenusView: View {
 
     @ViewBuilder
     private func categoryCard(_ category: ContributeReviewCategory) -> some View {
-        let isSelected = selection.contains(category)
+        let cardStatus = status[category]
         Button {
-            withAnimation(.snappy(duration: 0.2)) {
-                if isSelected { selection.remove(category) } else { selection.insert(category) }
-            }
+            onOpen(category)
         } label: {
             ZStack(alignment: .topTrailing) {
                 VStack(spacing: 12) {
@@ -91,21 +99,24 @@ struct ContributeReviewCategoryMenusView: View {
                 .padding(.horizontal, 10)
                 .frame(width: cardWidth, height: cardHeight)
                 .background(
-                    isSelected ? Color.accentColor.opacity(0.12) : Color(.secondarySystemBackground),
+                    cardStatus == .complete ? Color.accentColor.opacity(0.12) : Color(.secondarySystemBackground),
                     in: RoundedRectangle(cornerRadius: 16, style: .continuous)
                 )
-                .overlay {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
-                }
 
-                if isSelected {
+                if cardStatus == .complete {
                     Image(systemName: "checkmark")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(width: 22, height: 22)
                         .background(Color.accentColor, in: Circle())
                         .offset(x: -6, y: 6)
+                } else if cardStatus == .inProgress {
+                    Circle()
+                        .trim(from: 0, to: 0.75)
+                        .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .frame(width: 18, height: 18)
+                        .offset(x: -8, y: 8)
                 }
             }
         }
@@ -138,12 +149,12 @@ struct ContributeReviewCategoryMenusView: View {
 }
 
 private struct ContributeReviewCategoryMenusPreview: View {
-    @State private var selection: Set<ContributeReviewCategory> = [.entrance]
-
     var body: some View {
         ContributeReviewCategoryMenusView(
-            selection: $selection,
+            status: [.entrance: .inProgress, .elevator: .complete],
+            canContinue: true,
             onBack: {},
+            onOpen: { _ in },
             onContinue: {}
         )
     }

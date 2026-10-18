@@ -1,5 +1,11 @@
 package app.rollspot.shared.reviews
 
+/** Wheelchair users see first-person questions. Everyone else sees the secondary wording. */
+enum class ContributePersona {
+    Wheelchair,
+    Secondary,
+}
+
 enum class ContributeHeroAsset {
     EntranceMall,
     Lobby,
@@ -48,13 +54,17 @@ object ContributeStepPresentation {
         ContributeStep.ToiletLocation,
         ContributeStep.ToiletAnother,
         -> "Accessible Toilets"
-        ContributeStep.FinalReview -> "Final Review"
         ContributeStep.Submitted -> ""
     }
 
     fun progressStep(step: ContributeStep): Int = when (step) {
         ContributeStep.CategoryPick -> 0
-        is ContributeStep.SupplementalNotes,
+        is ContributeStep.SupplementalNotes -> when (step.category) {
+            ContributeReviewCategory.Entrance -> 1
+            ContributeReviewCategory.Elevator -> 2
+            ContributeReviewCategory.Toilet -> 3
+            else -> 4
+        }
         ContributeStep.PathwayPhotos,
         ContributeStep.PathwayNotice,
         ContributeStep.SeatingPhotos,
@@ -79,7 +89,6 @@ object ContributeStepPresentation {
         ContributeStep.ToiletLocation,
         ContributeStep.ToiletAnother,
         -> 3
-        ContributeStep.FinalReview,
         ContributeStep.Submitted,
         -> 4
     }
@@ -131,7 +140,6 @@ object ContributeStepPresentation {
         ContributeStep.ToiletAnother,
         is ContributeStep.Toilet,
         -> ContributeHeroAsset.ToiletSurvey
-        ContributeStep.FinalReview,
         ContributeStep.Submitted,
         -> ContributeHeroAsset.None
     }
@@ -156,7 +164,39 @@ object ContributeStepPresentation {
         else -> null
     }
 
-    fun questionTitle(step: ContributeStep): String = when (step) {
+    fun questionTitle(step: ContributeStep): String =
+        questionTitle(step, ContributePersona.Wheelchair)
+
+    fun questionTitle(step: ContributeStep, persona: ContributePersona): String {
+        if (persona == ContributePersona.Secondary) {
+            secondaryQuestionTitle(step)?.let { return it }
+        }
+        return wheelchairQuestionTitle(step)
+    }
+
+    private fun secondaryQuestionTitle(step: ContributeStep): String? = when (step) {
+        is ContributeStep.EntranceRamp ->
+            "Could someone on a wheelchair go up the ramp without help?"
+        is ContributeStep.EntranceHandrail ->
+            "Could someone in a wheelchair reach and grip the handrail?"
+        is ContributeStep.Elevator -> when (step.question) {
+            ElevatorQuestion.WideEntrance -> "Could someone in a wheelchair enter the elevator?"
+            ElevatorQuestion.SpaceToManeuver -> "Could someone in a wheelchair turn freely inside?"
+            ElevatorQuestion.ReachableButtons ->
+                "Could you reach the control buttons from a seated position?"
+        }
+        is ContributeStep.Toilet -> when (step.question) {
+            ToiletSurveyQuestion.Space -> "Could someone in a wheelchair turn freely inside?"
+            ToiletSurveyQuestion.Sink ->
+                "Can someone in a wheelchair reach the sink faucet comfortably?"
+            ToiletSurveyQuestion.Emergency ->
+                "Could you reach the emergency aid from a seated or fallen position?"
+            else -> null
+        }
+        else -> null
+    }
+
+    private fun wheelchairQuestionTitle(step: ContributeStep): String = when (step) {
         ContributeStep.CategoryPick -> "Help make every visit easier"
         is ContributeStep.SupplementalNotes ->
             "Tell us about ${ContributeCategoryLabels.supplementalSectionTitle(step.category).lowercase()}"
@@ -198,7 +238,6 @@ object ContributeStepPresentation {
         }
         ContributeStep.ToiletAnother -> "Review another accessible toilet?"
         ContributeStep.ToiletLocation -> "Where is the accessible toilet?"
-        ContributeStep.FinalReview -> "Add notes and photos to support your review."
         ContributeStep.Submitted -> ""
     }
 
@@ -213,7 +252,7 @@ object ContributeStepPresentation {
         -> "(Optional)"
         ContributeStep.EntranceLocationPick -> "You can select multiple places"
         is ContributeStep.EntranceTags -> "You can select multiple answers"
-        is ContributeStep.SupplementalNotes -> "Add notes and photos for this area."
+        is ContributeStep.SupplementalNotes -> "(Optional)"
         ContributeStep.PathwayPhotos,
         ContributeStep.SeatingPhotos,
         ContributeStep.ParkingPhotos,

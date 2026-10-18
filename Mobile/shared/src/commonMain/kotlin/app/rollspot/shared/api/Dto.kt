@@ -130,6 +130,106 @@ data class ElevatorReport(
 @Serializable
 data class ToiletReport(val hasDisabledToilet: Boolean? = null, val review: ReviewNote? = null)
 
+/** One JPEG already uploaded, or `local:<fileId>` until [app.rollspot.shared.reviews.ReviewModel] replaces it. */
+@Serializable
+data class ContributionPhoto(
+    val url: String,
+    val caption: String = "",
+)
+
+@Serializable
+data class ContributionEntrancePoint(
+    val location: String,
+    val tags: List<String>,
+    val ramp: String? = null,
+    val handrail: String? = null,
+    val evidence: Map<String, List<ContributionPhoto>> = emptyMap(),
+)
+
+@Serializable
+data class ContributionEntrancePass(
+    val photos: List<ContributionPhoto> = emptyList(),
+    val points: List<ContributionEntrancePoint>,
+)
+
+@Serializable
+data class ContributionEntrance(
+    val passes: List<ContributionEntrancePass>,
+    val notes: String? = null,
+)
+
+@Serializable
+data class ContributionElevatorPass(
+    val photos: List<ContributionPhoto> = emptyList(),
+    val wideEntrance: String,
+    val spaceToManeuver: String? = null,
+    val reachableButtons: String? = null,
+    val location: String? = null,
+    val evidence: Map<String, List<ContributionPhoto>> = emptyMap(),
+)
+
+@Serializable
+data class ContributionElevator(
+    val passes: List<ContributionElevatorPass>,
+    val notes: String? = null,
+)
+
+@Serializable
+data class ContributionToiletPass(
+    val photos: List<ContributionPhoto> = emptyList(),
+    val door: String,
+    val seat: String,
+    val grabBars: String,
+    val space: String,
+    val sink: String,
+    val emergency: String,
+    val location: String? = null,
+    val evidence: Map<String, List<ContributionPhoto>> = emptyMap(),
+)
+
+@Serializable
+data class ContributionToilet(
+    val passes: List<ContributionToiletPass>,
+    val notes: String? = null,
+)
+
+@Serializable
+data class ContributionPathways(
+    val photos: List<ContributionPhoto> = emptyList(),
+    val notices: List<String>,
+    val notes: String? = null,
+)
+
+@Serializable
+data class ContributionAnswerArea(
+    val photos: List<ContributionPhoto> = emptyList(),
+    val answer: String,
+    val notes: String? = null,
+)
+
+@Serializable
+data class ContributionFinal(
+    val text: String? = null,
+    val photos: List<ContributionPhoto> = emptyList(),
+)
+
+/** Body of POST /v1/reviews version 2. Reuse [submissionId] when retrying. */
+@Serializable
+data class ContributionSubmission(
+    val version: Int = 2,
+    val submissionId: String,
+    val placeId: String,
+    /** wheelchair | secondary */
+    val persona: String,
+    val entrance: ContributionEntrance? = null,
+    val elevator: ContributionElevator? = null,
+    val toilet: ContributionToilet? = null,
+    val pathways: ContributionPathways? = null,
+    val seating: ContributionAnswerArea? = null,
+    val parking: ContributionAnswerArea? = null,
+    val final: ContributionFinal? = null,
+)
+
 /** Body of POST /v1/reviews. Reuse [submissionId] when retrying so the server never stores a duplicate. */
 @Serializable
 data class ReviewSubmission(

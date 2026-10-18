@@ -27,12 +27,7 @@ enum ToiletQuestion: String, CaseIterable, Identifiable, Hashable {
         case .doorKind:
             "What kind of door does the toilet have?"
         case .seat:
-            switch persona {
-            case .wheelchair:
-                "Is the toilet seat easy to transfer to from your wheelchair?"
-            case .everyone:
-                "Is the toilet seat easy to transfer to from a wheelchair?"
-            }
+            "Is the toilet seat easy to transfer to from your wheelchair?"
         case .grabBars:
             "Are the grab bars within reach of the toilet?"
         case .space:
@@ -40,21 +35,21 @@ enum ToiletQuestion: String, CaseIterable, Identifiable, Hashable {
             case .wheelchair:
                 "Could you turn your wheelchair freely inside?"
             case .everyone:
-                "Could someone turn their wheelchair freely inside?"
+                "Could someone in a wheelchair turn freely inside?"
             }
         case .sink:
             switch persona {
             case .wheelchair:
                 "Could you reach the sink?"
             case .everyone:
-                "Could someone in a wheelchair reach the sink?"
+                "Can someone in a wheelchair reach the sink faucet comfortably?"
             }
         case .emergency:
             switch persona {
             case .wheelchair:
                 "Could you reach the emergency aid from your wheelchair or fallen position?"
             case .everyone:
-                "Could someone reach the emergency aid from a seated or fallen position?"
+                "Could you reach the emergency aid from a seated or fallen position?"
             }
         }
     }

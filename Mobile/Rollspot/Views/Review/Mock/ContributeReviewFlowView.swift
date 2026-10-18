@@ -1,3 +1,4 @@
+import Shared
 import SwiftUI
 
 /// Fired when the backend accepts a contribute review — before the user taps Done.
@@ -7,8 +8,8 @@ struct ContributeReviewSubmission {
 }
 
 /// Contribute flow backed by the Cloudflare API, with local draft persistence.
-/// Primary-user (wheelchair) screen sequence. Question copy still follows
-/// `ReviewPersona`; the secondary-user flow is not built yet.
+/// Same screen sequence for wheelchair users and community contributors.
+/// Question titles follow `ReviewPersona`.
 struct ContributeReviewFlowView: View {
     let place: Place
     let startingFacility: FacilityKind?
@@ -24,8 +25,8 @@ struct ContributeReviewFlowView: View {
 
     @StateObject private var draft: ReviewDraft
 
-    @State private var selectedFacilities: Set<FacilityKind>
-    @State private var selectedCategories: Set<ContributeReviewCategory>
+    @State private var activeCategory: ContributeReviewCategory?
+    @State private var sectionStatus: [ContributeReviewCategory: ContributeCategoryStatus]
     @State private var supplementalNotes: [ContributeReviewCategory: ReviewNoteDraft]
     @State private var pathwayNotices: Set<String> = []
     @State private var seatingAnswer: String?
@@ -45,6 +46,12 @@ struct ContributeReviewFlowView: View {
     @State private var basementRampAnswer: String?
     @State private var lobbyHandrailAnswer: String?
     @State private var basementHandrailAnswer: String?
+    @State private var lobbyRampPhotos = ReviewNoteDraft()
+    @State private var lobbyHandrailPhotos = ReviewNoteDraft()
+    @State private var basementRampPhotos = ReviewNoteDraft()
+    @State private var basementHandrailPhotos = ReviewNoteDraft()
+    @State private var elevatorEvidence: [ElevatorQuestion: ReviewNoteDraft] = [:]
+    @State private var toiletEvidence: [ToiletQuestion: ReviewNoteDraft] = [:]
     @State private var completedEntrancePasses: [EntrancePassDraft] = []
     @State private var entranceAnotherAnswer: String?
     /// One answer per `ElevatorQuestion` — the elevator section asks these
@@ -84,18 +91,19 @@ struct ContributeReviewFlowView: View {
 
         let draft = ReviewDraft(placeId: place.reviewPlaceId, coordinate: place.coordinate, name: place.name)
         var startIndex = initialScreenIndex
-        var categories = Set<ContributeReviewCategory>()
-        var facilities = Set<FacilityKind>()
+        var restoredStatus: [ContributeReviewCategory: ContributeCategoryStatus] = [:]
         var entranceLocs = Set<EntranceLocation>()
         var lobbyTags = Set<ContributeTagOption>()
         var basementTags = Set<ContributeTagOption>()
         var elevTags = Set<ContributeTagOption>()
         var toiletTagsInit = Set<ContributeTagOption>()
+        var restoredNotes: [ContributeReviewCategory: ReviewNoteDraft] = [:]
 
         if !ignoreDraftRestore, let snap = UnfinishedReviewStore.snapshot(for: place) {
-            startIndex = snap.screenIndex
-            facilities = Set(snap.selectedFacilities.compactMap(FacilityKind.init(rawValue:)))
-            categories = Set(facilities.compactMap(ContributeReviewCategory.init(facilityKind:)))
+            if startingFacility != nil {
+                startIndex = snap.screenIndex
+            }
+            restoredStatus = Self.restoredSectionStatus(from: snap)
             entranceLocs = Set(snap.entranceLocations.compactMap(EntranceLocation.init(rawValue:)))
             lobbyTags = UnfinishedReviewStore.restoreTags(snap.lobbyEntranceTags, forEntrance: .lobby)
             basementTags = UnfinishedReviewStore.restoreTags(snap.basementEntranceTags, forEntrance: .basement)
@@ -105,17 +113,18 @@ struct ContributeReviewFlowView: View {
             draft.basement.review.text = snap.basementNote
             draft.elevator.review.text = snap.elevatorNote
             draft.toilet.review.text = snap.toiletNote
-        }
-
-        if let start = startingFacility, let cat = ContributeReviewCategory(facilityKind: start) {
-            categories = [cat]
-            facilities = [start]
+            for (raw, text) in snap.categoryNotes {
+                guard let category = ContributeReviewCategory(rawValue: raw) else { continue }
+                var note = ReviewNoteDraft()
+                note.text = text
+                restoredNotes[category] = note
+            }
         }
 
         _draft = StateObject(wrappedValue: draft)
-        _selectedFacilities = State(initialValue: facilities)
-        _selectedCategories = State(initialValue: categories)
-        _supplementalNotes = State(initialValue: [:])
+        _activeCategory = State(initialValue: nil)
+        _sectionStatus = State(initialValue: restoredStatus)
+        _supplementalNotes = State(initialValue: restoredNotes)
         _screenIndex = State(initialValue: startIndex)
         _entranceLocations = State(initialValue: entranceLocs)
         _lobbyEntranceTags = State(initialValue: lobbyTags)
@@ -124,12 +133,29 @@ struct ContributeReviewFlowView: View {
         _toiletTags = State(initialValue: toiletTagsInit)
     }
 
-    private var orderedFacilities: [FacilityKind] {
-        [FacilityKind.entrance, .elevator, .toilet].compactMap { kind in
-            guard let cat = ContributeReviewCategory(facilityKind: kind),
-                  selectedCategories.contains(cat) else { return nil }
-            return kind
+    private static func restoredSectionStatus(
+        from snap: UnfinishedReviewStore.Snapshot
+    ) -> [ContributeReviewCategory: ContributeCategoryStatus] {
+        var status: [ContributeReviewCategory: ContributeCategoryStatus] = [:]
+        for raw in snap.completedCategories {
+            if let category = ContributeReviewCategory(rawValue: raw) {
+                status[category] = .complete
+            }
         }
+        for raw in snap.inProgressCategories {
+            if let category = ContributeReviewCategory(rawValue: raw), status[category] != .complete {
+                status[category] = .inProgress
+            }
+        }
+        if snap.completedCategories.isEmpty && snap.inProgressCategories.isEmpty {
+            for raw in snap.selectedFacilities {
+                if let kind = FacilityKind(rawValue: raw),
+                   let category = ContributeReviewCategory(facilityKind: kind) {
+                    status[category] = .inProgress
+                }
+            }
+        }
+        return status
     }
 
     private enum FlowScreen: Equatable {
@@ -158,68 +184,63 @@ struct ContributeReviewFlowView: View {
         case supplementalNotes(ContributeReviewCategory)
         case facilityQuestion(FacilityKind)
         case facilityPhotos(FacilityKind)
-        case finalReview
+    }
+
+    private func sectionScreens(for category: ContributeReviewCategory) -> [FlowScreen] {
+        switch category {
+        case .entrance:
+            var list: [FlowScreen] = [.entranceSectionPhotos, .entranceLocation]
+            // Lobby before Basement when both are picked — matches
+            // EntranceLocation.allCases order.
+            for location in EntranceLocation.allCases where entranceLocations.contains(location) {
+                list.append(.entranceQuestion(location))
+                // Notes to DEV: Ramp and/or Handrail have a follow-up question.
+                // Every other tag only records whether it is present. Do not add extra screens for those yet.
+                let tags = entranceTags(for: location)
+                if tags.contains(where: { $0.label == "RAMP" }) {
+                    list.append(.entranceRampFollowup(location))
+                }
+                if tags.contains(where: { $0.label == "HANDRAIL" }) {
+                    list.append(.entranceHandrailFollowup(location))
+                }
+            }
+            list.append(.entranceAnother)
+            list.append(.supplementalNotes(.entrance))
+            return list
+        case .elevator:
+            var list: [FlowScreen] = [.elevatorPhotos, .elevatorQuestion(.wideEntrance)]
+            if elevatorAnswers[.wideEntrance] != "No" {
+                list.append(.elevatorQuestion(.spaceToManeuver))
+                list.append(.elevatorQuestion(.reachableButtons))
+            }
+            list.append(.elevatorLocation)
+            list.append(.elevatorAnother)
+            list.append(.supplementalNotes(.elevator))
+            return list
+        case .toilet:
+            var list: [FlowScreen] = [.toiletPhotos]
+            list.append(contentsOf: ToiletQuestion.allCases.map { .toiletQuestion($0) })
+            list.append(.toiletLocation)
+            list.append(.toiletAnother)
+            list.append(.supplementalNotes(.toilet))
+            return list
+        case .outdoorPathways:
+            return [.pathwayPhotos, .pathwayNotice, .supplementalNotes(.outdoorPathways)]
+        case .seating:
+            return [.seatingPhotos, .seatingQuestion, .supplementalNotes(.seating)]
+        case .parking:
+            return [.parkingPhotos, .parkingQuestion, .supplementalNotes(.parking)]
+        }
     }
 
     private var screens: [FlowScreen] {
-        var list: [FlowScreen] = []
-        if startingFacility == nil {
-            list.append(.category)
+        if let start = startingFacility, let category = ContributeReviewCategory(facilityKind: start) {
+            return sectionScreens(for: category)
         }
-        for kind in orderedFacilities {
-            switch kind {
-            case .entrance:
-                list.append(.entranceSectionPhotos)
-                list.append(.entranceLocation)
-                // Lobby before Basement when both are picked — matches
-                // EntranceLocation.allCases order.
-                for location in EntranceLocation.allCases where entranceLocations.contains(location) {
-                    list.append(.entranceQuestion(location))
-                    // Notes to DEV: Ramp and/or Handrail have a follow-up question.
-                    // Every other tag only records whether it is present. Do not add extra screens for those yet.
-                    let tags = entranceTags(for: location)
-                    if tags.contains(where: { $0.label == "RAMP" }) {
-                        list.append(.entranceRampFollowup(location))
-                    }
-                    if tags.contains(where: { $0.label == "HANDRAIL" }) {
-                        list.append(.entranceHandrailFollowup(location))
-                    }
-                }
-                list.append(.entranceAnother)
-            case .elevator:
-                list.append(.elevatorPhotos)
-                list.append(.elevatorQuestion(.wideEntrance))
-                if elevatorAnswers[.wideEntrance] != "No" {
-                    list.append(.elevatorQuestion(.spaceToManeuver))
-                    list.append(.elevatorQuestion(.reachableButtons))
-                }
-                list.append(.elevatorLocation)
-                list.append(.elevatorAnother)
-            case .toilet:
-                list.append(.toiletPhotos)
-                for question in ToiletQuestion.allCases {
-                    list.append(.toiletQuestion(question))
-                }
-                list.append(.toiletLocation)
-                list.append(.toiletAnother)
-            }
+        var list: [FlowScreen] = [.category]
+        if let activeCategory {
+            list.append(contentsOf: sectionScreens(for: activeCategory))
         }
-        for category in ContributeReviewCategory.supplemental where selectedCategories.contains(category) {
-            switch category {
-            case .outdoorPathways:
-                list.append(.pathwayPhotos)
-                list.append(.pathwayNotice)
-            case .seating:
-                list.append(.seatingPhotos)
-                list.append(.seatingQuestion)
-            case .parking:
-                list.append(.parkingPhotos)
-                list.append(.parkingQuestion)
-            case .entrance, .elevator, .toilet:
-                list.append(.supplementalNotes(category))
-            }
-        }
-        list.append(.finalReview)
         return list
     }
 
@@ -231,7 +252,8 @@ struct ContributeReviewFlowView: View {
 
     private var hasProgress: Bool {
         screenIndex > 0
-            || !selectedCategories.isEmpty
+            || activeCategory != nil
+            || !sectionStatus.isEmpty
             || supplementalNotes.values.contains(where: { !$0.text.isEmpty || !$0.photos.isEmpty })
             || !pathwayNotices.isEmpty
             || seatingAnswer != nil
@@ -328,17 +350,13 @@ struct ContributeReviewFlowView: View {
         switch screen {
         case .category:
             ContributeReviewCategoryMenusView(
-                selection: $selectedCategories,
+                status: sectionStatus,
+                canContinue: sectionStatus.values.contains(.complete),
+                isSubmitting: isSubmitting,
                 onBack: requestExit,
-                onContinue: {
-                    selectedFacilities = Set(orderedFacilities)
-                    goNext()
-                }
+                onOpen: openCategory,
+                onContinue: { Task { await submit() } }
             )
-            .onChange(of: selectedCategories) { _, _ in
-                selectedFacilities = Set(orderedFacilities)
-                clampScreenIndex()
-            }
         case .pathwayPhotos:
             ContributeEntrancePhotosStepView(
                 navTitle: "Outdoor Pathways",
@@ -414,11 +432,20 @@ struct ContributeReviewFlowView: View {
         case .supplementalNotes(let category):
             ContributePhotosNotesStepView(
                 facilityName: category.menuTitle,
-                navTitle: category.menuTitle,
+                navTitle: "Tell us about the \(category.menuTitle.lowercased())",
                 progress: progress(for: screen),
                 note: supplementalNoteBinding(for: category),
+                showsPhotos: false,
+                continueTitle: startingFacility == nil ? "Continue" : "Submit",
+                isSubmitting: isSubmitting,
                 onBack: goBackOneStep,
-                onContinue: goNext
+                onContinue: {
+                    if startingFacility == nil {
+                        goNext()
+                    } else {
+                        Task { await submit() }
+                    }
+                }
             )
         case .entranceSectionPhotos:
             ContributeEntrancePhotosStepView(
@@ -465,7 +492,8 @@ struct ContributeReviewFlowView: View {
                 options: ReviewQuestionCopy.rampOptions(for: reviewPersona),
                 photoRevealOption: "Not sure",
                 selection: rampAnswerBinding(for: location),
-                note: entranceNoteBinding(for: location),
+                note: rampPhotosBinding(for: location),
+                photoLimit: evidencePhotoLimit(currentCount: rampPhotos(for: location).photos.count, totalCount: entranceEvidenceCount),
                 stepNumber: 1,
                 subStepProgress: subProgress(for: screen),
                 loopingVideoName: "ENTRANCE_RAMP",
@@ -490,7 +518,8 @@ struct ContributeReviewFlowView: View {
                 options: ReviewQuestionCopy.handrailOptions,
                 photoRevealOption: "Not sure",
                 selection: handrailAnswerBinding(for: location),
-                note: entranceNoteBinding(for: location),
+                note: handrailPhotosBinding(for: location),
+                photoLimit: evidencePhotoLimit(currentCount: handrailPhotos(for: location).photos.count, totalCount: entranceEvidenceCount),
                 stepNumber: 1,
                 subStepProgress: subProgress(for: screen),
                 loopingVideoName: "ENTRANCE_HANDRAIL",
@@ -553,7 +582,11 @@ struct ContributeReviewFlowView: View {
                 options: ReviewQuestionCopy.elevatorOptions,
                 photoRevealOption: "Not Sure",
                 selection: elevatorAnswerBinding(for: question),
-                note: Binding(get: { draft.elevator.review }, set: { draft.elevator.review = $0 }),
+                note: elevatorEvidenceBinding(for: question),
+                photoLimit: evidencePhotoLimit(
+                    currentCount: elevatorEvidence[question]?.photos.count ?? 0,
+                    totalCount: elevatorEvidence.values.reduce(0) { $0 + $1.photos.count }
+                ),
                 stepNumber: 2,
                 subStepProgress: subProgress(for: screen),
                 loopingVideoName: question.loopingVideoName,
@@ -620,7 +653,11 @@ struct ContributeReviewFlowView: View {
                 options: question.options(for: reviewPersona),
                 photoRevealOption: question.photoRevealOption(for: reviewPersona) ?? "",
                 selection: toiletAnswerBinding(for: question),
-                note: Binding(get: { draft.toilet.review }, set: { draft.toilet.review = $0 }),
+                note: toiletEvidenceBinding(for: question),
+                photoLimit: evidencePhotoLimit(
+                    currentCount: toiletEvidence[question]?.photos.count ?? 0,
+                    totalCount: toiletEvidence.values.reduce(0) { $0 + $1.photos.count }
+                ),
                 stepNumber: 3,
                 subStepProgress: subProgress(for: screen),
                 loopingVideoName: question.loopingVideoName,
@@ -685,27 +722,59 @@ struct ContributeReviewFlowView: View {
                 onBack: goBackOneStep,
                 onContinue: goNext
             )
-        case .finalReview:
-            ContributePhotosNotesStepView(
-                facilityName: "Review",
-                navTitle: "Final Review",
-                progress: progress(for: screen),
-                note: finalReviewNoteBinding(),
-                remainingPhotoSlots: max(0, ReviewNoteDraft.maxPhotos - draft.allReviewPhotos.count),
-                isLastStep: true,
-                isSubmitting: isSubmitting,
-                onBack: goBackOneStep,
-                onContinue: {
-                    Task { await submit() }
-                }
-            )
         }
     }
 
     private func goNext() {
         persistIfNeeded()
+        if startingFacility == nil, let screen = screens[safe: screenIndex], isSectionTerminal(screen) {
+            finishActiveSection()
+            return
+        }
         screenIndex += 1
         clampScreenIndex()
+    }
+
+    private func isSectionTerminal(_ screen: FlowScreen) -> Bool {
+        switch screen {
+        case .supplementalNotes:
+            true
+        default:
+            false
+        }
+    }
+
+    private func openCategory(_ category: ContributeReviewCategory) {
+        activeCategory = category
+        if let index = screens.firstIndex(where: { $0 != .category }) {
+            screenIndex = index
+        }
+        persistIfNeeded()
+    }
+
+    private func finishActiveSection() {
+        guard let activeCategory else { return }
+        sectionStatus[activeCategory] = .complete
+        self.activeCategory = nil
+        screenIndex = 0
+        persistIfNeeded()
+    }
+
+    private func leaveActiveSection() {
+        guard let activeCategory else { return }
+        sectionStatus[activeCategory] = .inProgress
+        self.activeCategory = nil
+        screenIndex = 0
+        persistIfNeeded()
+    }
+
+    private func openCategoryNotes() {
+        if let index = screens.firstIndex(where: {
+            if case .supplementalNotes = $0 { return true }
+            return false
+        }) {
+            screenIndex = index
+        }
     }
 
     /// Keeps `screenIndex` valid when `screens` shrinks (branching answers,
@@ -736,6 +805,10 @@ struct ContributeReviewFlowView: View {
             restoreLastToiletPass()
             return
         }
+        if startingFacility == nil, previous == .category {
+            leaveActiveSection()
+            return
+        }
         screenIndex -= 1
         persistIfNeeded()
     }
@@ -751,6 +824,10 @@ struct ContributeReviewFlowView: View {
             && basementHandrailAnswer == nil
             && draft.lobby.review.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && draft.lobby.review.photos.isEmpty
+            && lobbyRampPhotos.photos.isEmpty
+            && lobbyHandrailPhotos.photos.isEmpty
+            && basementRampPhotos.photos.isEmpty
+            && basementHandrailPhotos.photos.isEmpty
             && draft.basement.review.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && draft.basement.review.photos.isEmpty
             && draft.lobby.hasDropoffRamp == nil
@@ -772,6 +849,10 @@ struct ContributeReviewFlowView: View {
                 basementRampAnswer: basementRampAnswer,
                 lobbyHandrailAnswer: lobbyHandrailAnswer,
                 basementHandrailAnswer: basementHandrailAnswer,
+                lobbyRampPhotos: lobbyRampPhotos.photos,
+                lobbyHandrailPhotos: lobbyHandrailPhotos.photos,
+                basementRampPhotos: basementRampPhotos.photos,
+                basementHandrailPhotos: basementHandrailPhotos.photos,
                 lobby: draft.lobby,
                 basement: draft.basement
             )
@@ -784,6 +865,10 @@ struct ContributeReviewFlowView: View {
         basementRampAnswer = nil
         lobbyHandrailAnswer = nil
         basementHandrailAnswer = nil
+        lobbyRampPhotos = ReviewNoteDraft()
+        lobbyHandrailPhotos = ReviewNoteDraft()
+        basementRampPhotos = ReviewNoteDraft()
+        basementHandrailPhotos = ReviewNoteDraft()
         entranceAnotherAnswer = nil
         draft.lobby = EntranceDraft(location: .lobby)
         draft.basement = EntranceDraft(location: .basement)
@@ -791,9 +876,8 @@ struct ContributeReviewFlowView: View {
             if let index = screens.firstIndex(of: .entranceSectionPhotos) {
                 screenIndex = index
             }
-        } else if let index = screens.firstIndex(of: .entranceAnother) {
-            screenIndex = index + 1
-            clampScreenIndex()
+        } else {
+            openCategoryNotes()
         }
         persistIfNeeded()
     }
@@ -808,6 +892,10 @@ struct ContributeReviewFlowView: View {
         basementRampAnswer = last.basementRampAnswer
         lobbyHandrailAnswer = last.lobbyHandrailAnswer
         basementHandrailAnswer = last.basementHandrailAnswer
+        lobbyRampPhotos.photos = last.lobbyRampPhotos
+        lobbyHandrailPhotos.photos = last.lobbyHandrailPhotos
+        basementRampPhotos.photos = last.basementRampPhotos
+        basementHandrailPhotos.photos = last.basementHandrailPhotos
         entranceAnotherAnswer = nil
         draft.lobby = last.lobby
         draft.basement = last.basement
@@ -821,6 +909,7 @@ struct ContributeReviewFlowView: View {
         elevatorAnswers.isEmpty
             && draft.elevator.review.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && draft.elevator.review.photos.isEmpty
+            && elevatorEvidence.values.allSatisfy(\.photos.isEmpty)
     }
 
     private func chooseAnotherElevator(_ answer: String) {
@@ -828,19 +917,20 @@ struct ContributeReviewFlowView: View {
             ElevatorPassDraft(
                 answers: elevatorAnswers,
                 location: draft.elevator.review.text,
-                photos: draft.elevator.review.photos
+                photos: draft.elevator.review.photos,
+                evidence: elevatorEvidence.mapValues(\.photos)
             )
         )
         elevatorAnswers = [:]
         elevatorAnotherAnswer = nil
+        elevatorEvidence = [:]
         draft.elevator.review = ReviewNoteDraft()
         if answer == "Yes" {
             if let index = screens.firstIndex(of: .elevatorPhotos) {
                 screenIndex = index
             }
-        } else if let index = screens.firstIndex(of: .elevatorAnother) {
-            screenIndex = index + 1
-            clampScreenIndex()
+        } else {
+            openCategoryNotes()
         }
         applyElevatorMapping()
         persistIfNeeded()
@@ -852,6 +942,11 @@ struct ContributeReviewFlowView: View {
         elevatorAnotherAnswer = nil
         draft.elevator.review.text = last.location
         draft.elevator.review.photos = last.photos
+        elevatorEvidence = last.evidence.mapValues { photos in
+            var note = ReviewNoteDraft()
+            note.photos = photos
+            return note
+        }
         if let index = screens.firstIndex(of: .elevatorAnother) {
             screenIndex = index
         }
@@ -863,6 +958,7 @@ struct ContributeReviewFlowView: View {
         toiletAnswers.isEmpty
             && toiletLocationNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && draft.toilet.review.photos.isEmpty
+            && toiletEvidence.values.allSatisfy(\.photos.isEmpty)
     }
 
     private func chooseAnotherToilet(_ answer: String) {
@@ -870,20 +966,21 @@ struct ContributeReviewFlowView: View {
             ToiletPassDraft(
                 answers: toiletAnswers,
                 location: toiletLocationNote,
-                photos: draft.toilet.review.photos
+                photos: draft.toilet.review.photos,
+                evidence: toiletEvidence.mapValues(\.photos)
             )
         )
         toiletAnswers = [:]
         toiletLocationNote = ""
         toiletAnotherAnswer = nil
+        toiletEvidence = [:]
         draft.toilet.review.photos = []
         if answer == "Yes" {
             if let index = screens.firstIndex(of: .toiletPhotos) {
                 screenIndex = index
             }
-        } else if let index = screens.firstIndex(of: .toiletAnother) {
-            screenIndex = index + 1
-            clampScreenIndex()
+        } else {
+            openCategoryNotes()
         }
         applyToiletTagsFromPasses()
         persistIfNeeded()
@@ -895,6 +992,11 @@ struct ContributeReviewFlowView: View {
         toiletLocationNote = last.location
         toiletAnotherAnswer = nil
         draft.toilet.review.photos = last.photos
+        toiletEvidence = last.evidence.mapValues { photos in
+            var note = ReviewNoteDraft()
+            note.photos = photos
+            return note
+        }
         if let index = screens.firstIndex(of: .toiletAnother) {
             screenIndex = index
         }
@@ -916,13 +1018,19 @@ struct ContributeReviewFlowView: View {
             place: place,
             startingFacility: startingFacility,
             screenIndex: screenIndex,
-            selectedFacilities: selectedFacilities,
+            selectedFacilities: Set(sectionStatus.keys.compactMap(\.facilityKind)),
             entranceLocations: entranceLocations,
             lobbyEntranceTags: lobbyEntranceTags,
             basementEntranceTags: basementEntranceTags,
             elevatorTags: elevatorTags,
             toiletTags: toiletTags,
-            draft: draft
+            draft: draft,
+            completedCategories: sectionStatus.compactMap { $0.value == .complete ? $0.key.rawValue : nil },
+            inProgressCategories: sectionStatus.compactMap { $0.value == .inProgress ? $0.key.rawValue : nil },
+            categoryNotes: supplementalNotes.reduce(into: [:]) { notes, item in
+                let text = item.value.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !text.isEmpty { notes[item.key.rawValue] = text }
+            }
         )
     }
 
@@ -935,24 +1043,30 @@ struct ContributeReviewFlowView: View {
     }
 
     private func subProgress(for screen: FlowScreen) -> CGFloat {
-        let stepNumber: Int = switch screen {
-        case .category, .entranceSectionPhotos, .entranceLocation, .entranceQuestion, .entranceRampFollowup, .entranceHandrailFollowup, .entranceAnother, .entrancePhotos: 1
-        case .elevatorPhotos, .elevatorQuestion, .elevatorLocation, .elevatorAnother: 2
-        case .toiletPhotos, .toiletQuestion, .toiletLocation, .toiletAnother: 3
-        case .pathwayPhotos, .pathwayNotice, .seatingPhotos, .seatingQuestion, .parkingPhotos, .parkingQuestion, .facilityQuestion, .facilityPhotos, .supplementalNotes, .finalReview: 4
-        }
-
-        let stepScreens = screens.filter { s in
-            switch s {
-            case .category, .entranceSectionPhotos, .entranceLocation, .entranceQuestion, .entranceRampFollowup, .entranceHandrailFollowup, .entranceAnother, .entrancePhotos: stepNumber == 1
-            case .elevatorPhotos, .elevatorQuestion, .elevatorLocation, .elevatorAnother: stepNumber == 2
-            case .toiletPhotos, .toiletQuestion, .toiletLocation, .toiletAnother: stepNumber == 3
-            case .pathwayPhotos, .pathwayNotice, .seatingPhotos, .seatingQuestion, .parkingPhotos, .parkingQuestion, .facilityQuestion, .facilityPhotos, .supplementalNotes, .finalReview: stepNumber == 4
-            }
-        }
-
+        let stepNumber = progressBucket(for: screen)
+        let stepScreens = screens.filter { progressBucket(for: $0) == stepNumber }
         guard let idx = stepScreens.firstIndex(of: screen), !stepScreens.isEmpty else { return 0.35 }
         return CGFloat(idx + 1) / CGFloat(stepScreens.count)
+    }
+
+    private func progressBucket(for screen: FlowScreen) -> Int {
+        switch screen {
+        case .category, .entranceSectionPhotos, .entranceLocation, .entranceQuestion, .entranceRampFollowup, .entranceHandrailFollowup, .entranceAnother, .entrancePhotos:
+            1
+        case .elevatorPhotos, .elevatorQuestion, .elevatorLocation, .elevatorAnother:
+            2
+        case .toiletPhotos, .toiletQuestion, .toiletLocation, .toiletAnother:
+            3
+        case .pathwayPhotos, .pathwayNotice, .seatingPhotos, .seatingQuestion, .parkingPhotos, .parkingQuestion, .facilityQuestion, .facilityPhotos:
+            4
+        case .supplementalNotes(let category):
+            switch category {
+            case .entrance: 1
+            case .elevator: 2
+            case .toilet: 3
+            case .outdoorPathways, .seating, .parking: 4
+            }
+        }
     }
 
     private func questionTitle(for kind: FacilityKind) -> String {
@@ -992,23 +1106,82 @@ struct ContributeReviewFlowView: View {
     }
 
     private func rampAnswerBinding(for location: EntranceLocation) -> Binding<String?> {
-        switch location {
-        case .lobby: $lobbyRampAnswer
-        case .basement: $basementRampAnswer
-        }
+        Binding(
+            get: { location == .lobby ? lobbyRampAnswer : basementRampAnswer },
+            set: { newValue in
+                if location == .lobby {
+                    lobbyRampAnswer = newValue
+                    if newValue != "Not sure" { lobbyRampPhotos = ReviewNoteDraft() }
+                } else {
+                    basementRampAnswer = newValue
+                    if newValue != "Not sure" { basementRampPhotos = ReviewNoteDraft() }
+                }
+            }
+        )
     }
 
     private func handrailAnswerBinding(for location: EntranceLocation) -> Binding<String?> {
-        switch location {
-        case .lobby: $lobbyHandrailAnswer
-        case .basement: $basementHandrailAnswer
-        }
+        Binding(
+            get: { location == .lobby ? lobbyHandrailAnswer : basementHandrailAnswer },
+            set: { newValue in
+                if location == .lobby {
+                    lobbyHandrailAnswer = newValue
+                    if newValue != "Not sure" { lobbyHandrailPhotos = ReviewNoteDraft() }
+                } else {
+                    basementHandrailAnswer = newValue
+                    if newValue != "Not sure" { basementHandrailPhotos = ReviewNoteDraft() }
+                }
+            }
+        )
+    }
+
+    private func rampPhotos(for location: EntranceLocation) -> ReviewNoteDraft {
+        location == .lobby ? lobbyRampPhotos : basementRampPhotos
+    }
+
+    private func handrailPhotos(for location: EntranceLocation) -> ReviewNoteDraft {
+        location == .lobby ? lobbyHandrailPhotos : basementHandrailPhotos
+    }
+
+    private func rampPhotosBinding(for location: EntranceLocation) -> Binding<ReviewNoteDraft> {
+        location == .lobby ? $lobbyRampPhotos : $basementRampPhotos
+    }
+
+    private func handrailPhotosBinding(for location: EntranceLocation) -> Binding<ReviewNoteDraft> {
+        location == .lobby ? $lobbyHandrailPhotos : $basementHandrailPhotos
+    }
+
+    private var entranceEvidenceCount: Int {
+        lobbyRampPhotos.photos.count + lobbyHandrailPhotos.photos.count
+            + basementRampPhotos.photos.count + basementHandrailPhotos.photos.count
+    }
+
+    /// Absolute cap for one box: its current photos plus whatever remains of the pass limit of 3.
+    private func evidencePhotoLimit(currentCount: Int, totalCount: Int) -> Int {
+        currentCount + max(0, 3 - totalCount)
     }
 
     private func elevatorAnswerBinding(for question: ElevatorQuestion) -> Binding<String?> {
         Binding(
             get: { elevatorAnswers[question] },
-            set: { elevatorAnswers[question] = $0 }
+            set: { newValue in
+                elevatorAnswers[question] = newValue
+                if newValue != "Not Sure" { elevatorEvidence[question] = ReviewNoteDraft() }
+            }
+        )
+    }
+
+    private func elevatorEvidenceBinding(for question: ElevatorQuestion) -> Binding<ReviewNoteDraft> {
+        Binding(
+            get: { elevatorEvidence[question] ?? ReviewNoteDraft() },
+            set: { elevatorEvidence[question] = $0 }
+        )
+    }
+
+    private func toiletEvidenceBinding(for question: ToiletQuestion) -> Binding<ReviewNoteDraft> {
+        Binding(
+            get: { toiletEvidence[question] ?? ReviewNoteDraft() },
+            set: { toiletEvidence[question] = $0 }
         )
     }
 
@@ -1048,126 +1221,6 @@ struct ContributeReviewFlowView: View {
             Binding(get: { draft.elevator.review }, set: { draft.elevator.review = $0 })
         case .toilet:
             Binding(get: { draft.toilet.review }, set: { draft.toilet.review = $0 })
-        }
-    }
-
-    /// Final Review shows every photo from earlier steps in one strip while
-    /// keeping per-facility ownership for submit. New photos land on the
-    /// last facility the user actually contributed to in this flow.
-    private func finalReviewNoteBinding() -> Binding<ReviewNoteDraft> {
-        Binding(
-            get: {
-                var merged = ReviewNoteDraft()
-                merged.text = draft.toilet.review.text
-                merged.photos = draft.allReviewPhotos + seatingNote.photos + parkingNote.photos
-                return merged
-            },
-            set: { newValue in
-                let facilityPhotos = draft.allReviewPhotos
-                let seatingPhotos = seatingNote.photos
-                let parkingPhotos = parkingNote.photos
-                let facilityIDs = Set(facilityPhotos.map(\.id))
-                let seatingIDs = Set(seatingPhotos.map(\.id))
-                let parkingIDs = Set(parkingPhotos.map(\.id))
-                let newIDs = Set(newValue.photos.map(\.id))
-
-                draft.toilet.review.text = newValue.text
-
-                for id in facilityIDs.subtracting(newIDs) {
-                    draft.removeReviewPhoto(id: id)
-                }
-                for id in seatingIDs.subtracting(newIDs) {
-                    seatingNote.removePhoto(id: id)
-                }
-                for id in parkingIDs.subtracting(newIDs) {
-                    parkingNote.removePhoto(id: id)
-                }
-
-                for photo in newValue.photos {
-                    if facilityIDs.contains(photo.id) {
-                        draft.updateReviewPhotoCaption(id: photo.id, caption: photo.caption)
-                    }
-                    if seatingIDs.contains(photo.id) {
-                        seatingNote.updatePhotoCaption(id: photo.id, caption: photo.caption)
-                    }
-                    if parkingIDs.contains(photo.id) {
-                        parkingNote.updatePhotoCaption(id: photo.id, caption: photo.caption)
-                    }
-                }
-
-                for photo in newValue.photos where !facilityIDs.contains(photo.id) && !seatingIDs.contains(photo.id) && !parkingIDs.contains(photo.id) {
-                    appendFinalReviewPhoto(photo)
-                }
-            }
-        )
-    }
-
-    /// Last facility in the walk that carries any structured answers, notes,
-    /// or photos — where Final Review additions should be filed.
-    private var lastContributedFacility: FacilityKind {
-        for kind in orderedFacilities.reversed() {
-            if facilityHasContribution(kind) { return kind }
-        }
-        return orderedFacilities.last ?? .toilet
-    }
-
-    private func facilityHasContribution(_ kind: FacilityKind) -> Bool {
-        switch kind {
-        case .entrance:
-            if !completedEntrancePasses.isEmpty { return true }
-            return entranceLocations.contains { location in
-                let entrance = location == .lobby ? draft.lobby : draft.basement
-                return !entranceTags(for: location).isEmpty
-                    || !entrance.review.text.isEmpty
-                    || !entrance.review.photos.isEmpty
-                    || entrance.hasDropoffRamp != nil
-                    || entrance.hasRails != nil
-                    || entrance.doorType != nil
-            }
-        case .elevator:
-            return !elevatorAnswers.isEmpty
-                || !completedElevatorPasses.isEmpty
-                || !draft.elevator.review.text.isEmpty
-                || !draft.elevator.review.photos.isEmpty
-                || draft.elevator.exists != nil
-                || draft.elevator.wheelchairAccessible != nil
-        case .toilet:
-            return !toiletAnswers.isEmpty
-                || !completedToiletPasses.isEmpty
-                || !toiletLocationNote.isEmpty
-                || !toiletTags.isEmpty
-                || !draft.toilet.review.text.isEmpty
-                || !draft.toilet.review.photos.isEmpty
-                || draft.toilet.hasDisabledToilet != nil
-        }
-    }
-
-    private var lastContributedEntranceLocation: EntranceLocation {
-        for location in EntranceLocation.allCases.reversed() where entranceLocations.contains(location) {
-            let entrance = location == .lobby ? draft.lobby : draft.basement
-            if !entranceTags(for: location).isEmpty
-                || !entrance.review.text.isEmpty
-                || !entrance.review.photos.isEmpty
-                || entrance.hasDropoffRamp != nil
-                || entrance.hasRails != nil
-                || entrance.doorType != nil {
-                return location
-            }
-        }
-        return entranceLocations.sorted { $0.rawValue < $1.rawValue }.last ?? .lobby
-    }
-
-    private func appendFinalReviewPhoto(_ photo: ReviewPhotoDraft) {
-        switch lastContributedFacility {
-        case .entrance:
-            switch lastContributedEntranceLocation {
-            case .lobby: draft.lobby.review.photos.append(photo)
-            case .basement: draft.basement.review.photos.append(photo)
-            }
-        case .elevator:
-            draft.elevator.review.photos.append(photo)
-        case .toilet:
-            draft.toilet.review.photos.append(photo)
         }
     }
 
@@ -1244,7 +1297,8 @@ struct ContributeReviewFlowView: View {
                 ElevatorPassDraft(
                     answers: elevatorAnswers,
                     location: draft.elevator.review.text,
-                    photos: draft.elevator.review.photos
+                    photos: draft.elevator.review.photos,
+                    evidence: elevatorEvidence.mapValues(\.photos)
                 )
             )
         }
@@ -1291,6 +1345,10 @@ struct ContributeReviewFlowView: View {
                     basementRampAnswer: basementRampAnswer,
                     lobbyHandrailAnswer: lobbyHandrailAnswer,
                     basementHandrailAnswer: basementHandrailAnswer,
+                    lobbyRampPhotos: lobbyRampPhotos.photos,
+                    lobbyHandrailPhotos: lobbyHandrailPhotos.photos,
+                    basementRampPhotos: basementRampPhotos.photos,
+                    basementHandrailPhotos: basementHandrailPhotos.photos,
                     lobby: draft.lobby,
                     basement: draft.basement
                 )
@@ -1347,7 +1405,8 @@ struct ContributeReviewFlowView: View {
                 ToiletPassDraft(
                     answers: toiletAnswers,
                     location: toiletLocationNote,
-                    photos: draft.toilet.review.photos
+                    photos: draft.toilet.review.photos,
+                    evidence: toiletEvidence.mapValues(\.photos)
                 )
             )
         }
@@ -1426,7 +1485,10 @@ struct ContributeReviewFlowView: View {
     private func toiletAnswerBinding(for question: ToiletQuestion) -> Binding<String?> {
         Binding(
             get: { toiletAnswers[question] },
-            set: { toiletAnswers[question] = $0 }
+            set: { newValue in
+                toiletAnswers[question] = newValue
+                if newValue != "Not sure" { toiletEvidence[question] = ReviewNoteDraft() }
+            }
         )
     }
 
@@ -1439,43 +1501,78 @@ struct ContributeReviewFlowView: View {
         // Free-text toilet location note is kept in toiletLocationNote, not auto-populated into main review text
     }
 
-    private func appendSupplementalNotesToDraft() {
-        var blocks: [String] = []
-        for category in ContributeReviewCategory.supplemental {
-            if category == .outdoorPathways, !pathwayNotices.isEmpty {
-                let noticed = ContributePathwayNoticeStepView.options.filter { pathwayNotices.contains($0) }
-                blocks.append("[Outdoor Pathways]\nNoticed: \(noticed.joined(separator: ", "))")
-            }
-            if category == .seating || category == .parking { continue }
-            guard let note = supplementalNotes[category], !note.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
-            blocks.append("[\(category.menuTitle)]\n\(note.text.trimmingCharacters(in: .whitespacesAndNewlines))")
+    private func categoryNotesForSubmit() -> [String: String] {
+        var notes: [String: String] = [:]
+        for category in ContributeReviewCategory.allCases {
+            let text = supplementalNotes[category]?.text.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !text.isEmpty { notes[category.rawValue] = text }
         }
-        if let answer = seatingAnswer {
-            blocks.append("[Seating]\nWheelchair friendly seating: \(answer)")
+        return notes
+    }
+
+    private func assembledContribution() -> AssembledContribution {
+        var passes = completedEntrancePasses
+        if !currentEntrancePassIsEmpty {
+            passes.append(
+                EntrancePassDraft(
+                    sectionPhotos: entranceSectionPhotos.photos,
+                    locations: entranceLocations,
+                    lobbyTags: lobbyEntranceTags,
+                    basementTags: basementEntranceTags,
+                    lobbyRampAnswer: lobbyRampAnswer,
+                    basementRampAnswer: basementRampAnswer,
+                    lobbyHandrailAnswer: lobbyHandrailAnswer,
+                    basementHandrailAnswer: basementHandrailAnswer,
+                    lobbyRampPhotos: lobbyRampPhotos.photos,
+                    lobbyHandrailPhotos: lobbyHandrailPhotos.photos,
+                    basementRampPhotos: basementRampPhotos.photos,
+                    basementHandrailPhotos: basementHandrailPhotos.photos,
+                    lobby: draft.lobby,
+                    basement: draft.basement
+                )
+            )
         }
-        if let answer = parkingAnswer {
-            blocks.append("[Parking]\nAccessible parking: \(answer)")
+        var elevators = completedElevatorPasses
+        if !currentElevatorPassIsEmpty {
+            elevators.append(
+                ElevatorPassDraft(
+                    answers: elevatorAnswers,
+                    location: draft.elevator.review.text,
+                    photos: draft.elevator.review.photos,
+                    evidence: elevatorEvidence.mapValues(\.photos)
+                )
+            )
         }
-        if !blocks.isEmpty {
-            let prefix = blocks.joined(separator: "\n\n")
-            if draft.toilet.review.text.isEmpty {
-                draft.toilet.review.text = prefix
-            } else {
-                draft.toilet.review.text = "\(prefix)\n\n\(draft.toilet.review.text)"
-            }
+        var toilets = completedToiletPasses
+        if !currentToiletPassIsEmpty {
+            toilets.append(
+                ToiletPassDraft(
+                    answers: toiletAnswers,
+                    location: toiletLocationNote,
+                    photos: draft.toilet.review.photos,
+                    evidence: toiletEvidence.mapValues(\.photos)
+                )
+            )
         }
-        let existingIDs = Set(draft.toilet.review.photos.map(\.id))
-        draft.toilet.review.photos.append(contentsOf: seatingNote.photos.filter { !existingIDs.contains($0.id) })
-        let afterSeating = Set(draft.toilet.review.photos.map(\.id))
-        draft.toilet.review.photos.append(contentsOf: parkingNote.photos.filter { !afterSeating.contains($0.id) })
+        return ContributeFlowBridge.assemble(
+            placeId: place.reviewPlaceId,
+            submissionId: draft.submissionId.uuidString,
+            wheelchair: reviewPersona == .wheelchair,
+            entrances: passes,
+            elevators: elevators,
+            toilets: toilets,
+            pathwayNotices: pathwayNotices,
+            pathwayPhotos: supplementalNotes[.outdoorPathways]?.photos ?? [],
+            seatingAnswer: seatingAnswer,
+            seatingPhotos: seatingNote.photos,
+            parkingAnswer: parkingAnswer,
+            parkingPhotos: parkingNote.photos,
+            categoryNotes: categoryNotesForSubmit()
+        )
     }
 
     private func submit() async {
         guard !isSubmitting else { return }
-        foldEntrancePassesIntoDraft()
-        foldElevatorPassesIntoDraft()
-        foldToiletPassesIntoDraft()
-        appendSupplementalNotesToDraft()
         isSubmitting = true
         defer { isSubmitting = false }
 
@@ -1490,7 +1587,7 @@ struct ContributeReviewFlowView: View {
         #endif
 
         do {
-            let response = try await ReviewService.shared.submit(draft)
+            let response = try await ReviewService.shared.submit(contribution: assembledContribution())
             UnfinishedReviewStore.clear(for: place)
             isSubmitted = true
             onSubmitted?(ContributeReviewSubmission(
@@ -1529,7 +1626,7 @@ struct ContributeReviewFlowView: View {
     }
 }
 
-private struct EntrancePassDraft {
+struct EntrancePassDraft {
     var sectionPhotos: [ReviewPhotoDraft]
     var locations: Set<EntranceLocation>
     var lobbyTags: Set<ContributeTagOption>
@@ -1538,20 +1635,26 @@ private struct EntrancePassDraft {
     var basementRampAnswer: String?
     var lobbyHandrailAnswer: String?
     var basementHandrailAnswer: String?
+    var lobbyRampPhotos: [ReviewPhotoDraft]
+    var lobbyHandrailPhotos: [ReviewPhotoDraft]
+    var basementRampPhotos: [ReviewPhotoDraft]
+    var basementHandrailPhotos: [ReviewPhotoDraft]
     var lobby: EntranceDraft
     var basement: EntranceDraft
 }
 
-private struct ElevatorPassDraft {
+struct ElevatorPassDraft {
     var answers: [ElevatorQuestion: String]
     var location: String
     var photos: [ReviewPhotoDraft]
+    var evidence: [ElevatorQuestion: [ReviewPhotoDraft]]
 }
 
-private struct ToiletPassDraft {
+struct ToiletPassDraft {
     var answers: [ToiletQuestion: String]
     var location: String
     var photos: [ReviewPhotoDraft]
+    var evidence: [ToiletQuestion: [ReviewPhotoDraft]]
 }
 
 private extension Array {

@@ -14,6 +14,8 @@ struct ContributePhotosNotesStepView: View {
     /// When set, caps how many more photos can be added (Final Review uses
     /// toilet's remaining slots while still displaying all prior photos).
     var remainingPhotoSlots: Int? = nil
+    var showsPhotos: Bool = true
+    var continueTitle: String = "Submit"
     var isLastStep: Bool = false
     var isSubmitting: Bool = false
     let onBack: () -> Void
@@ -51,7 +53,9 @@ struct ContributePhotosNotesStepView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
-                        photosSection
+                        if showsPhotos {
+                            photosSection
+                        }
                         notesSection
                             .id("notesSection")
                     }
@@ -69,7 +73,7 @@ struct ContributePhotosNotesStepView: View {
             }
 
             ContributeContinueButton(
-                title: "Submit".localized,
+                title: continueTitle,
                 isLoading: isSubmitting,
                 isEnabled: !isSubmitting,
                 action: onContinue

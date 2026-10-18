@@ -18,7 +18,7 @@ Supported features are entrance, elevator, and restroom. Supported values are ye
 
 ## Reviews and media
 
-Reviews are normalized into a review row, entrance rows, photo rows, and accessibility signals. Every submission has a client-generated `submission_id`; `(user_id, submission_id)` is unique. Replaying the same request returns the existing review.
+Reviews are normalized into a review row, per-pass entrance, elevator and toilet rows, area rows (pathways, seating, parking), photo rows, and accessibility signals. A version 2 submission stores each answer and each photo in its own column or row: section photos, "Not sure" evidence photos (at most 3 per pass), and final-review photos. Every submission has a client-generated `submission_id`; `(user_id, submission_id)` is unique. Replaying the same request returns the existing review. Drafts stay on the device until a completed section is submitted.
 
 JPEG media uploads use deterministic R2 keys. Metadata and ownership live in D1. Review reads are public; writing, deleting, saving, and profile operations require a bearer session.
 

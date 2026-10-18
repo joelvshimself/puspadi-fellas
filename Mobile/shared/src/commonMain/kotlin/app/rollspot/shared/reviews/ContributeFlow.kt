@@ -1,10 +1,6 @@
 package app.rollspot.shared.reviews
 
-import app.rollspot.shared.api.EntranceReport
-import app.rollspot.shared.api.ElevatorReport
-import app.rollspot.shared.api.ReviewNote
-import app.rollspot.shared.api.ReviewSubmission
-import app.rollspot.shared.api.ToiletReport
+import app.rollspot.shared.api.ContributionSubmission
 import kotlin.random.Random
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -25,6 +21,8 @@ enum class ToiletSurveyQuestion {
     Sink,
     Emergency,
 }
+
+enum class CategorySectionStatus { InProgress, Complete }
 
 sealed class ContributeStep {
     data object CategoryPick : ContributeStep()
@@ -49,7 +47,6 @@ sealed class ContributeStep {
     data object SeatingQuestion : ContributeStep()
     data object ParkingPhotos : ContributeStep()
     data object ParkingQuestion : ContributeStep()
-    data object FinalReview : ContributeStep()
     data object Submitted : ContributeStep()
 }
 
@@ -64,7 +61,7 @@ data class FacilityNotes(
     val photos: List<LocalReviewPhoto> = emptyList(),
 )
 
-/** One entrance walk: the locations picked in that pass, plus their tags and notes. */
+/** One entrance walk: the locations picked in that pass, plus their tags and evidence photos. */
 data class EntrancePass(
     val photos: List<LocalReviewPhoto> = emptyList(),
     val locations: Set<EntranceLocation> = emptySet(),
@@ -74,14 +71,16 @@ data class EntrancePass(
     val basementRampAnswer: String? = null,
     val lobbyHandrailAnswer: String? = null,
     val basementHandrailAnswer: String? = null,
-    val lobbyNotes: FacilityNotes = FacilityNotes(),
-    val basementNotes: FacilityNotes = FacilityNotes(),
+    val lobbyEvidence: Map<String, List<LocalReviewPhoto>> = emptyMap(),
+    val basementEvidence: Map<String, List<LocalReviewPhoto>> = emptyMap(),
 )
 
 /** One elevator the contributor has finished, or the one still being answered. */
 data class ElevatorPass(
     val answers: Map<ElevatorQuestion, String> = emptyMap(),
-    val notes: FacilityNotes = FacilityNotes(),
+    val photos: List<LocalReviewPhoto> = emptyList(),
+    val location: String = "",
+    val evidence: Map<String, List<LocalReviewPhoto>> = emptyMap(),
 )
 
 /** One accessible toilet the contributor has finished, or the one still being answered. */
@@ -89,14 +88,18 @@ data class ToiletPass(
     val answers: Map<ToiletSurveyQuestion, String> = emptyMap(),
     val location: String = "",
     val photos: List<LocalReviewPhoto> = emptyList(),
+    val evidence: Map<String, List<LocalReviewPhoto>> = emptyMap(),
 )
 
 data class ContributeFlowState(
     val placeId: String,
     val placeName: String,
     val submissionId: String,
+    val persona: ContributePersona = ContributePersona.Wheelchair,
     val stepIndex: Int = 0,
-    val selectedCategories: Set<ContributeReviewCategory> = emptySet(),
+    /** Section the contributor is filling in. Null while they are on the menu. */
+    val activeCategory: ContributeReviewCategory? = null,
+    val sectionStatus: Map<ContributeReviewCategory, CategorySectionStatus> = emptyMap(),
     val supplementalNotes: Map<ContributeReviewCategory, FacilityNotes> = emptyMap(),
     val entrancePhotos: List<LocalReviewPhoto> = emptyList(),
     val entranceLocations: Set<EntranceLocation> = emptySet(),
@@ -113,10 +116,12 @@ data class ContributeFlowState(
     val completedToiletPasses: List<ToiletPass> = emptyList(),
     val toiletLocationNote: String = "",
     val toiletPhotos: List<LocalReviewPhoto> = emptyList(),
-    val lobbyNotes: FacilityNotes = FacilityNotes(),
-    val basementNotes: FacilityNotes = FacilityNotes(),
-    val elevatorNotes: FacilityNotes = FacilityNotes(),
-    val toiletNotes: FacilityNotes = FacilityNotes(),
+    val toiletEvidence: Map<String, List<LocalReviewPhoto>> = emptyMap(),
+    val lobbyEvidence: Map<String, List<LocalReviewPhoto>> = emptyMap(),
+    val basementEvidence: Map<String, List<LocalReviewPhoto>> = emptyMap(),
+    val elevatorPhotos: List<LocalReviewPhoto> = emptyList(),
+    val elevatorLocation: String = "",
+    val elevatorEvidence: Map<String, List<LocalReviewPhoto>> = emptyMap(),
     val pathwayNotices: Set<String> = emptySet(),
     val seatingAnswer: String? = null,
     val seatingPhotos: List<LocalReviewPhoto> = emptyList(),
@@ -182,73 +187,104 @@ class ContributeFlow(
         submissionId = submissionId,
     )
 
-    // Primary-user (wheelchair) contribute flow. The secondary-user flow is not built yet.
+    // Menu, one open section, or final review. Categories are not chained together.
     fun steps(): List<ContributeStep> {
-        val s = state
         val list = mutableListOf<ContributeStep>()
         list += ContributeStep.CategoryPick
-        if (ContributeReviewCategory.Entrance in s.selectedCategories) {
-            list += ContributeStep.EntrancePhotos
-            list += ContributeStep.EntranceLocationPick
-            for (location in EntranceLocation.entries) {
-                if (!s.entranceLocations.contains(location)) continue
-                list += ContributeStep.EntranceTags(location)
-                val tags = tagsFor(location)
-                // Notes to DEV: Ramp and/or Handrail have a follow-up question.
-                // Every other tag only records whether it is present. Do not add extra screens for those yet.
-                if (tags.contains(ContributeCatalog.TAG_RAMP)) list += ContributeStep.EntranceRamp(location)
-                if (tags.contains(ContributeCatalog.TAG_HANDRAIL)) list += ContributeStep.EntranceHandrail(location)
+        val category = state.activeCategory
+        when (category) {
+            ContributeReviewCategory.Entrance -> appendEntrance(list)
+            ContributeReviewCategory.Elevator -> appendElevator(list)
+            ContributeReviewCategory.Toilet -> appendToilet(list)
+            ContributeReviewCategory.OutdoorPathways -> {
+                list += ContributeStep.PathwayPhotos
+                list += ContributeStep.PathwayNotice
             }
-            list += ContributeStep.EntranceAnother
-        }
-        if (ContributeReviewCategory.Elevator in s.selectedCategories) {
-            list += ContributeStep.ElevatorPhotos
-            list += ContributeStep.Elevator(ElevatorQuestion.WideEntrance)
-            if (s.elevatorAnswers[ElevatorQuestion.WideEntrance] != "No") {
-                list += ContributeStep.Elevator(ElevatorQuestion.SpaceToManeuver)
-                list += ContributeStep.Elevator(ElevatorQuestion.ReachableButtons)
+            ContributeReviewCategory.Seating -> {
+                list += ContributeStep.SeatingPhotos
+                list += ContributeStep.SeatingQuestion
             }
-            list += ContributeStep.ElevatorLocation
-            list += ContributeStep.ElevatorAnother
-        }
-        if (ContributeReviewCategory.Toilet in s.selectedCategories) {
-            list += ContributeStep.ToiletPhotos
-            ToiletSurveyQuestion.entries.forEach { list += ContributeStep.Toilet(it) }
-            list += ContributeStep.ToiletLocation
-            list += ContributeStep.ToiletAnother
-        }
-        for (category in ContributeReviewCategory.supplemental) {
-            if (category !in s.selectedCategories) continue
-            when (category) {
-                ContributeReviewCategory.OutdoorPathways -> {
-                    list += ContributeStep.PathwayPhotos
-                    list += ContributeStep.PathwayNotice
-                }
-                ContributeReviewCategory.Seating -> {
-                    list += ContributeStep.SeatingPhotos
-                    list += ContributeStep.SeatingQuestion
-                }
-                ContributeReviewCategory.Parking -> {
-                    list += ContributeStep.ParkingPhotos
-                    list += ContributeStep.ParkingQuestion
-                }
-                else -> list += ContributeStep.SupplementalNotes(category)
+            ContributeReviewCategory.Parking -> {
+                list += ContributeStep.ParkingPhotos
+                list += ContributeStep.ParkingQuestion
             }
+            null -> Unit
         }
-        list += ContributeStep.FinalReview
+        if (category != null) list += ContributeStep.SupplementalNotes(category)
         return list
     }
 
-    fun toggleCategory(category: ContributeReviewCategory) {
-        val next = state.selectedCategories.toMutableSet()
-        if (category in next) next.remove(category) else next.add(category)
-        state = state.copy(selectedCategories = next)
+    private fun appendEntrance(list: MutableList<ContributeStep>) {
+        list += ContributeStep.EntrancePhotos
+        list += ContributeStep.EntranceLocationPick
+        for (location in EntranceLocation.entries) {
+            if (!state.entranceLocations.contains(location)) continue
+            list += ContributeStep.EntranceTags(location)
+            val tags = tagsFor(location)
+            // Notes to DEV: Ramp and/or Handrail have a follow-up question.
+            // Every other tag only records whether it is present. Do not add extra screens for those yet.
+            if (tags.contains(ContributeCatalog.TAG_RAMP)) list += ContributeStep.EntranceRamp(location)
+            if (tags.contains(ContributeCatalog.TAG_HANDRAIL)) list += ContributeStep.EntranceHandrail(location)
+        }
+        list += ContributeStep.EntranceAnother
+    }
+
+    private fun appendElevator(list: MutableList<ContributeStep>) {
+        list += ContributeStep.ElevatorPhotos
+        list += ContributeStep.Elevator(ElevatorQuestion.WideEntrance)
+        if (state.elevatorAnswers[ElevatorQuestion.WideEntrance] != "No") {
+            list += ContributeStep.Elevator(ElevatorQuestion.SpaceToManeuver)
+            list += ContributeStep.Elevator(ElevatorQuestion.ReachableButtons)
+        }
+        list += ContributeStep.ElevatorLocation
+        list += ContributeStep.ElevatorAnother
+    }
+
+    private fun appendToilet(list: MutableList<ContributeStep>) {
+        list += ContributeStep.ToiletPhotos
+        ToiletSurveyQuestion.entries.forEach { list += ContributeStep.Toilet(it) }
+        list += ContributeStep.ToiletLocation
+        list += ContributeStep.ToiletAnother
+    }
+
+    fun openCategory(category: ContributeReviewCategory) {
+        state = state.copy(
+            activeCategory = category,
+            stepIndex = 1,
+            showExitConfirmation = false,
+        )
+    }
+
+    fun finishActiveSection() {
+        val category = state.activeCategory ?: return
+        state = state.copy(
+            sectionStatus = state.sectionStatus + (category to CategorySectionStatus.Complete),
+            activeCategory = null,
+            stepIndex = 0,
+            showExitConfirmation = false,
+        )
+    }
+
+    fun leaveActiveSection() {
+        val category = state.activeCategory ?: return
+        state = state.copy(
+            sectionStatus = state.sectionStatus + (category to CategorySectionStatus.InProgress),
+            activeCategory = null,
+            stepIndex = 0,
+            showExitConfirmation = false,
+        )
+    }
+
+    fun setCategoryNote(category: ContributeReviewCategory, text: String) {
+        val existing = state.supplementalNotes[category] ?: FacilityNotes()
+        state = state.copy(supplementalNotes = state.supplementalNotes + (category to existing.copy(text = text)))
     }
 
     fun currentStep(): ContributeStep? = steps().getOrNull(state.stepIndex)
 
     fun canContinue(step: ContributeStep): Boolean = when (step) {
-        ContributeStep.CategoryPick -> state.selectedCategories.isNotEmpty()
+        ContributeStep.CategoryPick ->
+            state.sectionStatus.values.any { it == CategorySectionStatus.Complete }
         ContributeStep.EntrancePhotos -> true
         ContributeStep.EntranceLocationPick -> state.entranceLocations.isNotEmpty()
         is ContributeStep.EntranceTags -> tagsFor(step.location).isNotEmpty()
@@ -270,12 +306,15 @@ class ContributeFlow(
         ContributeStep.SeatingQuestion -> state.seatingAnswer != null
         ContributeStep.ParkingPhotos -> true
         ContributeStep.ParkingQuestion -> state.parkingAnswer != null
-        ContributeStep.FinalReview -> true
         ContributeStep.Submitted -> true
     }
 
     fun goNext() {
-        clampIndex(state.stepIndex + 1)
+        when (currentStep()) {
+            ContributeStep.CategoryPick -> Unit
+            is ContributeStep.SupplementalNotes -> finishActiveSection()
+            else -> clampIndex(state.stepIndex + 1)
+        }
     }
 
     fun goBack() {
@@ -307,6 +346,7 @@ class ContributeFlow(
             restartingElevator || returningToElevator -> restoreLastElevatorPass()
             restartingEntrance || returningToEntrance -> restoreLastEntrancePass()
             restartingToilet || returningToToilet -> restoreLastToiletPass()
+            previous == ContributeStep.CategoryPick -> leaveActiveSection()
             else -> clampIndex(state.stepIndex - 1)
         }
     }
@@ -324,15 +364,14 @@ class ContributeFlow(
             basementRampAnswer = null,
             lobbyHandrailAnswer = null,
             basementHandrailAnswer = null,
-            lobbyNotes = FacilityNotes(),
-            basementNotes = FacilityNotes(),
+            lobbyEvidence = emptyMap(),
+            basementEvidence = emptyMap(),
         )
         if (answer == "Yes") {
             val index = steps().indexOf(ContributeStep.EntrancePhotos)
             clampIndex(if (index >= 0) index else state.stepIndex)
         } else {
-            val another = steps().indexOf(ContributeStep.EntranceAnother)
-            clampIndex(if (another >= 0) another + 1 else state.stepIndex + 1)
+            openCategoryNotes()
         }
     }
 
@@ -342,14 +381,15 @@ class ContributeFlow(
         state = state.copy(
             completedElevatorPasses = completed,
             elevatorAnswers = emptyMap(),
-            elevatorNotes = FacilityNotes(),
+            elevatorPhotos = emptyList(),
+            elevatorLocation = "",
+            elevatorEvidence = emptyMap(),
         )
         if (answer == "Yes") {
             val index = steps().indexOf(ContributeStep.ElevatorPhotos)
             clampIndex(if (index >= 0) index else state.stepIndex)
         } else {
-            val another = steps().indexOf(ContributeStep.ElevatorAnother)
-            clampIndex(if (another >= 0) another + 1 else state.stepIndex + 1)
+            openCategoryNotes()
         }
     }
 
@@ -361,13 +401,13 @@ class ContributeFlow(
             toiletAnswers = emptyMap(),
             toiletLocationNote = "",
             toiletPhotos = emptyList(),
+            toiletEvidence = emptyMap(),
         )
         if (answer == "Yes") {
             val index = steps().indexOf(ContributeStep.ToiletPhotos)
             clampIndex(if (index >= 0) index else state.stepIndex)
         } else {
-            val another = steps().indexOf(ContributeStep.ToiletAnother)
-            clampIndex(if (another >= 0) another + 1 else state.stepIndex + 1)
+            openCategoryNotes()
         }
     }
 
@@ -396,6 +436,12 @@ class ContributeFlow(
         state = state.copy(stepIndex = steps().size)
     }
 
+    private fun openCategoryNotes() {
+        val category = state.activeCategory ?: return
+        val index = steps().indexOf(ContributeStep.SupplementalNotes(category))
+        clampIndex(if (index >= 0) index else state.stepIndex)
+    }
+
     private fun clampIndex(index: Int) {
         val max = maxOf(steps().size - 1, 0)
         state = state.copy(stepIndex = index.coerceIn(0, max), showExitConfirmation = false)
@@ -404,7 +450,8 @@ class ContributeFlow(
     fun hasProgress(): Boolean {
         val s = state
         return s.stepIndex > 0 ||
-            s.selectedCategories.isNotEmpty() ||
+            s.sectionStatus.isNotEmpty() ||
+            s.activeCategory != null ||
             s.supplementalNotes.values.any { it.text.isNotBlank() || it.photos.isNotEmpty() } ||
             s.entranceLocations.isNotEmpty() ||
             s.completedEntrancePasses.isNotEmpty() ||
@@ -415,16 +462,18 @@ class ContributeFlow(
             s.toiletAnswers.isNotEmpty() ||
             s.completedToiletPasses.isNotEmpty() ||
             s.toiletPhotos.isNotEmpty() ||
+            s.toiletEvidence.values.any { it.isNotEmpty() } ||
             s.toiletLocationNote.isNotBlank() ||
             s.pathwayNotices.isNotEmpty() ||
             s.seatingAnswer != null ||
             s.seatingPhotos.isNotEmpty() ||
             s.parkingAnswer != null ||
             s.parkingPhotos.isNotEmpty() ||
-            s.lobbyNotes.text.isNotBlank() ||
-            s.basementNotes.text.isNotBlank() ||
-            s.elevatorNotes.text.isNotBlank() ||
-            s.toiletNotes.text.isNotBlank() ||
+            s.lobbyEvidence.values.any { it.isNotEmpty() } ||
+            s.basementEvidence.values.any { it.isNotEmpty() } ||
+            s.elevatorPhotos.isNotEmpty() ||
+            s.elevatorLocation.isNotBlank() ||
+            s.elevatorEvidence.values.any { it.isNotEmpty() } ||
             allPhotos().isNotEmpty()
     }
 
@@ -443,70 +492,184 @@ class ContributeFlow(
         EntranceLocation.Basement -> state.basementHandrailAnswer
     }
 
-    fun notesFor(location: EntranceLocation): FacilityNotes = when (location) {
-        EntranceLocation.Lobby -> state.lobbyNotes
-        EntranceLocation.Basement -> state.basementNotes
+    fun evidenceFor(location: EntranceLocation): Map<String, List<LocalReviewPhoto>> = when (location) {
+        EntranceLocation.Lobby -> state.lobbyEvidence
+        EntranceLocation.Basement -> state.basementEvidence
     }
 
     fun supplementalNotesFor(category: ContributeReviewCategory): FacilityNotes =
         state.supplementalNotes[category] ?: FacilityNotes()
 
-    fun allPhotos(): List<LocalReviewPhoto> =
-        entrancePassesForReport().flatMap { it.photos + it.lobbyNotes.photos + it.basementNotes.photos } +
-            elevatorNotesForReport().photos +
-            toiletPassesForReport().flatMap { it.photos } + state.toiletNotes.photos +
-            state.supplementalNotes.values.flatMap { it.photos } +
-            state.seatingPhotos +
-            state.parkingPhotos
-
-    /** Section-level entrance photos attach to Lobby when selected, otherwise Basement. */
-    fun primaryEntranceForSectionPhotos(): EntranceLocation? = when {
-        EntranceLocation.Lobby in state.entranceLocations -> EntranceLocation.Lobby
-        EntranceLocation.Basement in state.entranceLocations -> EntranceLocation.Basement
-        else -> null
-    }
-
-    fun entranceNotesForReport(location: EntranceLocation): FacilityNotes {
-        val base = notesFor(location)
-        if (location != primaryEntranceForSectionPhotos() || state.entrancePhotos.isEmpty()) {
-            return base
+    fun setRampAnswer(location: EntranceLocation, answer: String) {
+        state = when (location) {
+            EntranceLocation.Lobby -> state.copy(
+                lobbyRampAnswer = answer,
+                lobbyEvidence = clearEvidence(state.lobbyEvidence, ContributeCodes.RAMP, answer),
+            )
+            EntranceLocation.Basement -> state.copy(
+                basementRampAnswer = answer,
+                basementEvidence = clearEvidence(state.basementEvidence, ContributeCodes.RAMP, answer),
+            )
         }
-        return base.copy(photos = state.entrancePhotos + base.photos)
     }
 
-    fun toSubmission(): ReviewSubmission {
-        val entrances = entrancePassesForReport().flatMap { reportsFor(it) }
-        val elevator = elevatorReport()
-        val toilet = toiletReport()
-        return ReviewSubmission(
-            submissionId = state.submissionId,
-            placeId = state.placeId,
-            entrances = entrances.ifEmpty { null },
-            elevator = elevator,
-            toilet = toilet,
+    fun setHandrailAnswer(location: EntranceLocation, answer: String) {
+        state = when (location) {
+            EntranceLocation.Lobby -> state.copy(
+                lobbyHandrailAnswer = answer,
+                lobbyEvidence = clearEvidence(state.lobbyEvidence, ContributeCodes.HANDRAIL, answer),
+            )
+            EntranceLocation.Basement -> state.copy(
+                basementHandrailAnswer = answer,
+                basementEvidence = clearEvidence(state.basementEvidence, ContributeCodes.HANDRAIL, answer),
+            )
+        }
+    }
+
+    fun setElevatorAnswer(question: ElevatorQuestion, answer: String) {
+        var answers = state.elevatorAnswers + (question to answer)
+        var evidence = clearEvidence(state.elevatorEvidence, ContributeCodes.elevatorQuestion(question), answer)
+        if (question == ElevatorQuestion.WideEntrance && answer == "No") {
+            answers = answers - ElevatorQuestion.SpaceToManeuver - ElevatorQuestion.ReachableButtons
+            evidence = evidence - ContributeCodes.SPACE - ContributeCodes.BUTTONS
+        }
+        state = state.copy(elevatorAnswers = answers, elevatorEvidence = evidence)
+    }
+
+    fun setToiletAnswer(question: ToiletSurveyQuestion, answer: String) {
+        val code = ContributeCodes.toiletQuestion(question)
+        state = state.copy(
+            toiletAnswers = state.toiletAnswers + (question to answer),
+            toiletEvidence = if (code == null) state.toiletEvidence else clearEvidence(state.toiletEvidence, code, answer),
         )
     }
 
-    fun pendingPhotos(): List<PendingReviewPhoto> {
-        fun map(slot: ReviewPhotoSlot, notes: FacilityNotes) =
-            notes.photos.map { PendingReviewPhoto(slot, it.fileId, it.jpeg, it.caption) }
-        val supplemental = ContributeReviewCategory.supplemental.flatMap { category ->
-            map(ReviewPhotoSlot.Toilet, supplementalNotesFor(category))
+    fun canAddPhoto(): Boolean {
+        val target = currentPhotoTarget() ?: return false
+        return roomFor(target)
+    }
+
+    /** Adds a photo to the screen the contributor is on. Returns false when that screen is full. */
+    fun addPhoto(photo: LocalReviewPhoto): Boolean {
+        val target = currentPhotoTarget() ?: return false
+        if (!roomFor(target)) return false
+        when (target) {
+            PhotoTarget.EntranceSection -> state = state.copy(entrancePhotos = state.entrancePhotos + photo)
+            is PhotoTarget.EntranceEvidence -> putEntranceEvidence(target.location, target.question, photo)
+            PhotoTarget.ElevatorSection -> state = state.copy(elevatorPhotos = state.elevatorPhotos + photo)
+            is PhotoTarget.ElevatorEvidence -> state = state.copy(
+                elevatorEvidence = state.elevatorEvidence + (target.question to evidenceList(state.elevatorEvidence, target.question) + photo),
+            )
+            PhotoTarget.ToiletSection -> state = state.copy(toiletPhotos = state.toiletPhotos + photo)
+            is PhotoTarget.ToiletEvidence -> state = state.copy(
+                toiletEvidence = state.toiletEvidence + (target.question to evidenceList(state.toiletEvidence, target.question) + photo),
+            )
+            PhotoTarget.PathwaySection -> appendSupplementalPhoto(ContributeReviewCategory.OutdoorPathways, photo)
+            PhotoTarget.SeatingSection -> state = state.copy(seatingPhotos = state.seatingPhotos + photo)
+            PhotoTarget.ParkingSection -> state = state.copy(parkingPhotos = state.parkingPhotos + photo)
         }
-        return map(ReviewPhotoSlot.Lobby, FacilityNotes(photos = photosForSlot(EntranceLocation.Lobby))) +
-            map(ReviewPhotoSlot.Basement, FacilityNotes(photos = photosForSlot(EntranceLocation.Basement))) +
-            map(ReviewPhotoSlot.Elevator, elevatorNotesForReport()) +
-            map(ReviewPhotoSlot.Toilet, FacilityNotes(photos = toiletPassesForReport().flatMap { it.photos })) +
-            map(ReviewPhotoSlot.Toilet, state.toiletNotes) +
-            map(ReviewPhotoSlot.Toilet, FacilityNotes(photos = state.seatingPhotos)) +
-            map(ReviewPhotoSlot.Toilet, FacilityNotes(photos = state.parkingPhotos)) +
-            supplemental
+        return true
+    }
+
+    fun removePhoto(fileId: String) {
+        fun strip(photos: List<LocalReviewPhoto>) = photos.filter { it.fileId != fileId }
+        fun stripMap(photos: Map<String, List<LocalReviewPhoto>>) = photos.mapValues { (_, list) -> strip(list) }
+        state = state.copy(
+            entrancePhotos = strip(state.entrancePhotos),
+            elevatorPhotos = strip(state.elevatorPhotos),
+            toiletPhotos = strip(state.toiletPhotos),
+            seatingPhotos = strip(state.seatingPhotos),
+            parkingPhotos = strip(state.parkingPhotos),
+            lobbyEvidence = stripMap(state.lobbyEvidence),
+            basementEvidence = stripMap(state.basementEvidence),
+            elevatorEvidence = stripMap(state.elevatorEvidence),
+            toiletEvidence = stripMap(state.toiletEvidence),
+            supplementalNotes = state.supplementalNotes.mapValues { (_, notes) -> notes.copy(photos = strip(notes.photos)) },
+            completedEntrancePasses = state.completedEntrancePasses.map { pass ->
+                pass.copy(
+                    photos = strip(pass.photos),
+                    lobbyEvidence = stripMap(pass.lobbyEvidence),
+                    basementEvidence = stripMap(pass.basementEvidence),
+                )
+            },
+            completedElevatorPasses = state.completedElevatorPasses.map { pass ->
+                pass.copy(photos = strip(pass.photos), evidence = stripMap(pass.evidence))
+            },
+            completedToiletPasses = state.completedToiletPasses.map { pass ->
+                pass.copy(photos = strip(pass.photos), evidence = stripMap(pass.evidence))
+            },
+        )
+    }
+
+    fun allPhotos(): List<LocalReviewPhoto> {
+        fun maps(vararg groups: Map<String, List<LocalReviewPhoto>>) = groups.flatMap { it.values.flatten() }
+        return entrancePassesForReport().flatMap { pass ->
+            pass.photos + maps(pass.lobbyEvidence, pass.basementEvidence)
+        } + elevatorPassesForReport().flatMap { it.photos + it.evidence.values.flatten() } +
+            toiletPassesForReport().flatMap { it.photos + it.evidence.values.flatten() } +
+            state.supplementalNotes.values.flatMap { it.photos } +
+            state.seatingPhotos +
+            state.parkingPhotos
+    }
+
+    fun toSubmission(): ContributionSubmission = buildContribution(state)
+
+    fun pendingPhotos(): List<PendingContributionPhoto> = pendingContributionPhotos(state)
+
+    private fun currentPhotoTarget(): PhotoTarget? = when (val step = currentStep()) {
+        ContributeStep.EntrancePhotos -> PhotoTarget.EntranceSection
+        is ContributeStep.EntranceRamp ->
+            if (ContributeCodes.isNotSure(rampAnswer(step.location))) PhotoTarget.EntranceEvidence(step.location, ContributeCodes.RAMP) else null
+        is ContributeStep.EntranceHandrail ->
+            if (ContributeCodes.isNotSure(handrailAnswer(step.location))) PhotoTarget.EntranceEvidence(step.location, ContributeCodes.HANDRAIL) else null
+        ContributeStep.ElevatorPhotos -> PhotoTarget.ElevatorSection
+        is ContributeStep.Elevator -> {
+            val code = ContributeCodes.elevatorQuestion(step.question)
+            if (ContributeCodes.isNotSure(state.elevatorAnswers[step.question])) PhotoTarget.ElevatorEvidence(code) else null
+        }
+        ContributeStep.ToiletPhotos -> PhotoTarget.ToiletSection
+        is ContributeStep.Toilet -> {
+            val code = ContributeCodes.toiletQuestion(step.question)
+            if (code != null && ContributeCodes.isNotSure(state.toiletAnswers[step.question])) PhotoTarget.ToiletEvidence(code) else null
+        }
+        ContributeStep.PathwayPhotos -> PhotoTarget.PathwaySection
+        ContributeStep.SeatingPhotos -> PhotoTarget.SeatingSection
+        ContributeStep.ParkingPhotos -> PhotoTarget.ParkingSection
+        else -> null
+    }
+
+    private fun roomFor(target: PhotoTarget): Boolean = when (target) {
+        PhotoTarget.EntranceSection -> state.entrancePhotos.size < ContributePhotoLimits.SECTION
+        is PhotoTarget.EntranceEvidence -> evidenceCount(evidenceFor(target.location)) < ContributePhotoLimits.EVIDENCE_PER_PASS
+        PhotoTarget.ElevatorSection -> state.elevatorPhotos.size < ContributePhotoLimits.SECTION
+        is PhotoTarget.ElevatorEvidence -> evidenceCount(state.elevatorEvidence) < ContributePhotoLimits.EVIDENCE_PER_PASS
+        PhotoTarget.ToiletSection -> state.toiletPhotos.size < ContributePhotoLimits.SECTION
+        is PhotoTarget.ToiletEvidence -> evidenceCount(state.toiletEvidence) < ContributePhotoLimits.EVIDENCE_PER_PASS
+        PhotoTarget.PathwaySection -> supplementalNotesFor(ContributeReviewCategory.OutdoorPathways).photos.size < ContributePhotoLimits.SECTION
+        PhotoTarget.SeatingSection -> state.seatingPhotos.size < ContributePhotoLimits.SECTION
+        PhotoTarget.ParkingSection -> state.parkingPhotos.size < ContributePhotoLimits.SECTION
+    }
+
+    private fun putEntranceEvidence(location: EntranceLocation, question: String, photo: LocalReviewPhoto) {
+        val current = evidenceFor(location)
+        val updated = current + (question to evidenceList(current, question) + photo)
+        state = when (location) {
+            EntranceLocation.Lobby -> state.copy(lobbyEvidence = updated)
+            EntranceLocation.Basement -> state.copy(basementEvidence = updated)
+        }
+    }
+
+    private fun appendSupplementalPhoto(category: ContributeReviewCategory, photo: LocalReviewPhoto) {
+        val next = state.supplementalNotes.toMutableMap()
+        val existing = next[category] ?: FacilityNotes()
+        next[category] = existing.copy(photos = existing.photos + photo)
+        state = state.copy(supplementalNotes = next)
     }
 
     private fun entrancePassesForReport(): List<EntrancePass> {
-        val current = currentEntrancePass()
-        val includeCurrent = !currentEntrancePassIsEmpty()
-        return state.completedEntrancePasses + if (includeCurrent) listOf(current) else emptyList()
+        val includeCurrent = state.sectionStatus[ContributeReviewCategory.Entrance] == CategorySectionStatus.Complete &&
+            !currentEntrancePassIsEmpty()
+        return state.completedEntrancePasses + if (includeCurrent) listOf(currentEntrancePass()) else emptyList()
     }
 
     private fun currentEntrancePass(): EntrancePass = EntrancePass(
@@ -518,8 +681,8 @@ class ContributeFlow(
         basementRampAnswer = state.basementRampAnswer,
         lobbyHandrailAnswer = state.lobbyHandrailAnswer,
         basementHandrailAnswer = state.basementHandrailAnswer,
-        lobbyNotes = state.lobbyNotes,
-        basementNotes = state.basementNotes,
+        lobbyEvidence = state.lobbyEvidence,
+        basementEvidence = state.basementEvidence,
     )
 
     private fun currentEntrancePassIsEmpty(): Boolean {
@@ -532,10 +695,8 @@ class ContributeFlow(
             pass.basementRampAnswer == null &&
             pass.lobbyHandrailAnswer == null &&
             pass.basementHandrailAnswer == null &&
-            pass.lobbyNotes.text.isBlank() &&
-            pass.lobbyNotes.photos.isEmpty() &&
-            pass.basementNotes.text.isBlank() &&
-            pass.basementNotes.photos.isEmpty()
+            evidenceCount(pass.lobbyEvidence) == 0 &&
+            evidenceCount(pass.basementEvidence) == 0
     }
 
     private fun restoreLastEntrancePass() {
@@ -550,133 +711,29 @@ class ContributeFlow(
             basementRampAnswer = last.basementRampAnswer,
             lobbyHandrailAnswer = last.lobbyHandrailAnswer,
             basementHandrailAnswer = last.basementHandrailAnswer,
-            lobbyNotes = last.lobbyNotes,
-            basementNotes = last.basementNotes,
+            lobbyEvidence = last.lobbyEvidence,
+            basementEvidence = last.basementEvidence,
         )
         val index = steps().indexOf(ContributeStep.EntranceAnother)
         clampIndex(if (index >= 0) index else state.stepIndex)
     }
 
-    private fun reportsFor(pass: EntrancePass): List<EntranceReport> {
-        val primary = when {
-            EntranceLocation.Lobby in pass.locations -> EntranceLocation.Lobby
-            EntranceLocation.Basement in pass.locations -> EntranceLocation.Basement
-            else -> null
-        }
-        return EntranceLocation.entries.mapNotNull { location ->
-            if (location !in pass.locations) return@mapNotNull null
-            val base = when (location) {
-                EntranceLocation.Lobby -> pass.lobbyNotes
-                EntranceLocation.Basement -> pass.basementNotes
-            }
-            val notes = if (location == primary && pass.photos.isNotEmpty()) {
-                base.copy(photos = pass.photos + base.photos)
-            } else {
-                base
-            }
-            val tags = when (location) {
-                EntranceLocation.Lobby -> pass.lobbyTags
-                EntranceLocation.Basement -> pass.basementTags
-            }
-            entranceReport(location, tags, notes)
-        }.filter { it.hasContent() }
-    }
-
-    private fun photosForSlot(location: EntranceLocation): List<LocalReviewPhoto> =
-        entrancePassesForReport().flatMap { pass ->
-            val primary = when {
-                EntranceLocation.Lobby in pass.locations -> EntranceLocation.Lobby
-                EntranceLocation.Basement in pass.locations -> EntranceLocation.Basement
-                else -> null
-            }
-            val notes = when (location) {
-                EntranceLocation.Lobby -> pass.lobbyNotes
-                EntranceLocation.Basement -> pass.basementNotes
-            }
-            if (location == primary) pass.photos + notes.photos else notes.photos
-        }
-
-    private fun entranceReport(location: EntranceLocation, tags: Set<String>, notes: FacilityNotes): EntranceReport {
-        val door = when {
-            tags.contains(ContributeCatalog.TAG_AUTO_DOORS) -> "automatic"
-            tags.contains(ContributeCatalog.TAG_MANUAL_DOORS) -> "manual"
-            else -> null
-        }
-        return EntranceReport(
-            location = location.name.lowercase(),
-            hasDropoffRamp = if (tags.contains(ContributeCatalog.TAG_RAMP)) true else null,
-            hasRails = if (tags.contains(ContributeCatalog.TAG_HANDRAIL)) true else null,
-            doorType = door,
-            review = noteOrNull(notes),
-        )
-    }
-
-    fun elevatorNotesForReport(): FacilityNotes {
-        val passes = elevatorPassesForReport()
-        val text = buildString {
-            passes.forEachIndexed { index, pass ->
-                val lines = mutableListOf<String>()
-                val location = pass.notes.text.trim()
-                if (location.isNotEmpty()) lines += "Location: $location"
-                for (question in ElevatorQuestion.entries) {
-                    val answer = pass.answers[question] ?: continue
-                    lines += "${elevatorQuestionLabel(question)}: $answer"
-                }
-                if (lines.isEmpty()) return@forEachIndexed
-                if (isNotEmpty()) append("\n\n")
-                if (passes.size > 1) append("[Elevator ${index + 1}]\n")
-                append(lines.joinToString("\n"))
-            }
-        }.trim()
-        val photos = passes.flatMap { it.notes.photos }
-        return FacilityNotes(text = text, photos = photos)
-    }
-
-    private fun elevatorReport(): ElevatorReport {
-        val passes = elevatorPassesForReport()
-        val anyAnswers = passes.any { it.answers.isNotEmpty() }
-        val anyNo = passes.any { pass -> pass.answers.values.any { it == "No" } }
-        val fullyAccessible = passes.isNotEmpty() && passes.all { pass ->
-            val answered = ElevatorQuestion.entries.mapNotNull { pass.answers[it] }
-            answered.size == ElevatorQuestion.entries.size && !answered.contains("No")
-        }
-        val wheelchairAccessible = when {
-            !anyAnswers -> null
-            anyNo -> false
-            fullyAccessible -> true
-            else -> null
-        }
-        val failedFit = passes.any { pass ->
-            pass.answers[ElevatorQuestion.WideEntrance] == "No" ||
-                pass.answers[ElevatorQuestion.SpaceToManeuver] == "No"
-        }
-        val blockers = if (wheelchairAccessible == false && failedFit) {
-            listOf("too_small")
-        } else {
-            emptyList()
-        }
-        return ElevatorReport(
-            exists = if (anyAnswers) true else null,
-            wheelchairAccessible = wheelchairAccessible,
-            blockers = if (wheelchairAccessible == false) blockers else emptyList(),
-            review = noteOrNull(elevatorNotesForReport()),
-        )
-    }
-
     private fun elevatorPassesForReport(): List<ElevatorPass> {
-        val current = currentElevatorPass()
-        val includeCurrent = current.answers.isNotEmpty() ||
-            current.notes.text.isNotBlank() ||
-            current.notes.photos.isNotEmpty()
-        return state.completedElevatorPasses + if (includeCurrent) listOf(current) else emptyList()
+        val includeCurrent = state.sectionStatus[ContributeReviewCategory.Elevator] == CategorySectionStatus.Complete &&
+            !currentElevatorPassIsEmpty()
+        return state.completedElevatorPasses + if (includeCurrent) listOf(currentElevatorPass()) else emptyList()
     }
 
-    private fun currentElevatorPass(): ElevatorPass =
-        ElevatorPass(state.elevatorAnswers, state.elevatorNotes)
+    private fun currentElevatorPass(): ElevatorPass = ElevatorPass(
+        answers = state.elevatorAnswers,
+        photos = state.elevatorPhotos,
+        location = state.elevatorLocation,
+        evidence = state.elevatorEvidence,
+    )
 
     private fun currentElevatorPassIsEmpty(): Boolean {
         val pass = currentElevatorPass()
-        return pass.answers.isEmpty() && pass.notes.text.isBlank() && pass.notes.photos.isEmpty()
+        return pass.answers.isEmpty() && pass.photos.isEmpty() && pass.location.isBlank() && evidenceCount(pass.evidence) == 0
     }
 
     private fun restoreLastElevatorPass() {
@@ -684,35 +741,30 @@ class ContributeFlow(
         state = state.copy(
             completedElevatorPasses = state.completedElevatorPasses.dropLast(1),
             elevatorAnswers = last.answers,
-            elevatorNotes = last.notes,
+            elevatorPhotos = last.photos,
+            elevatorLocation = last.location,
+            elevatorEvidence = last.evidence,
         )
         val index = steps().indexOf(ContributeStep.ElevatorAnother)
         clampIndex(if (index >= 0) index else state.stepIndex)
     }
 
-    private fun elevatorQuestionLabel(question: ElevatorQuestion): String = when (question) {
-        ElevatorQuestion.WideEntrance -> "Entrance Width"
-        ElevatorQuestion.SpaceToManeuver -> "Space to Maneuver"
-        ElevatorQuestion.ReachableButtons -> "Reachable Buttons"
-    }
-
     private fun toiletPassesForReport(): List<ToiletPass> {
-        val current = currentToiletPass()
-        val includeCurrent = current.answers.isNotEmpty() ||
-            current.location.isNotBlank() ||
-            current.photos.isNotEmpty()
-        return state.completedToiletPasses + if (includeCurrent) listOf(current) else emptyList()
+        val includeCurrent = state.sectionStatus[ContributeReviewCategory.Toilet] == CategorySectionStatus.Complete &&
+            !currentToiletPassIsEmpty()
+        return state.completedToiletPasses + if (includeCurrent) listOf(currentToiletPass()) else emptyList()
     }
 
     private fun currentToiletPass(): ToiletPass = ToiletPass(
         answers = state.toiletAnswers,
         location = state.toiletLocationNote,
         photos = state.toiletPhotos,
+        evidence = state.toiletEvidence,
     )
 
     private fun currentToiletPassIsEmpty(): Boolean {
         val pass = currentToiletPass()
-        return pass.answers.isEmpty() && pass.location.isBlank() && pass.photos.isEmpty()
+        return pass.answers.isEmpty() && pass.location.isBlank() && pass.photos.isEmpty() && evidenceCount(pass.evidence) == 0
     }
 
     private fun restoreLastToiletPass() {
@@ -722,106 +774,36 @@ class ContributeFlow(
             toiletAnswers = last.answers,
             toiletLocationNote = last.location,
             toiletPhotos = last.photos,
+            toiletEvidence = last.evidence,
         )
         val index = steps().indexOf(ContributeStep.ToiletAnother)
         clampIndex(if (index >= 0) index else state.stepIndex)
     }
+}
 
-    private fun toiletQuestionLabel(question: ToiletSurveyQuestion): String = when (question) {
-        ToiletSurveyQuestion.DoorKind -> "Doors"
-        ToiletSurveyQuestion.Seat -> "Toilet Seat"
-        ToiletSurveyQuestion.GrabBars -> "Grab Bars"
-        ToiletSurveyQuestion.Space -> "Space to Maneuver"
-        ToiletSurveyQuestion.Sink -> "Sink"
-        ToiletSurveyQuestion.Emergency -> "Emergency Aid"
-    }
+private fun clearEvidence(
+    photos: Map<String, List<LocalReviewPhoto>>,
+    question: String,
+    answer: String,
+): Map<String, List<LocalReviewPhoto>> =
+    if (ContributeCodes.isNotSure(answer)) photos else photos - question
 
-    /** Interim: fold supplemental category notes into toilet review until API has dedicated fields. */
-    private fun supplementalTextBlock(): String = buildString {
-        for (category in ContributeReviewCategory.supplemental) {
-            val notes = supplementalNotesFor(category)
-            if (notes.text.isBlank()) continue
-            if (isNotEmpty()) append("\n\n")
-            append("[${ContributeCategoryLabels.supplementalSectionTitle(category)}]\n")
-            append(notes.text.trim())
-        }
-        if (state.pathwayNotices.isNotEmpty()) {
-            val noticed = ContributeCatalog.pathwayNoticeOptions.filter { it in state.pathwayNotices }
-            if (isNotEmpty()) append("\n\n")
-            append("[Outdoor Pathways]\n")
-            append("Noticed: ${noticed.joinToString(", ")}")
-        }
-        val seating = state.seatingAnswer?.trim().orEmpty()
-        if (seating.isNotEmpty()) {
-            if (isNotEmpty()) append("\n\n")
-            append("[Seating]\n")
-            append("Wheelchair friendly seating: $seating")
-        }
-        val parking = state.parkingAnswer?.trim().orEmpty()
-        if (parking.isNotEmpty()) {
-            if (isNotEmpty()) append("\n\n")
-            append("[Parking]\n")
-            append("Accessible parking: $parking")
-        }
-    }
+private fun evidenceList(photos: Map<String, List<LocalReviewPhoto>>, question: String): List<LocalReviewPhoto> =
+    photos[question] ?: emptyList()
 
-    private fun toiletReport(): ToiletReport {
-        val passes = toiletPassesForReport()
-        val hasContent = passes.any { pass ->
-            pass.answers.isNotEmpty() || pass.location.isNotBlank() || pass.photos.isNotEmpty()
-        }
-        val passText = buildString {
-            passes.forEachIndexed { index, pass ->
-                val lines = mutableListOf<String>()
-                val location = pass.location.trim()
-                if (location.isNotEmpty()) lines += "Location: $location"
-                for (question in ToiletSurveyQuestion.entries) {
-                    val answer = pass.answers[question] ?: continue
-                    lines += "${toiletQuestionLabel(question)}: $answer"
-                }
-                if (lines.isEmpty()) return@forEachIndexed
-                if (isNotEmpty()) append("\n\n")
-                if (passes.size > 1) append("[Toilet ${index + 1}]\n")
-                append(lines.joinToString("\n"))
-            }
-        }.trim()
-        val noteText = buildString {
-            val supplemental = supplementalTextBlock()
-            if (supplemental.isNotBlank()) append(supplemental)
-            if (passText.isNotBlank()) {
-                if (isNotEmpty()) append("\n\n")
-                append(passText)
-            }
-            if (state.toiletNotes.text.isNotBlank()) {
-                if (isNotEmpty()) append("\n\n")
-                append(state.toiletNotes.text)
-            }
-        }
-        val supplementalPhotos = ContributeReviewCategory.supplemental.flatMap { supplementalNotesFor(it).photos }
-        val allToiletPhotos = passes.flatMap { it.photos } +
-            state.toiletNotes.photos +
-            state.seatingPhotos +
-            state.parkingPhotos +
-            supplementalPhotos
-        val notes = if (noteText.isBlank() && allToiletPhotos.isEmpty()) {
-            FacilityNotes()
-        } else {
-            state.toiletNotes.copy(text = noteText, photos = allToiletPhotos)
-        }
-        return ToiletReport(
-            hasDisabledToilet = if (hasContent) true else null,
-            review = noteOrNull(notes),
-        )
-    }
+private fun evidenceCount(photos: Map<String, List<LocalReviewPhoto>>): Int = photos.values.sumOf { it.size }
 
-    private fun noteOrNull(notes: FacilityNotes): ReviewNote? {
-        val text = notes.text.trim().ifBlank { null }
-        if (text == null && notes.photos.isEmpty()) return null
-        return ReviewNote(text = text, photoUrls = emptyList(), photoCaptions = emptyList())
-    }
-
-    private fun EntranceReport.hasContent(): Boolean =
-        hasDropoffRamp != null || hasRails != null || doorType != null || isWideEnough != null || review != null
+/** Where the photo on the current screen is stored. Evidence is capped across the whole pass. */
+sealed class PhotoTarget {
+    data object EntranceSection : PhotoTarget()
+    data class EntranceEvidence(val location: EntranceLocation, val question: String) : PhotoTarget()
+    data object ElevatorSection : PhotoTarget()
+    data class ElevatorEvidence(val question: String) : PhotoTarget()
+    data object ToiletSection : PhotoTarget()
+    data class ToiletEvidence(val question: String) : PhotoTarget()
+    data object PathwaySection : PhotoTarget()
+    data object SeatingSection : PhotoTarget()
+    data object ParkingSection : PhotoTarget()
 }
 
 fun newPhotoFileId(): String = buildString {

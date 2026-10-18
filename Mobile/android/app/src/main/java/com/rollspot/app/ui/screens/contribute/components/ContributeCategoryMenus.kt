@@ -1,8 +1,8 @@
 package com.rollspot.app.ui.screens.contribute.components
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -15,6 +15,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -22,6 +24,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.rollspot.shared.reviews.CategorySectionStatus
 import app.rollspot.shared.reviews.ContributeCategoryLabels
 import app.rollspot.shared.reviews.ContributeReviewCategory
 import com.rollspot.app.ui.screens.contribute.categoryMenuIcon
@@ -48,8 +51,8 @@ fun ContributeCategoryPickProgress() {
 
 @Composable
 fun ContributeCategoryMenusGrid(
-    selected: Set<ContributeReviewCategory>,
-    onToggle: (ContributeReviewCategory) -> Unit,
+    status: Map<ContributeReviewCategory, CategorySectionStatus>,
+    onOpen: (ContributeReviewCategory) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val categories = ContributeReviewCategory.menuOrder
@@ -59,8 +62,8 @@ fun ContributeCategoryMenusGrid(
                 row.forEach { category ->
                     ContributeCategoryCard(
                         category = category,
-                        selected = category in selected,
-                        onClick = { onToggle(category) },
+                        status = status[category],
+                        onClick = { onOpen(category) },
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -73,31 +76,49 @@ fun ContributeCategoryMenusGrid(
 @Composable
 private fun ContributeCategoryCard(
     category: ContributeReviewCategory,
-    selected: Boolean,
+    status: CategorySectionStatus?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(16.dp)
-    val bg = if (selected) RollspotBlue.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant
+    val complete = status == CategorySectionStatus.Complete
+    val bg = if (complete) RollspotBlue.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant
     Box(
         modifier
             .aspectRatio(171f / 116f)
             .clip(shape)
             .background(bg)
-            .then(if (selected) Modifier.border(2.dp, RollspotBlue, shape) else Modifier)
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 8.dp),
     ) {
-        if (selected) {
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .size(22.dp)
-                    .background(RollspotBlue, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(14.dp))
+        when (status) {
+            CategorySectionStatus.Complete -> {
+                Box(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .size(22.dp)
+                        .background(RollspotBlue, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(14.dp))
+                }
             }
+            CategorySectionStatus.InProgress -> {
+                Canvas(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .size(18.dp),
+                ) {
+                    drawArc(
+                        color = RollspotBlue,
+                        startAngle = -90f,
+                        sweepAngle = 270f,
+                        useCenter = false,
+                        style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round),
+                    )
+                }
+            }
+            null -> Unit
         }
         Column(
             Modifier.fillMaxSize(),

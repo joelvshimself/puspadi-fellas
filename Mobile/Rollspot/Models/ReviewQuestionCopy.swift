@@ -23,7 +23,7 @@ enum ReviewQuestionCopy {
         case .wheelchair:
             "Could you push your wheelchair up the ramp without help?"
         case .everyone:
-            "Could someone using a wheelchair get up the ramp on their own?"
+            "Could someone on a wheelchair go up the ramp without help?"
         }
     }
 
@@ -41,7 +41,7 @@ enum ReviewQuestionCopy {
         case .wheelchair:
             "Could you reach and grip the handrail from your wheelchair?"
         case .everyone:
-            "Could someone using a wheelchair reach and grip the handrail?"
+            "Could someone in a wheelchair reach and grip the handrail?"
         }
     }
 

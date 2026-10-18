@@ -7,6 +7,7 @@ import app.rollspot.shared.api.ApiException
 import com.rollspot.app.data.MockPlaces
 import app.rollspot.shared.reviews.ContributeFlow
 import app.rollspot.shared.reviews.ContributeFlowState
+import app.rollspot.shared.reviews.ContributePersona
 import app.rollspot.shared.reviews.ContributeReviewCategory
 import app.rollspot.shared.reviews.ContributeStep
 import app.rollspot.shared.reviews.ContributeStepPresentation
@@ -37,6 +38,7 @@ data class ContributeUiState(
     val submitError: String? = null,
     val submitted: Boolean = false,
     val isSubmitting: Boolean = false,
+    val persona: ContributePersona = ContributePersona.Wheelchair,
 )
 
 class ContributeFlowViewModel(
@@ -50,6 +52,20 @@ class ContributeFlowViewModel(
     val ui: StateFlow<ContributeUiState> = _ui.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            try {
+                val aids = sdk.api.profile().mobilityAids
+                val persona = if (aids.any { it == "Wheelchair" }) {
+                    ContributePersona.Wheelchair
+                } else {
+                    ContributePersona.Secondary
+                }
+                flow.state = flow.state.copy(persona = persona)
+                _ui.update { it.copy(persona = persona) }
+            } catch (_: Exception) {
+                // Keep the wheelchair wording if the profile cannot be read.
+            }
+        }
         val mock = MockPlaces.find(placeId)
         if (mock != null) {
             flow.state = flow.state.copy(placeName = mock.name)
@@ -96,8 +112,8 @@ class ContributeFlowViewModel(
         publishFlow()
     }
 
-    fun toggleCategory(category: ContributeReviewCategory) {
-        mutate { flow.toggleCategory(category) }
+    fun openCategory(category: ContributeReviewCategory) {
+        mutate { flow.openCategory(category) }
     }
 
     fun togglePathwayNotice(option: String) {
@@ -105,12 +121,7 @@ class ContributeFlowViewModel(
     }
 
     fun setSupplementalNote(category: ContributeReviewCategory, text: String) {
-        mutate {
-            val next = flow.state.supplementalNotes.toMutableMap()
-            val existing = next[category] ?: FacilityNotes()
-            next[category] = existing.copy(text = text)
-            flow.state = flow.state.copy(supplementalNotes = next)
-        }
+        mutate { flow.setCategoryNote(category, text) }
     }
 
     fun toggleEntranceLocation(location: EntranceLocation) {
@@ -139,35 +150,19 @@ class ContributeFlowViewModel(
     }
 
     fun setRampAnswer(location: EntranceLocation, answer: String) {
-        mutate {
-            flow.state = when (location) {
-                EntranceLocation.Lobby -> flow.state.copy(lobbyRampAnswer = answer)
-                EntranceLocation.Basement -> flow.state.copy(basementRampAnswer = answer)
-            }
-        }
+        mutate { flow.setRampAnswer(location, answer) }
     }
 
     fun setHandrailAnswer(location: EntranceLocation, answer: String) {
-        mutate {
-            flow.state = when (location) {
-                EntranceLocation.Lobby -> flow.state.copy(lobbyHandrailAnswer = answer)
-                EntranceLocation.Basement -> flow.state.copy(basementHandrailAnswer = answer)
-            }
-        }
+        mutate { flow.setHandrailAnswer(location, answer) }
     }
 
     fun setElevatorAnswer(question: ElevatorQuestion, answer: String) {
-        mutate {
-            val next = flow.state.elevatorAnswers.toMutableMap()
-            next[question] = answer
-            flow.state = flow.state.copy(elevatorAnswers = next)
-        }
+        mutate { flow.setElevatorAnswer(question, answer) }
     }
 
     fun setElevatorLocation(text: String) {
-        mutate {
-            flow.state = flow.state.copy(elevatorNotes = flow.state.elevatorNotes.copy(text = text))
-        }
+        mutate { flow.state = flow.state.copy(elevatorLocation = text) }
     }
 
     fun chooseAnotherEntrance(answer: String) {
@@ -186,11 +181,7 @@ class ContributeFlowViewModel(
     }
 
     fun setToiletAnswer(question: ToiletSurveyQuestion, answer: String) {
-        mutate {
-            val next = flow.state.toiletAnswers.toMutableMap()
-            next[question] = answer
-            flow.state = flow.state.copy(toiletAnswers = next)
-        }
+        mutate { flow.setToiletAnswer(question, answer) }
     }
 
     fun setSeatingAnswer(answer: String) {
@@ -205,98 +196,15 @@ class ContributeFlowViewModel(
         mutate { flow.state = flow.state.copy(toiletLocationNote = note) }
     }
 
-    fun setFinalNote(text: String) {
-        mutate { flow.state = flow.state.copy(toiletNotes = flow.state.toiletNotes.copy(text = text)) }
-    }
-
     fun addPhoto(jpeg: ByteArray, fileId: String) {
-        mutate {
-            val photo = LocalReviewPhoto(fileId, jpeg)
-            val step = flow.currentStep()
-            when (step) {
-                ContributeStep.EntrancePhotos -> {
-                    flow.state = flow.state.copy(entrancePhotos = flow.state.entrancePhotos + photo)
-                }
-                ContributeStep.ElevatorPhotos -> {
-                    val notes = flow.state.elevatorNotes
-                    flow.state = flow.state.copy(elevatorNotes = notes.copy(photos = notes.photos + photo))
-                }
-                ContributeStep.ToiletPhotos,
-                is ContributeStep.Toilet,
-                -> {
-                    flow.state = flow.state.copy(toiletPhotos = flow.state.toiletPhotos + photo)
-                }
-                ContributeStep.SeatingPhotos -> {
-                    flow.state = flow.state.copy(seatingPhotos = flow.state.seatingPhotos + photo)
-                }
-                ContributeStep.ParkingPhotos -> {
-                    flow.state = flow.state.copy(parkingPhotos = flow.state.parkingPhotos + photo)
-                }
-                ContributeStep.PathwayPhotos -> appendSupplementalPhoto(ContributeReviewCategory.OutdoorPathways, photo)
-                is ContributeStep.SupplementalNotes -> appendSupplementalPhoto(step.category, photo)
-                ContributeStep.FinalReview -> {
-                    val notes = flow.state.toiletNotes.copy(photos = flow.state.toiletNotes.photos + photo)
-                    flow.state = flow.state.copy(toiletNotes = notes)
-                }
-                is ContributeStep.EntranceRamp -> appendLocationPhoto(step.location, photo)
-                is ContributeStep.EntranceHandrail -> appendLocationPhoto(step.location, photo)
-                else -> Unit
-            }
-        }
-    }
-
-    private fun appendSupplementalPhoto(category: ContributeReviewCategory, photo: LocalReviewPhoto) {
-        val next = flow.state.supplementalNotes.toMutableMap()
-        val existing = next[category] ?: FacilityNotes()
-        next[category] = existing.copy(photos = existing.photos + photo)
-        flow.state = flow.state.copy(supplementalNotes = next)
-    }
-
-    private fun appendLocationPhoto(location: EntranceLocation, photo: LocalReviewPhoto) {
-        val current = when (location) {
-            EntranceLocation.Lobby -> flow.state.lobbyNotes
-            EntranceLocation.Basement -> flow.state.basementNotes
-        }
-        val updated = current.copy(photos = current.photos + photo)
-        flow.state = when (location) {
-            EntranceLocation.Lobby -> flow.state.copy(lobbyNotes = updated)
-            EntranceLocation.Basement -> flow.state.copy(basementNotes = updated)
-        }
+        mutate { flow.addPhoto(LocalReviewPhoto(fileId, jpeg)) }
     }
 
     fun removePhoto(fileId: String) {
-        mutate {
-            fun strip(notes: FacilityNotes) = notes.copy(photos = notes.photos.filter { it.fileId != fileId })
-            val supplemental = flow.state.supplementalNotes.mapValues { (_, notes) -> strip(notes) }
-            val passes = flow.state.completedElevatorPasses.map { pass ->
-                pass.copy(notes = strip(pass.notes))
-            }
-            val entrancePasses = flow.state.completedEntrancePasses.map { pass ->
-                pass.copy(
-                    photos = pass.photos.filter { it.fileId != fileId },
-                    lobbyNotes = strip(pass.lobbyNotes),
-                    basementNotes = strip(pass.basementNotes),
-                )
-            }
-            val toiletPasses = flow.state.completedToiletPasses.map { pass ->
-                pass.copy(photos = pass.photos.filter { it.fileId != fileId })
-            }
-            flow.state = flow.state.copy(
-                entrancePhotos = flow.state.entrancePhotos.filter { it.fileId != fileId },
-                completedEntrancePasses = entrancePasses,
-                toiletPhotos = flow.state.toiletPhotos.filter { it.fileId != fileId },
-                completedToiletPasses = toiletPasses,
-                lobbyNotes = strip(flow.state.lobbyNotes),
-                basementNotes = strip(flow.state.basementNotes),
-                completedElevatorPasses = passes,
-                elevatorNotes = strip(flow.state.elevatorNotes),
-                toiletNotes = strip(flow.state.toiletNotes),
-                seatingPhotos = flow.state.seatingPhotos.filter { it.fileId != fileId },
-                parkingPhotos = flow.state.parkingPhotos.filter { it.fileId != fileId },
-                supplementalNotes = supplemental,
-            )
-        }
+        mutate { flow.removePhoto(fileId) }
     }
+
+    fun canAddPhoto(): Boolean = flow.canAddPhoto()
 
     fun canContinueCurrentStep(): Boolean {
         val step = flow.currentStep() ?: return false
@@ -364,7 +272,7 @@ class ContributeFlowViewModel(
     private suspend fun doSubmit() {
         _ui.update { it.copy(isSubmitting = true, submitError = null) }
         try {
-            reviewModel.submit(flow.toSubmission(), flow.pendingPhotos())
+            reviewModel.submitContribution(flow.toSubmission(), flow.pendingPhotos())
             flow.markSubmitted()
             _ui.update { it.copy(isSubmitting = false, submitted = true) }
             publishFlow()

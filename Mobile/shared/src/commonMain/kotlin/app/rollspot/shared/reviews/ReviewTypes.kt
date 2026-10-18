@@ -11,6 +11,13 @@ enum class ReviewPhotoSlot {
     Toilet,
 }
 
+/** JPEG bytes for one contribute photo; [fileId] is stable across upload retries. */
+data class PendingContributionPhoto(
+    val fileId: String,
+    val jpeg: ByteArray,
+    val caption: String = "",
+)
+
 /** JPEG bytes for one note photo; [fileId] is stable across upload retries. */
 data class PendingReviewPhoto(
     val slot: ReviewPhotoSlot,
