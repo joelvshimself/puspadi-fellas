@@ -43,6 +43,8 @@ sealed class ContributeStep {
     data object ToiletLocation : ContributeStep()
     data object ToiletAnother : ContributeStep()
     data class SupplementalNotes(val category: ContributeReviewCategory) : ContributeStep()
+    data object PathwayPhotos : ContributeStep()
+    data object PathwayNotice : ContributeStep()
     data object FinalReview : ContributeStep()
     data object Submitted : ContributeStep()
 }
@@ -111,6 +113,7 @@ data class ContributeFlowState(
     val basementNotes: FacilityNotes = FacilityNotes(),
     val elevatorNotes: FacilityNotes = FacilityNotes(),
     val toiletNotes: FacilityNotes = FacilityNotes(),
+    val pathwayNotices: Set<String> = emptySet(),
     val showExitConfirmation: Boolean = false,
 )
 
@@ -143,6 +146,17 @@ object ContributeCatalog {
     val elevatorAnotherOptions = listOf("Yes", "No")
     val entranceAnotherOptions = listOf("Yes", "No")
     val toiletAnotherOptions = listOf("Yes", "No")
+
+    const val NOTICE_NOTHING = "Nothing notable"
+    val pathwayNoticeOptions = listOf(
+        "Loose gravel or sand",
+        "Rough or uneven surface",
+        "Tight gap",
+        "Narrow pathway",
+        "Steep section",
+        "Curb or step with no ramp",
+        NOTICE_NOTHING,
+    )
 }
 
 @OptIn(ExperimentalUuidApi::class)
@@ -194,7 +208,11 @@ class ContributeFlow(
             list += ContributeStep.ToiletAnother
         }
         for (category in ContributeReviewCategory.supplemental) {
-            if (category in s.selectedCategories) {
+            if (category !in s.selectedCategories) continue
+            if (category == ContributeReviewCategory.OutdoorPathways) {
+                list += ContributeStep.PathwayPhotos
+                list += ContributeStep.PathwayNotice
+            } else {
                 list += ContributeStep.SupplementalNotes(category)
             }
         }
@@ -227,6 +245,8 @@ class ContributeFlow(
         ContributeStep.ToiletLocation -> true
         ContributeStep.ToiletAnother -> false
         is ContributeStep.SupplementalNotes -> true
+        ContributeStep.PathwayPhotos -> true
+        ContributeStep.PathwayNotice -> state.pathwayNotices.isNotEmpty()
         ContributeStep.FinalReview -> true
         ContributeStep.Submitted -> true
     }
@@ -328,6 +348,21 @@ class ContributeFlow(
         }
     }
 
+    /** "Nothing notable" clears every other row, and any other row clears it. */
+    fun togglePathwayNotice(option: String) {
+        val next = state.pathwayNotices.toMutableSet()
+        if (option == ContributeCatalog.NOTICE_NOTHING) {
+            if (option in next) next.remove(option) else {
+                next.clear()
+                next.add(option)
+            }
+        } else {
+            next.remove(ContributeCatalog.NOTICE_NOTHING)
+            if (option in next) next.remove(option) else next.add(option)
+        }
+        state = state.copy(pathwayNotices = next)
+    }
+
     fun dismissExitConfirmation() {
         state = state.copy(showExitConfirmation = false)
     }
@@ -358,6 +393,7 @@ class ContributeFlow(
             s.completedToiletPasses.isNotEmpty() ||
             s.toiletPhotos.isNotEmpty() ||
             s.toiletLocationNote.isNotBlank() ||
+            s.pathwayNotices.isNotEmpty() ||
             s.lobbyNotes.text.isNotBlank() ||
             s.basementNotes.text.isNotBlank() ||
             s.elevatorNotes.text.isNotBlank() ||
@@ -677,6 +713,12 @@ class ContributeFlow(
             if (isNotEmpty()) append("\n\n")
             append("[${ContributeCategoryLabels.supplementalSectionTitle(category)}]\n")
             append(notes.text.trim())
+        }
+        if (state.pathwayNotices.isNotEmpty()) {
+            val noticed = ContributeCatalog.pathwayNoticeOptions.filter { it in state.pathwayNotices }
+            if (isNotEmpty()) append("\n\n")
+            append("[Outdoor Pathways]\n")
+            append("Noticed: ${noticed.joinToString(", ")}")
         }
     }
 

@@ -7,6 +7,7 @@ enum class ContributeHeroAsset {
     Elevator,
     ElevatorQuestion,
     ToiletSurvey,
+    Pathway,
     None,
 }
 
@@ -19,6 +20,9 @@ object ContributeStepPresentation {
         ContributeStep.CategoryPick -> ""
         is ContributeStep.SupplementalNotes ->
             ContributeCategoryLabels.supplementalSectionTitle(step.category)
+        ContributeStep.PathwayPhotos,
+        ContributeStep.PathwayNotice,
+        -> "Outdoor Pathways"
         ContributeStep.EntrancePhotos,
         ContributeStep.EntranceLocationPick,
         is ContributeStep.EntranceTags,
@@ -43,7 +47,10 @@ object ContributeStepPresentation {
 
     fun progressStep(step: ContributeStep): Int = when (step) {
         ContributeStep.CategoryPick -> 0
-        is ContributeStep.SupplementalNotes -> 4
+        is ContributeStep.SupplementalNotes,
+        ContributeStep.PathwayPhotos,
+        ContributeStep.PathwayNotice,
+        -> 4
         ContributeStep.EntrancePhotos,
         ContributeStep.EntranceLocationPick,
         is ContributeStep.EntranceTags,
@@ -79,7 +86,9 @@ object ContributeStepPresentation {
     fun heroAsset(step: ContributeStep): ContributeHeroAsset = when (step) {
         ContributeStep.CategoryPick,
         is ContributeStep.SupplementalNotes,
+        ContributeStep.PathwayNotice,
         -> ContributeHeroAsset.None
+        ContributeStep.PathwayPhotos -> ContributeHeroAsset.Pathway
         ContributeStep.EntrancePhotos,
         ContributeStep.EntranceLocationPick,
         -> ContributeHeroAsset.Lobby
@@ -134,6 +143,8 @@ object ContributeStepPresentation {
         ContributeStep.CategoryPick -> "Help make every visit easier"
         is ContributeStep.SupplementalNotes ->
             "Tell us about ${ContributeCategoryLabels.supplementalSectionTitle(step.category).lowercase()}"
+        ContributeStep.PathwayPhotos -> "Take or upload a photo"
+        ContributeStep.PathwayNotice -> "What did you notice along the pathway?"
         ContributeStep.EntrancePhotos -> "Take or upload a photo"
         ContributeStep.EntranceLocationPick -> "Where can you find the accessible entrances?"
         is ContributeStep.EntranceTags -> when (step.location) {
@@ -182,6 +193,7 @@ object ContributeStepPresentation {
         ContributeStep.EntranceLocationPick -> "You can select multiple places"
         is ContributeStep.EntranceTags -> "You can select multiple answers"
         is ContributeStep.SupplementalNotes -> "Add notes and photos for this area."
+        ContributeStep.PathwayPhotos -> "(Optional)"
         else -> null
     }
 
@@ -201,6 +213,7 @@ object ContributeStepPresentation {
             EntranceLocation.Lobby -> ContributeCatalog.lobbyEntranceTags()
             EntranceLocation.Basement -> ContributeCatalog.basementEntranceTags()
         }
+        ContributeStep.PathwayNotice -> ContributeCatalog.pathwayNoticeOptions
         else -> emptyList()
     }
 

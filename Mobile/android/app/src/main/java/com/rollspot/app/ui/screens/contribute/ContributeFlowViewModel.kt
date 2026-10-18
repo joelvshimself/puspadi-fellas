@@ -100,6 +100,10 @@ class ContributeFlowViewModel(
         mutate { flow.toggleCategory(category) }
     }
 
+    fun togglePathwayNotice(option: String) {
+        mutate { flow.togglePathwayNotice(option) }
+    }
+
     fun setSupplementalNote(category: ContributeReviewCategory, text: String) {
         mutate {
             val next = flow.state.supplementalNotes.toMutableMap()
@@ -214,13 +218,8 @@ class ContributeFlowViewModel(
                 -> {
                     flow.state = flow.state.copy(toiletPhotos = flow.state.toiletPhotos + photo)
                 }
-                is ContributeStep.SupplementalNotes -> {
-                    val category = step.category
-                    val next = flow.state.supplementalNotes.toMutableMap()
-                    val existing = next[category] ?: FacilityNotes()
-                    next[category] = existing.copy(photos = existing.photos + photo)
-                    flow.state = flow.state.copy(supplementalNotes = next)
-                }
+                ContributeStep.PathwayPhotos -> appendSupplementalPhoto(ContributeReviewCategory.OutdoorPathways, photo)
+                is ContributeStep.SupplementalNotes -> appendSupplementalPhoto(step.category, photo)
                 ContributeStep.FinalReview -> {
                     val notes = flow.state.toiletNotes.copy(photos = flow.state.toiletNotes.photos + photo)
                     flow.state = flow.state.copy(toiletNotes = notes)
@@ -230,6 +229,13 @@ class ContributeFlowViewModel(
                 else -> Unit
             }
         }
+    }
+
+    private fun appendSupplementalPhoto(category: ContributeReviewCategory, photo: LocalReviewPhoto) {
+        val next = flow.state.supplementalNotes.toMutableMap()
+        val existing = next[category] ?: FacilityNotes()
+        next[category] = existing.copy(photos = existing.photos + photo)
+        flow.state = flow.state.copy(supplementalNotes = next)
     }
 
     private fun appendLocationPhoto(location: EntranceLocation, photo: LocalReviewPhoto) {

@@ -285,6 +285,47 @@ class ContributeFlowTest {
     }
 
     @Test
+    fun pathwayStepsReplaceGenericNotes() {
+        val flow = ContributeFlow("p", "Mall")
+        flow.toggleCategory(ContributeReviewCategory.OutdoorPathways)
+        assertTrue(flow.steps().contains(ContributeStep.PathwayPhotos))
+        assertTrue(flow.steps().contains(ContributeStep.PathwayNotice))
+        assertFalse(
+            flow.steps().any {
+                it is ContributeStep.SupplementalNotes &&
+                    it.category == ContributeReviewCategory.OutdoorPathways
+            },
+        )
+        assertFalse(flow.canContinue(ContributeStep.PathwayNotice))
+        assertTrue(flow.canContinue(ContributeStep.PathwayPhotos))
+    }
+
+    @Test
+    fun nothingNotableClearsOtherPathwayNotices() {
+        val flow = ContributeFlow("p", "Mall")
+        flow.togglePathwayNotice("Tight gap")
+        flow.togglePathwayNotice("Narrow pathway")
+        assertEquals(setOf("Tight gap", "Narrow pathway"), flow.state.pathwayNotices)
+        flow.togglePathwayNotice(ContributeCatalog.NOTICE_NOTHING)
+        assertEquals(setOf(ContributeCatalog.NOTICE_NOTHING), flow.state.pathwayNotices)
+        flow.togglePathwayNotice("Steep section")
+        assertEquals(setOf("Steep section"), flow.state.pathwayNotices)
+        assertTrue(flow.canContinue(ContributeStep.PathwayNotice))
+    }
+
+    @Test
+    fun pathwayNoticesFoldedIntoSubmission() {
+        val flow = ContributeFlow("p", "Mall")
+        flow.state = flow.state.copy(
+            selectedCategories = setOf(ContributeReviewCategory.OutdoorPathways),
+            pathwayNotices = setOf("Narrow pathway", "Tight gap"),
+        )
+        val reviewText = flow.toSubmission().toilet?.review?.text
+        assertTrue(reviewText?.contains("[Outdoor Pathways]") == true)
+        assertTrue(reviewText?.contains("Noticed: Tight gap, Narrow pathway") == true)
+    }
+
+    @Test
     fun supplementalTextFoldedIntoSubmission() {
         val flow = ContributeFlow("p", "Mall")
         flow.state = flow.state.copy(

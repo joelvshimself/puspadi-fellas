@@ -7,16 +7,22 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import com.rollspot.app.ui.theme.RollspotBlue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.rollspot.shared.reviews.ContributeHeroAsset
 import app.rollspot.shared.reviews.ContributeStep
+import app.rollspot.shared.reviews.ContributeReviewCategory
 import app.rollspot.shared.reviews.ContributeStepPresentation
 import app.rollspot.shared.reviews.EntranceLocation
 import app.rollspot.shared.reviews.ToiletSurveyQuestion
@@ -36,6 +42,7 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
     val context = LocalContext.current
 
     var showEntranceInfo by remember { mutableStateOf(false) }
+    var showPathwayInfo by remember { mutableStateOf(false) }
 
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         uri ?: return@rememberLauncherForActivityResult
@@ -196,6 +203,34 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
                         selected = ui.flowSnapshot?.selectedCategories ?: emptySet(),
                         onToggle = vm::toggleCategory,
                     )
+                }
+                ContributeStep.PathwayPhotos -> {
+                    ContributeAddPhotosBox(
+                        photos = ui.flowSnapshot?.supplementalNotes?.get(ContributeReviewCategory.OutdoorPathways)?.photos
+                            ?: emptyList(),
+                        onAddPhoto = { photoPicker.launch("image/*") },
+                        onRemovePhoto = vm::removePhoto,
+                    )
+                }
+                ContributeStep.PathwayNotice -> {
+                    TextButton(onClick = { showPathwayInfo = true }, contentPadding = PaddingValues(0.dp)) {
+                        Icon(Icons.Outlined.Info, contentDescription = null, tint = RollspotBlue)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Learn more about accessible pathways",
+                            color = RollspotBlue,
+                            textDecoration = TextDecoration.Underline,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    ContributeStepPresentation.tagOptions(step).forEach { option ->
+                        val selected = option in (ui.flowSnapshot?.pathwayNotices ?: emptySet())
+                        ContributeNoticeRow(
+                            label = option,
+                            selected = selected,
+                            onClick = { vm.togglePathwayNotice(option) },
+                        )
+                    }
                 }
                 is ContributeStep.SupplementalNotes -> {
                     val notes = ui.flowSnapshot?.supplementalNotes?.get(step.category)
@@ -411,6 +446,9 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
 
     if (showEntranceInfo) {
         AccessibleEntranceInfoSheet(onDismiss = { showEntranceInfo = false })
+    }
+    if (showPathwayInfo) {
+        PathwayInfoSheet(onDismiss = { showPathwayInfo = false })
     }
 }
 

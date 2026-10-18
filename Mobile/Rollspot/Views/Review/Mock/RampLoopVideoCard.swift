@@ -147,26 +147,43 @@ private struct FollowUpInfoSheet: View {
     }
 }
 
-private final class RampLoopPlayer: ObservableObject {
+final class RampLoopPlayer: ObservableObject {
     let player = AVQueuePlayer()
     private var looper: AVPlayerLooper?
+    private var resource: String?
     @Published var isPlaying = false
 
     func start(resource name: String) {
-        guard looper == nil,
-              let url = Bundle.main.url(forResource: name, withExtension: "mp4") else { return }
+        guard resource != name else { return }
+        resource = name
+        looper = nil
+        player.removeAllItems()
+        guard let url = Bundle.main.url(forResource: name, withExtension: "mp4") else { return }
         looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(url: url))
-        player.play()
-        isPlaying = true
+        play()
+    }
+
+    /// Plays the visible carousel page and rewinds the ones that scrolled away.
+    func setActive(_ active: Bool) {
+        if active {
+            play()
+        } else {
+            pause()
+            player.seek(to: .zero)
+        }
     }
 
     func toggle() {
         if isPlaying {
             pause()
         } else {
-            player.play()
-            isPlaying = true
+            play()
         }
+    }
+
+    func play() {
+        player.play()
+        isPlaying = true
     }
 
     func pause() {
@@ -175,7 +192,7 @@ private final class RampLoopPlayer: ObservableObject {
     }
 }
 
-private struct LoopingPlayerView: UIViewRepresentable {
+struct LoopingPlayerView: UIViewRepresentable {
     let player: AVQueuePlayer
 
     func makeUIView(context: Context) -> PlayerHostView {
@@ -190,7 +207,7 @@ private struct LoopingPlayerView: UIViewRepresentable {
     }
 }
 
-private final class PlayerHostView: UIView {
+final class PlayerHostView: UIView {
     override class var layerClass: AnyClass { AVPlayerLayer.self }
     var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
 }

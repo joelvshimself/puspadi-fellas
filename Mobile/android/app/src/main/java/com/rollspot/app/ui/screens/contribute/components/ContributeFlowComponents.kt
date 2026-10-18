@@ -1,6 +1,14 @@
 package com.rollspot.app.ui.screens.contribute.components
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -22,13 +30,16 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Photo
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.viewinterop.AndroidView
 import android.net.Uri
@@ -46,11 +57,17 @@ import androidx.annotation.DrawableRes
 import androidx.annotation.RawRes
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.rollspot.shared.reviews.ContributeHeroAsset
+import app.rollspot.shared.reviews.PathwayInfoCatalog
+import app.rollspot.shared.reviews.PathwayInfoPage
+import kotlinx.coroutines.launch
 import com.rollspot.app.R
 import com.rollspot.app.ui.screens.contribute.rememberHeroPainter
 import com.rollspot.app.ui.screens.contribute.tagChipDrawable
@@ -656,4 +673,171 @@ fun ContributeSubmittedScreen(onDone: () -> Unit, modifier: Modifier = Modifier)
             Spacer(Modifier.height(24.dp))
         }
     }
+}
+
+@Composable
+fun ContributeNoticeRow(label: String, selected: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(50)
+    Text(
+        label,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surfaceVariant, shape)
+            .then(if (selected) Modifier.border(BorderStroke(1.5.dp, RollspotBlue), shape) else Modifier)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 16.dp),
+        fontWeight = FontWeight.Medium,
+        color = if (selected) RollspotBlue else MaterialTheme.colorScheme.onSurface,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PathwayInfoSheet(onDismiss: () -> Unit) {
+    val pages = PathwayInfoCatalog.pages
+    val pagerState = rememberPagerState { pages.size }
+    val scope = rememberCoroutineScope()
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp)
+                .navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            HorizontalPager(
+                state = pagerState,
+                pageSpacing = 12.dp,
+                modifier = Modifier.fillMaxWidth().height(210.dp),
+            ) { index ->
+                PathwayCarouselVideo(
+                    rawRes = pathwayVideoRes(pages[index].videoKey),
+                    active = pagerState.currentPage == index,
+                )
+            }
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            ) {
+                pages.forEachIndexed { index, page ->
+                    val selected = pagerState.currentPage == index
+                    Text(
+                        page.chip,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(if (selected) RollspotBlue else Color.White)
+                            .clickable {
+                                scope.launch { pagerState.animateScrollToPage(index) }
+                            }
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        color = if (selected) Color.White else Color.Black,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                    )
+                }
+            }
+            AnimatedContent(
+                targetState = pagerState.currentPage,
+                transitionSpec = {
+                    (slideInHorizontally { it / 3 } + fadeIn()) togetherWith
+                        (slideOutHorizontally { -it / 3 } + fadeOut())
+                },
+                label = "pathwayInfo",
+            ) { index ->
+                PathwayInfoCopy(pages[index])
+            }
+        }
+    }
+}
+
+@Composable
+private fun PathwayInfoCopy(page: PathwayInfoPage) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(page.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text(page.body, style = MaterialTheme.typography.bodyLarge)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(Icons.Filled.Warning, contentDescription = null, tint = Color(0xFFE53935), modifier = Modifier.size(18.dp))
+            Text("What to avoid:", fontWeight = FontWeight.SemiBold)
+        }
+        page.avoid.forEach { point ->
+            Text(
+                buildAnnotatedString {
+                    append("•  ")
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(point.lead) }
+                    append(point.rest)
+                },
+                style = MaterialTheme.typography.bodyLarge,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PathwayCarouselVideo(@RawRes rawRes: Int, active: Boolean) {
+    val context = LocalContext.current
+    var playing by remember(rawRes) { mutableStateOf(false) }
+    val shouldPlay = remember(rawRes) { object { var value = false } }
+    val videoView = remember(rawRes) {
+        VideoView(context).apply {
+            setVideoURI(Uri.parse("android.resource://${context.packageName}/$rawRes"))
+            setOnPreparedListener { player ->
+                player.isLooping = true
+                if (shouldPlay.value) start()
+            }
+        }
+    }
+    DisposableEffect(videoView) {
+        onDispose { videoView.stopPlayback() }
+    }
+    LaunchedEffect(active) {
+        shouldPlay.value = active
+        if (active) {
+            videoView.start()
+            playing = true
+        } else {
+            videoView.pause()
+            videoView.seekTo(0)
+            playing = false
+        }
+    }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color.White),
+    ) {
+        AndroidView(factory = { videoView }, modifier = Modifier.fillMaxSize())
+        OverlayCircleButton(
+            onClick = {
+                if (playing) {
+                    shouldPlay.value = false
+                    videoView.pause()
+                } else {
+                    shouldPlay.value = true
+                    videoView.start()
+                }
+                playing = !playing
+            },
+            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+        ) {
+            Icon(
+                if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                contentDescription = if (playing) "Pause" else "Play",
+                modifier = Modifier.size(16.dp),
+            )
+        }
+    }
+}
+
+@RawRes
+private fun pathwayVideoRes(videoKey: String): Int = when (videoKey) {
+    "width" -> R.raw.pathways_width
+    "obstructions" -> R.raw.pathways_obstructions
+    else -> R.raw.pathways_surfaces
 }

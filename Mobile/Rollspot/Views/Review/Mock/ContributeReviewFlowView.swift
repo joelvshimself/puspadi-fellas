@@ -27,6 +27,7 @@ struct ContributeReviewFlowView: View {
     @State private var selectedFacilities: Set<FacilityKind>
     @State private var selectedCategories: Set<ContributeReviewCategory>
     @State private var supplementalNotes: [ContributeReviewCategory: ReviewNoteDraft]
+    @State private var pathwayNotices: Set<String> = []
     @State private var screenIndex: Int
     @State private var entranceLocations: Set<EntranceLocation>
     @State private var entranceSectionPhotos: ReviewNoteDraft = ReviewNoteDraft()
@@ -144,6 +145,8 @@ struct ContributeReviewFlowView: View {
         case toiletQuestion(ToiletQuestion)
         case toiletLocation
         case toiletAnother
+        case pathwayPhotos
+        case pathwayNotice
         case supplementalNotes(ContributeReviewCategory)
         case facilityQuestion(FacilityKind)
         case facilityPhotos(FacilityKind)
@@ -194,7 +197,12 @@ struct ContributeReviewFlowView: View {
             }
         }
         for category in ContributeReviewCategory.supplemental where selectedCategories.contains(category) {
-            list.append(.supplementalNotes(category))
+            if category == .outdoorPathways {
+                list.append(.pathwayPhotos)
+                list.append(.pathwayNotice)
+            } else {
+                list.append(.supplementalNotes(category))
+            }
         }
         list.append(.finalReview)
         return list
@@ -210,6 +218,7 @@ struct ContributeReviewFlowView: View {
         screenIndex > 0
             || !selectedCategories.isEmpty
             || supplementalNotes.values.contains(where: { !$0.text.isEmpty || !$0.photos.isEmpty })
+            || !pathwayNotices.isEmpty
             || !entranceLocations.isEmpty
             || !completedEntrancePasses.isEmpty
             || !entranceSectionPhotos.photos.isEmpty
@@ -309,6 +318,25 @@ struct ContributeReviewFlowView: View {
                 selectedFacilities = Set(orderedFacilities)
                 clampScreenIndex()
             }
+        case .pathwayPhotos:
+            ContributeEntrancePhotosStepView(
+                navTitle: "Outdoor Pathways",
+                illustrationAssetName: "pathwayicon",
+                stepNumber: 4,
+                progress: progress(for: screen),
+                subStepProgress: subProgress(for: screen),
+                note: supplementalNoteBinding(for: .outdoorPathways),
+                onBack: goBackOneStep,
+                onContinue: goNext
+            )
+        case .pathwayNotice:
+            ContributePathwayNoticeStepView(
+                progress: progress(for: screen),
+                subStepProgress: subProgress(for: screen),
+                selection: $pathwayNotices,
+                onBack: goBackOneStep,
+                onContinue: goNext
+            )
         case .supplementalNotes(let category):
             ContributePhotosNotesStepView(
                 facilityName: category.menuTitle,
@@ -837,7 +865,7 @@ struct ContributeReviewFlowView: View {
         case .category, .entranceSectionPhotos, .entranceLocation, .entranceQuestion, .entranceRampFollowup, .entranceHandrailFollowup, .entranceAnother, .entrancePhotos: 1
         case .elevatorPhotos, .elevatorQuestion, .elevatorLocation, .elevatorAnother: 2
         case .toiletPhotos, .toiletQuestion, .toiletLocation, .toiletAnother: 3
-        case .facilityQuestion, .facilityPhotos, .supplementalNotes, .finalReview: 4
+        case .pathwayPhotos, .pathwayNotice, .facilityQuestion, .facilityPhotos, .supplementalNotes, .finalReview: 4
         }
 
         let stepScreens = screens.filter { s in
@@ -845,7 +873,7 @@ struct ContributeReviewFlowView: View {
             case .category, .entranceSectionPhotos, .entranceLocation, .entranceQuestion, .entranceRampFollowup, .entranceHandrailFollowup, .entranceAnother, .entrancePhotos: stepNumber == 1
             case .elevatorPhotos, .elevatorQuestion, .elevatorLocation, .elevatorAnother: stepNumber == 2
             case .toiletPhotos, .toiletQuestion, .toiletLocation, .toiletAnother: stepNumber == 3
-            case .facilityQuestion, .facilityPhotos, .supplementalNotes, .finalReview: stepNumber == 4
+            case .pathwayPhotos, .pathwayNotice, .facilityQuestion, .facilityPhotos, .supplementalNotes, .finalReview: stepNumber == 4
             }
         }
 
@@ -1325,6 +1353,10 @@ struct ContributeReviewFlowView: View {
     private func appendSupplementalNotesToDraft() {
         var blocks: [String] = []
         for category in ContributeReviewCategory.supplemental {
+            if category == .outdoorPathways, !pathwayNotices.isEmpty {
+                let noticed = ContributePathwayNoticeStepView.options.filter { pathwayNotices.contains($0) }
+                blocks.append("[Outdoor Pathways]\nNoticed: \(noticed.joined(separator: ", "))")
+            }
             guard let note = supplementalNotes[category], !note.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
             blocks.append("[\(category.menuTitle)]\n\(note.text.trimmingCharacters(in: .whitespacesAndNewlines))")
         }
