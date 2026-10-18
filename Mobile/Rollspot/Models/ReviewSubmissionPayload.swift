@@ -128,15 +128,38 @@ extension ReviewDraft {
             if report.isWideEnough != nil { return true }
             return report.review != nil
         }
-        let lobbyReport = lobby.asReport(
-            photoUrls: photoUrls.lobby,
-            photoCaptions: photoUrls.lobbyCaptions
-        )
-        let basementReport = basement.asReport(
-            photoUrls: photoUrls.basement,
-            photoCaptions: photoUrls.basementCaptions
-        )
-        let entranceReports = [lobbyReport, basementReport].filter(hasContent)
+        let entranceReports: [ReviewSubmissionPayload.EntranceReport]
+        if entrancePassSnapshots.isEmpty {
+            let lobbyReport = lobby.asReport(
+                photoUrls: photoUrls.lobby,
+                photoCaptions: photoUrls.lobbyCaptions
+            )
+            let basementReport = basement.asReport(
+                photoUrls: photoUrls.basement,
+                photoCaptions: photoUrls.basementCaptions
+            )
+            entranceReports = [lobbyReport, basementReport].filter(hasContent)
+        } else {
+            entranceReports = entrancePassSnapshots.flatMap { snapshot in
+                let primary: EntranceLocation? = snapshot.locations.contains(.lobby)
+                    ? .lobby
+                    : (snapshot.locations.contains(.basement) ? .basement : nil)
+                return EntranceLocation.allCases.compactMap { location -> ReviewSubmissionPayload.EntranceReport? in
+                    guard snapshot.locations.contains(location) else { return nil }
+                    var entrance = location == .lobby ? snapshot.lobby : snapshot.basement
+                    if location == primary {
+                        let existing = Set(entrance.review.photos.map(\.id))
+                        let extra = snapshot.sectionPhotos.filter { !existing.contains($0.id) }
+                        entrance.review.photos.insert(contentsOf: extra, at: 0)
+                    }
+                    let report = entrance.asReport(
+                        photoUrls: location == .lobby ? photoUrls.lobby : photoUrls.basement,
+                        photoCaptions: location == .lobby ? photoUrls.lobbyCaptions : photoUrls.basementCaptions
+                    )
+                    return hasContent(report) ? report : nil
+                }
+            }
+        }
 
         return ReviewSubmissionPayload(
             submissionId: submissionId,

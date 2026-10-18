@@ -21,6 +21,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.rollspot.shared.reviews.ContributeCategoryLabels
@@ -82,12 +83,12 @@ private fun ContributeCategoryCard(
     val bg = if (selected) RollspotBlue.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant
     Box(
         modifier
-            .aspectRatio(1f)
+            .aspectRatio(171f / 116f)
             .clip(shape)
             .background(bg)
             .then(if (selected) Modifier.border(2.dp, RollspotBlue, shape) else Modifier)
             .clickable(onClick = onClick)
-            .padding(12.dp),
+            .padding(horizontal = 8.dp, vertical = 8.dp),
     ) {
         if (selected) {
             Box(
@@ -103,23 +104,31 @@ private fun ContributeCategoryCard(
         Column(
             Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween,
+            verticalArrangement = Arrangement.Center,
         ) {
+            CategoryMenuIcon(category, Modifier.size(64.dp))
             Spacer(Modifier.height(8.dp))
-            CategoryMenuIcon(category, Modifier.size(48.dp))
-            Text(
-                ContributeCategoryLabels.menuTitle(category).uppercase(),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center,
-                lineHeight = 14.sp,
-            )
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(18.dp),
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    ContributeCategoryLabels.menuTitle(category).uppercase(),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 16.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
         }
     }
 }

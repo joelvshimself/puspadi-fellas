@@ -1,35 +1,29 @@
 import Foundation
 
-/// Questions asked in the revamped Accessible Toilets review survey flow.
+/// Questions asked in the Accessible Toilets review survey.
 enum ToiletQuestion: String, CaseIterable, Identifiable, Hashable {
-    case initial
     case doorKind
     case seat
     case grabBars
     case space
     case sink
     case emergency
-    case locationNote
 
     var id: String { rawValue }
 
     var eyebrow: String {
         switch self {
-        case .initial: ""
         case .doorKind: "Doors"
         case .seat: "Toilet Seat"
         case .grabBars: "Grab Bars"
         case .space: "Space to Maneuver"
-        case .sink: "Sink Height"
-        case .emergency: "Emergency Button"
-        case .locationNote: ""
+        case .sink: "Sink"
+        case .emergency: "Emergency Aid"
         }
     }
 
     func title(for persona: ReviewPersona) -> String {
         switch self {
-        case .initial:
-            ReviewQuestionCopy.toiletInitialQuestion
         case .doorKind:
             "What kind of door does the toilet have?"
         case .seat:
@@ -58,52 +52,96 @@ enum ToiletQuestion: String, CaseIterable, Identifiable, Hashable {
         case .emergency:
             switch persona {
             case .wheelchair:
-                "Could you reach the emergency button from your wheelchair or fallen position?"
+                "Could you reach the emergency aid from your wheelchair or fallen position?"
             case .everyone:
-                "Could someone reach the emergency button from a seated or fallen position?"
+                "Could someone reach the emergency aid from a seated or fallen position?"
             }
-        case .locationNote:
-            "Where is the accessible toilet?"
         }
     }
 
     func options(for persona: ReviewPersona) -> [String] {
         switch self {
-        case .initial:
-            ReviewQuestionCopy.toiletInitialOptions
         case .doorKind:
             ["Manual", "Sliding", "Automatic"]
         case .seat:
-            switch persona {
-            case .wheelchair:
-                ["Yes", "No", "Not sure"]
-            case .everyone:
-                ["Yes", "Too low", "Too high", "Not sure"]
-            }
+            ["Yes", "Too low", "Too high", "Not sure"]
         case .grabBars:
-            switch persona {
-            case .wheelchair:
-                ["Yes", "Positioned awkwardly", "No"]
-            case .everyone:
-                ["Yes", "Positioned awkwardly", "Not sure"]
-            }
+            ["Yes", "Positioned awkwardly", "No", "Not sure"]
         case .space, .sink:
             ["Yes", "No", "Not sure"]
         case .emergency:
             ["Yes", "No", "Not sure", "There is no emergency button"]
-        case .locationNote:
-            []
         }
     }
 
-    func photoRevealOption(for persona: ReviewPersona) -> String? {
+    func photoRevealOption(for _: ReviewPersona) -> String? {
         switch self {
-        case .seat, .space, .sink, .emergency:
+        case .seat, .grabBars, .space, .sink, .emergency:
             "Not sure"
-        case .grabBars:
-            persona == .everyone ? "Not sure" : nil
-        default:
+        case .doorKind:
             nil
+        }
+    }
+
+    var loopingVideoName: String? {
+        switch self {
+        case .doorKind: "TOILET_DOORS"
+        case .seat: "TOILET_TOILET_SEAT"
+        case .grabBars: "TOILET_GRAB_BARS"
+        case .space: "TOILET_SPACE_TO_MANEUVER"
+        case .sink: "TOILET_SINK"
+        case .emergency: nil
+        }
+    }
+
+    /// Still illustration used when this question has no video.
+    var stillImageName: String? {
+        switch self {
+        case .emergency: "Emergency Toilet"
+        default: nil
+        }
+    }
+
+    var videoInfoTitle: String {
+        switch self {
+        case .doorKind: "Doors"
+        case .seat: "Toilet Seat"
+        case .grabBars: "Grab Bars"
+        case .space: "Space to Maneuver"
+        case .sink: "Sink"
+        case .emergency: "Emergency Aid"
+        }
+    }
+
+    var videoInfoSections: [(title: String, body: String)] {
+        switch self {
+        case .doorKind:
+            [
+                ("Manual", "Manual doors require users to reach out the handles and push/pull. Heavier doors make it harder to navigate to spaces."),
+                ("Sliding/Automatic", "Sliding doors are much easier to use as they don't obstruct wheelchairs like pulling a door or require someone seated to lean forward to push. Automatic doors remove that effort entirely."),
+            ]
+        case .seat:
+            [
+                ("Height", "Toilet seats at wheelchair height make it easier to transfer to. Seats that are too low or too high may affect balance."),
+            ]
+        case .grabBars:
+            [
+                ("Height", "Mounted around waist height when seated, not up near shoulder height."),
+                ("Placement", "Beside the toilet within arm's reach while seated, not across the room."),
+            ]
+        case .space:
+            [
+                ("Space", "Enough room to enter, close the door, and turn a full circle without hitting the door, toilet, or sink."),
+            ]
+        case .sink:
+            [
+                ("Reach", "Faucet and soap dispenser is operable without a strong grip or twisting motion."),
+                ("Clearance", "Open space underneath so a wheelchair can roll up close and not be blocked by a cabinet."),
+            ]
+        case .emergency:
+            [
+                ("Reach", "Emergency aids can be in the form of buttons or pulleys and should be accessible from a seated or fallen position."),
+            ]
         }
     }
 }

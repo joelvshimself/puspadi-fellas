@@ -64,8 +64,25 @@ extension ReviewDraft {
                 )
             }
         }
-        return map(lobby.review.photos, slot: .lobby)
-            + map(basement.review.photos, slot: .basement)
+        if entrancePassSnapshots.isEmpty {
+            return map(lobby.review.photos, slot: .lobby)
+                + map(basement.review.photos, slot: .basement)
+                + map(elevator.review.photos, slot: .elevator)
+                + map(toilet.review.photos, slot: .toilet)
+        }
+        func photos(for location: EntranceLocation) -> [ReviewPhotoDraft] {
+            entrancePassSnapshots.flatMap { snapshot in
+                let primary: EntranceLocation? = snapshot.locations.contains(.lobby)
+                    ? .lobby
+                    : (snapshot.locations.contains(.basement) ? .basement : nil)
+                let notes = location == .lobby ? snapshot.lobby.review.photos : snapshot.basement.review.photos
+                let section = location == primary ? snapshot.sectionPhotos : []
+                var seen = Set<UUID>()
+                return (section + notes).filter { seen.insert($0.id).inserted }
+            }
+        }
+        return map(photos(for: .lobby), slot: .lobby)
+            + map(photos(for: .basement), slot: .basement)
             + map(elevator.review.photos, slot: .elevator)
             + map(toilet.review.photos, slot: .toilet)
     }

@@ -53,10 +53,5 @@ enum ReviewQuestionCopy {
         question.title(for: persona)
     }
 
-    static let elevatorOptions = ["Yes", "No", "Not sure"]
-
-    // MARK: Toilets
-
-    static let toiletInitialQuestion = "Does the mall have accessible toilets?"
-    static let toiletInitialOptions = ["Yes", "No", "Not sure"]
+    static let elevatorOptions = ["Yes", "No", "Not Sure"]
 }

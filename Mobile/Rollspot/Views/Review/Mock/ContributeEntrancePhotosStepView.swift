@@ -3,6 +3,9 @@ import SwiftUI
 
 /// Optional entrance photo before the accessible-entrances location picker.
 struct ContributeEntrancePhotosStepView: View {
+    var navTitle: String = "Entrances"
+    var illustrationAssetName: String = "Lobby Asset"
+    var stepNumber: Int = 1
     let progress: (current: Int, total: Int)
     var subStepProgress: CGFloat = 0.35
     @Binding var note: ReviewNoteDraft
@@ -16,12 +19,12 @@ struct ContributeEntrancePhotosStepView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PhotoFlowHeader(title: "Entrances".localized, onBack: onBack)
-            ContributeStepProgressBar(currentStep: 1, subStepProgress: subStepProgress)
+                PhotoFlowHeader(title: navTitle.localized, onBack: onBack)
+                ContributeStepProgressBar(currentStep: stepNumber, subStepProgress: subStepProgress)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    Image("Lobby Asset")
+                    Image(illustrationAssetName)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(maxWidth: .infinity)

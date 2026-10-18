@@ -7,6 +7,8 @@ struct ContributeReviewSubmission {
 }
 
 /// Contribute flow backed by the Cloudflare API, with local draft persistence.
+/// Primary-user (wheelchair) screen sequence. Question copy still follows
+/// `ReviewPersona`; the secondary-user flow is not built yet.
 struct ContributeReviewFlowView: View {
     let place: Place
     let startingFacility: FacilityKind?
@@ -38,13 +40,18 @@ struct ContributeReviewFlowView: View {
     @State private var basementRampAnswer: String?
     @State private var lobbyHandrailAnswer: String?
     @State private var basementHandrailAnswer: String?
+    @State private var completedEntrancePasses: [EntrancePassDraft] = []
+    @State private var entranceAnotherAnswer: String?
     /// One answer per `ElevatorQuestion` — the elevator section asks these
     /// instead of showing a chip multi-select; `applyElevatorMapping()`
     /// turns them back into `elevatorTags`.
     @State private var elevatorAnswers: [ElevatorQuestion: String] = [:]
+    @State private var completedElevatorPasses: [ElevatorPassDraft] = []
+    @State private var elevatorAnotherAnswer: String?
     @State private var elevatorTags: Set<ContributeTagOption> = []
-    @State private var toiletInitialAnswer: String?
     @State private var toiletAnswers: [ToiletQuestion: String] = [:]
+    @State private var completedToiletPasses: [ToiletPassDraft] = []
+    @State private var toiletAnotherAnswer: String?
     @State private var toiletLocationNote: String = ""
     @State private var toiletTags: Set<ContributeTagOption> = []
     @State private var isSubmitted = false
@@ -127,11 +134,16 @@ struct ContributeReviewFlowView: View {
         case entranceQuestion(EntranceLocation)
         case entranceRampFollowup(EntranceLocation)
         case entranceHandrailFollowup(EntranceLocation)
+        case entranceAnother
         case entrancePhotos(EntranceLocation)
+        case elevatorPhotos
         case elevatorQuestion(ElevatorQuestion)
-        case toiletInitial
+        case elevatorLocation
+        case elevatorAnother
+        case toiletPhotos
         case toiletQuestion(ToiletQuestion)
         case toiletLocation
+        case toiletAnother
         case supplementalNotes(ContributeReviewCategory)
         case facilityQuestion(FacilityKind)
         case facilityPhotos(FacilityKind)
@@ -152,6 +164,8 @@ struct ContributeReviewFlowView: View {
                 // EntranceLocation.allCases order.
                 for location in EntranceLocation.allCases where entranceLocations.contains(location) {
                     list.append(.entranceQuestion(location))
+                    // Notes to DEV: Ramp and/or Handrail have a follow-up question.
+                    // Every other tag only records whether it is present. Do not add extra screens for those yet.
                     let tags = entranceTags(for: location)
                     if tags.contains(where: { $0.label == "RAMP" }) {
                         list.append(.entranceRampFollowup(location))
@@ -160,25 +174,23 @@ struct ContributeReviewFlowView: View {
                         list.append(.entranceHandrailFollowup(location))
                     }
                 }
+                list.append(.entranceAnother)
             case .elevator:
+                list.append(.elevatorPhotos)
                 list.append(.elevatorQuestion(.wideEntrance))
                 if elevatorAnswers[.wideEntrance] != "No" {
                     list.append(.elevatorQuestion(.spaceToManeuver))
                     list.append(.elevatorQuestion(.reachableButtons))
                 }
+                list.append(.elevatorLocation)
+                list.append(.elevatorAnother)
             case .toilet:
-                list.append(.toiletInitial)
-                if toiletInitialAnswer == "Yes" {
-                    list.append(contentsOf: [
-                        .toiletQuestion(.doorKind),
-                        .toiletQuestion(.seat),
-                        .toiletQuestion(.grabBars),
-                        .toiletQuestion(.space),
-                        .toiletQuestion(.sink),
-                        .toiletQuestion(.emergency),
-                        .toiletLocation
-                    ])
+                list.append(.toiletPhotos)
+                for question in ToiletQuestion.allCases {
+                    list.append(.toiletQuestion(question))
                 }
+                list.append(.toiletLocation)
+                list.append(.toiletAnother)
             }
         }
         for category in ContributeReviewCategory.supplemental where selectedCategories.contains(category) {
@@ -199,9 +211,12 @@ struct ContributeReviewFlowView: View {
             || !selectedCategories.isEmpty
             || supplementalNotes.values.contains(where: { !$0.text.isEmpty || !$0.photos.isEmpty })
             || !entranceLocations.isEmpty
+            || !completedEntrancePasses.isEmpty
             || !entranceSectionPhotos.photos.isEmpty
             || !lobbyEntranceTags.isEmpty || !basementEntranceTags.isEmpty || !toiletTags.isEmpty
-            || !elevatorAnswers.isEmpty || toiletInitialAnswer != nil
+            || !elevatorAnswers.isEmpty || !completedElevatorPasses.isEmpty
+            || !toiletAnswers.isEmpty || !completedToiletPasses.isEmpty
+            || !toiletLocationNote.isEmpty || !draft.toilet.review.photos.isEmpty
             || !draft.lobby.review.text.isEmpty || !draft.basement.review.text.isEmpty
             || !draft.elevator.review.text.isEmpty || !draft.toilet.review.text.isEmpty
             || !draft.lobby.review.photos.isEmpty || !draft.basement.review.photos.isEmpty
@@ -261,7 +276,6 @@ struct ContributeReviewFlowView: View {
         }
         .onAppear { clampScreenIndex() }
         .onChange(of: screenIndex) { _, _ in persistIfNeeded() }
-        .onChange(of: toiletInitialAnswer) { _, _ in clampScreenIndex() }
         .onChange(of: entranceLocations) { _, _ in clampScreenIndex() }
         .onChange(of: lobbyEntranceTags) { _, _ in clampScreenIndex() }
         .onChange(of: basementEntranceTags) { _, _ in clampScreenIndex() }
@@ -352,6 +366,12 @@ struct ContributeReviewFlowView: View {
                 note: entranceNoteBinding(for: location),
                 stepNumber: 1,
                 subStepProgress: subProgress(for: screen),
+                loopingVideoName: "ENTRANCE_RAMP",
+                videoInfoTitle: "Ramps",
+                videoInfoSections: [
+                    ("Slope", "Steep slopes require wheelchair users to push hard. The taller the step up, the longer the ramp needs to be to stay gentle."),
+                    ("Landing", "Long ramps require a flat landing space partway up that allows wheelchair users to stop and reset."),
+                ],
                 onBack: goBackOneStep,
                 onContinue: {
                     applyRampAnswer(for: location)
@@ -371,8 +391,34 @@ struct ContributeReviewFlowView: View {
                 note: entranceNoteBinding(for: location),
                 stepNumber: 1,
                 subStepProgress: subProgress(for: screen),
+                loopingVideoName: "ENTRANCE_HANDRAIL",
+                videoInfoTitle: "Handrail",
+                videoInfoSections: [
+                    ("Height", "Low enough to reach and grip while seated, not just at standing height."),
+                    ("Grip", "A rounded rail you can wrap your hand around, not a flat edge or wide cap."),
+                ],
                 onBack: goBackOneStep,
                 onContinue: goNext
+            )
+        case .entranceAnother:
+            ContributeAccessFollowupStepView(
+                navTitle: "Entrances",
+                illustrationAssetName: "Lobby Asset",
+                eyebrow: "",
+                questionTitle: "Review another entrance?",
+                progress: progress(for: screen),
+                options: ["Yes", "No"],
+                photoRevealOption: "",
+                selection: $entranceAnotherAnswer,
+                note: .constant(ReviewNoteDraft()),
+                stepNumber: 1,
+                subStepProgress: subProgress(for: screen),
+                advancesOnSelect: true,
+                onBack: goBackOneStep,
+                onContinue: {
+                    guard let answer = entranceAnotherAnswer else { return }
+                    chooseAnotherEntrance(answer)
+                }
             )
         case .entrancePhotos(let location):
             ContributePhotosNotesStepView(
@@ -384,6 +430,17 @@ struct ContributeReviewFlowView: View {
                 onBack: goBackOneStep,
                 onContinue: goNext
             )
+        case .elevatorPhotos:
+            ContributeEntrancePhotosStepView(
+                navTitle: "Elevator",
+                illustrationAssetName: "Elevator Question Asset",
+                stepNumber: 2,
+                progress: progress(for: screen),
+                subStepProgress: subProgress(for: screen),
+                note: Binding(get: { draft.elevator.review }, set: { draft.elevator.review = $0 }),
+                onBack: goBackOneStep,
+                onContinue: goNext
+            )
         case .elevatorQuestion(let question):
             ContributeAccessFollowupStepView(
                 navTitle: "Elevators",
@@ -392,40 +449,69 @@ struct ContributeReviewFlowView: View {
                 questionTitle: question.title(for: reviewPersona),
                 progress: progress(for: screen),
                 options: ReviewQuestionCopy.elevatorOptions,
-                photoRevealOption: "Not sure",
+                photoRevealOption: "Not Sure",
                 selection: elevatorAnswerBinding(for: question),
                 note: Binding(get: { draft.elevator.review }, set: { draft.elevator.review = $0 }),
                 stepNumber: 2,
                 subStepProgress: subProgress(for: screen),
+                loopingVideoName: question.loopingVideoName,
+                videoInfoTitle: question.videoInfoTitle,
+                videoInfoSections: question.videoInfoSections,
                 onBack: goBackOneStep,
                 onContinue: {
                     applyElevatorMapping()
                     goNext()
                 }
             )
-        case .toiletInitial:
-            ContributeAccessFollowupStepView(
-                navTitle: "Accessible Toilets",
-                illustrationAssetName: "Toilet Survey Asset",
-                eyebrow: "",
-                questionTitle: ReviewQuestionCopy.toiletInitialQuestion,
-                progress: progress(for: screen),
-                options: ReviewQuestionCopy.toiletInitialOptions,
-                photoRevealOption: "",
-                selection: $toiletInitialAnswer,
-                note: Binding(get: { draft.toilet.review }, set: { draft.toilet.review = $0 }),
-                stepNumber: 3,
+        case .elevatorLocation:
+            ContributeToiletLocationStepView(
+                navTitle: "Elevators",
+                question: "Where is the elevator located?",
+                illustrationAssetName: "Elevator Question Asset",
+                stepNumber: 2,
                 subStepProgress: subProgress(for: screen),
+                locationText: Binding(
+                    get: { draft.elevator.review.text },
+                    set: { draft.elevator.review.text = $0 }
+                ),
+                onBack: goBackOneStep,
+                onContinue: goNext
+            )
+        case .elevatorAnother:
+            ContributeAccessFollowupStepView(
+                navTitle: "Elevator",
+                illustrationAssetName: "Elevator Question Asset",
+                eyebrow: "",
+                questionTitle: "Review another elevator?",
+                progress: progress(for: screen),
+                options: ["Yes", "No"],
+                photoRevealOption: "",
+                selection: $elevatorAnotherAnswer,
+                note: Binding(get: { draft.elevator.review }, set: { draft.elevator.review = $0 }),
+                stepNumber: 2,
+                subStepProgress: subProgress(for: screen),
+                advancesOnSelect: true,
                 onBack: goBackOneStep,
                 onContinue: {
-                    applyToiletInitialMapping()
-                    goNext()
+                    guard let answer = elevatorAnotherAnswer else { return }
+                    chooseAnotherElevator(answer)
                 }
+            )
+        case .toiletPhotos:
+            ContributeEntrancePhotosStepView(
+                navTitle: "Accessible Toilets",
+                illustrationAssetName: "Toilet Survey Asset",
+                stepNumber: 3,
+                progress: progress(for: screen),
+                subStepProgress: subProgress(for: screen),
+                note: Binding(get: { draft.toilet.review }, set: { draft.toilet.review = $0 }),
+                onBack: goBackOneStep,
+                onContinue: goNext
             )
         case .toiletQuestion(let question):
             ContributeAccessFollowupStepView(
                 navTitle: "Accessible Toilets",
-                illustrationAssetName: "Toilet Survey Asset",
+                illustrationAssetName: question.stillImageName ?? "Toilet Survey Asset",
                 eyebrow: question.eyebrow,
                 questionTitle: question.title(for: reviewPersona),
                 progress: progress(for: screen),
@@ -435,6 +521,9 @@ struct ContributeReviewFlowView: View {
                 note: Binding(get: { draft.toilet.review }, set: { draft.toilet.review = $0 }),
                 stepNumber: 3,
                 subStepProgress: subProgress(for: screen),
+                loopingVideoName: question.loopingVideoName,
+                videoInfoTitle: question.videoInfoTitle,
+                videoInfoSections: question.videoInfoSections,
                 onBack: goBackOneStep,
                 onContinue: {
                     applyToiletQuestionMapping(question)
@@ -443,11 +532,32 @@ struct ContributeReviewFlowView: View {
             )
         case .toiletLocation:
             ContributeToiletLocationStepView(
+                illustrationAssetName: "Toilet Survey Asset",
                 locationText: $toiletLocationNote,
                 onBack: goBackOneStep,
                 onContinue: {
                     applyToiletLocationMapping()
                     goNext()
+                }
+            )
+        case .toiletAnother:
+            ContributeAccessFollowupStepView(
+                navTitle: "Accessible Toilets",
+                illustrationAssetName: "Toilet Survey Asset",
+                eyebrow: "",
+                questionTitle: "Review another accessible toilet?",
+                progress: progress(for: screen),
+                options: ["Yes", "No"],
+                photoRevealOption: "",
+                selection: $toiletAnotherAnswer,
+                note: Binding(get: { draft.toilet.review }, set: { draft.toilet.review = $0 }),
+                stepNumber: 3,
+                subStepProgress: subProgress(for: screen),
+                advancesOnSelect: true,
+                onBack: goBackOneStep,
+                onContinue: {
+                    guard let answer = toiletAnotherAnswer else { return }
+                    chooseAnotherToilet(answer)
                 }
             )
         case .facilityQuestion(let kind):
@@ -508,10 +618,186 @@ struct ContributeReviewFlowView: View {
     private func goBackOneStep() {
         if screenIndex == 0 {
             requestExit()
-        } else {
-            screenIndex -= 1
-            persistIfNeeded()
+            return
         }
+        let screen = screens[safe: screenIndex]
+        let previous = screens[safe: screenIndex - 1]
+        if (screen == .elevatorPhotos || previous == .elevatorAnother) && currentElevatorPassIsEmpty && !completedElevatorPasses.isEmpty {
+            restoreLastElevatorPass()
+            return
+        }
+        if (screen == .entranceSectionPhotos || previous == .entranceAnother) && currentEntrancePassIsEmpty && !completedEntrancePasses.isEmpty {
+            restoreLastEntrancePass()
+            return
+        }
+        if (screen == .toiletPhotos || previous == .toiletAnother) && currentToiletPassIsEmpty && !completedToiletPasses.isEmpty {
+            restoreLastToiletPass()
+            return
+        }
+        screenIndex -= 1
+        persistIfNeeded()
+    }
+
+    private var currentEntrancePassIsEmpty: Bool {
+        entranceLocations.isEmpty
+            && entranceSectionPhotos.photos.isEmpty
+            && lobbyEntranceTags.isEmpty
+            && basementEntranceTags.isEmpty
+            && lobbyRampAnswer == nil
+            && basementRampAnswer == nil
+            && lobbyHandrailAnswer == nil
+            && basementHandrailAnswer == nil
+            && draft.lobby.review.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && draft.lobby.review.photos.isEmpty
+            && draft.basement.review.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && draft.basement.review.photos.isEmpty
+            && draft.lobby.hasDropoffRamp == nil
+            && draft.basement.hasDropoffRamp == nil
+            && draft.lobby.hasRails == nil
+            && draft.basement.hasRails == nil
+            && draft.lobby.doorType == nil
+            && draft.basement.doorType == nil
+    }
+
+    private func chooseAnotherEntrance(_ answer: String) {
+        completedEntrancePasses.append(
+            EntrancePassDraft(
+                sectionPhotos: entranceSectionPhotos.photos,
+                locations: entranceLocations,
+                lobbyTags: lobbyEntranceTags,
+                basementTags: basementEntranceTags,
+                lobbyRampAnswer: lobbyRampAnswer,
+                basementRampAnswer: basementRampAnswer,
+                lobbyHandrailAnswer: lobbyHandrailAnswer,
+                basementHandrailAnswer: basementHandrailAnswer,
+                lobby: draft.lobby,
+                basement: draft.basement
+            )
+        )
+        entranceSectionPhotos = ReviewNoteDraft()
+        entranceLocations = []
+        lobbyEntranceTags = []
+        basementEntranceTags = []
+        lobbyRampAnswer = nil
+        basementRampAnswer = nil
+        lobbyHandrailAnswer = nil
+        basementHandrailAnswer = nil
+        entranceAnotherAnswer = nil
+        draft.lobby = EntranceDraft(location: .lobby)
+        draft.basement = EntranceDraft(location: .basement)
+        if answer == "Yes" {
+            if let index = screens.firstIndex(of: .entranceSectionPhotos) {
+                screenIndex = index
+            }
+        } else if let index = screens.firstIndex(of: .entranceAnother) {
+            screenIndex = index + 1
+            clampScreenIndex()
+        }
+        persistIfNeeded()
+    }
+
+    private func restoreLastEntrancePass() {
+        guard let last = completedEntrancePasses.popLast() else { return }
+        entranceSectionPhotos.photos = last.sectionPhotos
+        entranceLocations = last.locations
+        lobbyEntranceTags = last.lobbyTags
+        basementEntranceTags = last.basementTags
+        lobbyRampAnswer = last.lobbyRampAnswer
+        basementRampAnswer = last.basementRampAnswer
+        lobbyHandrailAnswer = last.lobbyHandrailAnswer
+        basementHandrailAnswer = last.basementHandrailAnswer
+        entranceAnotherAnswer = nil
+        draft.lobby = last.lobby
+        draft.basement = last.basement
+        if let index = screens.firstIndex(of: .entranceAnother) {
+            screenIndex = index
+        }
+        persistIfNeeded()
+    }
+
+    private var currentElevatorPassIsEmpty: Bool {
+        elevatorAnswers.isEmpty
+            && draft.elevator.review.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && draft.elevator.review.photos.isEmpty
+    }
+
+    private func chooseAnotherElevator(_ answer: String) {
+        completedElevatorPasses.append(
+            ElevatorPassDraft(
+                answers: elevatorAnswers,
+                location: draft.elevator.review.text,
+                photos: draft.elevator.review.photos
+            )
+        )
+        elevatorAnswers = [:]
+        elevatorAnotherAnswer = nil
+        draft.elevator.review = ReviewNoteDraft()
+        if answer == "Yes" {
+            if let index = screens.firstIndex(of: .elevatorPhotos) {
+                screenIndex = index
+            }
+        } else if let index = screens.firstIndex(of: .elevatorAnother) {
+            screenIndex = index + 1
+            clampScreenIndex()
+        }
+        applyElevatorMapping()
+        persistIfNeeded()
+    }
+
+    private func restoreLastElevatorPass() {
+        guard let last = completedElevatorPasses.popLast() else { return }
+        elevatorAnswers = last.answers
+        elevatorAnotherAnswer = nil
+        draft.elevator.review.text = last.location
+        draft.elevator.review.photos = last.photos
+        if let index = screens.firstIndex(of: .elevatorAnother) {
+            screenIndex = index
+        }
+        applyElevatorMapping()
+        persistIfNeeded()
+    }
+
+    private var currentToiletPassIsEmpty: Bool {
+        toiletAnswers.isEmpty
+            && toiletLocationNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && draft.toilet.review.photos.isEmpty
+    }
+
+    private func chooseAnotherToilet(_ answer: String) {
+        completedToiletPasses.append(
+            ToiletPassDraft(
+                answers: toiletAnswers,
+                location: toiletLocationNote,
+                photos: draft.toilet.review.photos
+            )
+        )
+        toiletAnswers = [:]
+        toiletLocationNote = ""
+        toiletAnotherAnswer = nil
+        draft.toilet.review.photos = []
+        if answer == "Yes" {
+            if let index = screens.firstIndex(of: .toiletPhotos) {
+                screenIndex = index
+            }
+        } else if let index = screens.firstIndex(of: .toiletAnother) {
+            screenIndex = index + 1
+            clampScreenIndex()
+        }
+        applyToiletTagsFromPasses()
+        persistIfNeeded()
+    }
+
+    private func restoreLastToiletPass() {
+        guard let last = completedToiletPasses.popLast() else { return }
+        toiletAnswers = last.answers
+        toiletLocationNote = last.location
+        toiletAnotherAnswer = nil
+        draft.toilet.review.photos = last.photos
+        if let index = screens.firstIndex(of: .toiletAnother) {
+            screenIndex = index
+        }
+        applyToiletTagsFromPasses()
+        persistIfNeeded()
     }
 
     private func requestExit() {
@@ -548,17 +834,17 @@ struct ContributeReviewFlowView: View {
 
     private func subProgress(for screen: FlowScreen) -> CGFloat {
         let stepNumber: Int = switch screen {
-        case .category, .entranceSectionPhotos, .entranceLocation, .entranceQuestion, .entranceRampFollowup, .entranceHandrailFollowup, .entrancePhotos: 1
-        case .elevatorQuestion: 2
-        case .toiletInitial, .toiletQuestion, .toiletLocation: 3
+        case .category, .entranceSectionPhotos, .entranceLocation, .entranceQuestion, .entranceRampFollowup, .entranceHandrailFollowup, .entranceAnother, .entrancePhotos: 1
+        case .elevatorPhotos, .elevatorQuestion, .elevatorLocation, .elevatorAnother: 2
+        case .toiletPhotos, .toiletQuestion, .toiletLocation, .toiletAnother: 3
         case .facilityQuestion, .facilityPhotos, .supplementalNotes, .finalReview: 4
         }
 
         let stepScreens = screens.filter { s in
             switch s {
-            case .category, .entranceSectionPhotos, .entranceLocation, .entranceQuestion, .entranceRampFollowup, .entranceHandrailFollowup, .entrancePhotos: stepNumber == 1
-            case .elevatorQuestion: stepNumber == 2
-            case .toiletInitial, .toiletQuestion, .toiletLocation: stepNumber == 3
+            case .category, .entranceSectionPhotos, .entranceLocation, .entranceQuestion, .entranceRampFollowup, .entranceHandrailFollowup, .entranceAnother, .entrancePhotos: stepNumber == 1
+            case .elevatorPhotos, .elevatorQuestion, .elevatorLocation, .elevatorAnother: stepNumber == 2
+            case .toiletPhotos, .toiletQuestion, .toiletLocation, .toiletAnother: stepNumber == 3
             case .facilityQuestion, .facilityPhotos, .supplementalNotes, .finalReview: stepNumber == 4
             }
         }
@@ -711,6 +997,7 @@ struct ContributeReviewFlowView: View {
     private func facilityHasContribution(_ kind: FacilityKind) -> Bool {
         switch kind {
         case .entrance:
+            if !completedEntrancePasses.isEmpty { return true }
             return entranceLocations.contains { location in
                 let entrance = location == .lobby ? draft.lobby : draft.basement
                 return !entranceTags(for: location).isEmpty
@@ -722,12 +1009,15 @@ struct ContributeReviewFlowView: View {
             }
         case .elevator:
             return !elevatorAnswers.isEmpty
+                || !completedElevatorPasses.isEmpty
                 || !draft.elevator.review.text.isEmpty
                 || !draft.elevator.review.photos.isEmpty
                 || draft.elevator.exists != nil
                 || draft.elevator.wheelchairAccessible != nil
         case .toilet:
-            return toiletInitialAnswer != nil
+            return !toiletAnswers.isEmpty
+                || !completedToiletPasses.isEmpty
+                || !toiletLocationNote.isEmpty
                 || !toiletTags.isEmpty
                 || !draft.toilet.review.text.isEmpty
                 || !draft.toilet.review.photos.isEmpty
@@ -827,31 +1117,193 @@ struct ContributeReviewFlowView: View {
     /// Each elevator question's "Yes" earns its matching chip; "No" on the
     /// width/space questions is a `.tooSmall` blocker, matching the
     /// contract's "blockers only when not accessible" rule.
+    private func allElevatorPasses() -> [ElevatorPassDraft] {
+        var passes = completedElevatorPasses
+        let hasCurrent = !elevatorAnswers.isEmpty
+            || !draft.elevator.review.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !draft.elevator.review.photos.isEmpty
+        if hasCurrent {
+            passes.append(
+                ElevatorPassDraft(
+                    answers: elevatorAnswers,
+                    location: draft.elevator.review.text,
+                    photos: draft.elevator.review.photos
+                )
+            )
+        }
+        return passes
+    }
+
     private func applyElevatorMapping() {
+        let passes = allElevatorPasses()
         let catalog = ContributeReviewTags.tags(for: .elevator)
         elevatorTags = Set(
             ElevatorQuestion.allCases
-                .filter { elevatorAnswers[$0] == "Yes" }
+                .filter { question in passes.contains { $0.answers[question] == "Yes" } }
                 .compactMap { question in catalog.first { $0.label == question.tagLabel } }
         )
 
-        draft.elevator.exists = true
-
-        let answered = ElevatorQuestion.allCases.compactMap { elevatorAnswers[$0] }
-        draft.elevator.wheelchairAccessible =
-            if answered.contains("No") { false }
-            else if answered.count == ElevatorQuestion.allCases.count { true }
-            else { nil }
-
+        let anyAnswers = passes.contains { !$0.answers.isEmpty }
+        draft.elevator.exists = anyAnswers ? true : nil
+        let anyNo = passes.contains { $0.answers.values.contains("No") }
+        let fullyAccessible = !passes.isEmpty && passes.allSatisfy { pass in
+            ElevatorQuestion.allCases.allSatisfy { pass.answers[$0] != nil }
+                && !pass.answers.values.contains("No")
+        }
+        if anyAnswers {
+            draft.elevator.wheelchairAccessible = anyNo ? false : (fullyAccessible ? true : nil)
+        }
         if draft.elevator.wheelchairAccessible == true {
             draft.elevator.blockers = []
-        } else if elevatorAnswers[.wideEntrance] == "No" || elevatorAnswers[.spaceToManeuver] == "No" {
+        } else if passes.contains(where: { $0.answers[.wideEntrance] == "No" || $0.answers[.spaceToManeuver] == "No" }) {
             draft.elevator.blockers = [.tooSmall]
         }
     }
 
+    /// Each saved entrance becomes its own report. The in-progress pass is included if it still has answers.
+    private func foldEntrancePassesIntoDraft() {
+        var passes = completedEntrancePasses
+        if !currentEntrancePassIsEmpty {
+            passes.append(
+                EntrancePassDraft(
+                    sectionPhotos: entranceSectionPhotos.photos,
+                    locations: entranceLocations,
+                    lobbyTags: lobbyEntranceTags,
+                    basementTags: basementEntranceTags,
+                    lobbyRampAnswer: lobbyRampAnswer,
+                    basementRampAnswer: basementRampAnswer,
+                    lobbyHandrailAnswer: lobbyHandrailAnswer,
+                    basementHandrailAnswer: basementHandrailAnswer,
+                    lobby: draft.lobby,
+                    basement: draft.basement
+                )
+            )
+        }
+        guard !passes.isEmpty else { return }
+        draft.entrancePassSnapshots = passes.map {
+            EntrancePassSnapshot(
+                sectionPhotos: $0.sectionPhotos,
+                locations: $0.locations,
+                lobby: $0.lobby,
+                basement: $0.basement
+            )
+        }
+    }
+
+    /// The API stores one elevator. Every pass is written into that note before submit.
+    private func foldElevatorPassesIntoDraft() {
+        let passes = allElevatorPasses()
+        guard !passes.isEmpty else { return }
+        applyElevatorMapping()
+        var blocks: [String] = []
+        for (index, pass) in passes.enumerated() {
+            var lines: [String] = []
+            let location = pass.location.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !location.isEmpty { lines.append("Location: \(location)") }
+            for question in ElevatorQuestion.allCases {
+                if let answer = pass.answers[question] {
+                    lines.append("\(question.eyebrow): \(answer)")
+                }
+            }
+            guard !lines.isEmpty else { continue }
+            if passes.count > 1 {
+                blocks.append("[Elevator \(index + 1)]\n" + lines.joined(separator: "\n"))
+            } else {
+                blocks.append(lines.joined(separator: "\n"))
+            }
+        }
+        draft.elevator.review.text = blocks.joined(separator: "\n\n")
+        draft.elevator.review.photos = passes.flatMap(\.photos)
+    }
+
     private func applyToiletMapping() {
-        draft.toilet.hasDisabledToilet = true
+        applyToiletTagsFromPasses()
+    }
+
+    private func allToiletPasses() -> [ToiletPassDraft] {
+        var passes = completedToiletPasses
+        let hasCurrent = !toiletAnswers.isEmpty
+            || !toiletLocationNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !draft.toilet.review.photos.isEmpty
+        if hasCurrent {
+            passes.append(
+                ToiletPassDraft(
+                    answers: toiletAnswers,
+                    location: toiletLocationNote,
+                    photos: draft.toilet.review.photos
+                )
+            )
+        }
+        return passes
+    }
+
+    private func applyToiletTagsFromPasses() {
+        var tags = Set<ContributeTagOption>()
+        for pass in allToiletPasses() {
+            switch pass.answers[.doorKind] {
+            case "Automatic":
+                tags.insert(ContributeTagOption(symbol: "door.left.hand.open", label: "AUTOMATIC DOORS"))
+            case "Sliding":
+                tags.insert(ContributeTagOption(symbol: "door.left.hand.open", label: "SLIDING DOORS"))
+            case "Manual":
+                tags.insert(ContributeTagOption(symbol: "door.left.hand.open", label: "MANUAL DOORS"))
+            default:
+                break
+            }
+            if pass.answers[.grabBars] == "Yes" || pass.answers[.grabBars] == "Positioned awkwardly" {
+                tags.insert(ContributeTagOption(symbol: "figure.roll", label: "GRAB BARS"))
+            }
+            if pass.answers[.space] == "Yes" {
+                tags.insert(ContributeTagOption(symbol: "arrow.up.and.down.and.arrow.left.and.right", label: "SPACE TO MANEUVER"))
+            }
+            if pass.answers[.sink] == "Yes" {
+                tags.insert(ContributeTagOption(symbol: "sink.fill", label: "REACHABLE SINK"))
+            }
+            if let emergency = pass.answers[.emergency], emergency != "There is no emergency button" {
+                tags.insert(ContributeTagOption(symbol: "bell.fill", label: "EMERGENCY BUTTON"))
+            }
+        }
+        toiletTags = tags
+        let passes = allToiletPasses()
+        if passes.contains(where: { !$0.answers.isEmpty || !$0.location.isEmpty || !$0.photos.isEmpty }) {
+            draft.toilet.hasDisabledToilet = true
+        }
+    }
+
+    /// The API stores one toilet. Every pass is written into that note before submit.
+    private func foldToiletPassesIntoDraft() {
+        let passes = allToiletPasses()
+        guard !passes.isEmpty else { return }
+        applyToiletTagsFromPasses()
+        var blocks: [String] = []
+        for (index, pass) in passes.enumerated() {
+            var lines: [String] = []
+            let location = pass.location.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !location.isEmpty { lines.append("Location: \(location)") }
+            for question in ToiletQuestion.allCases {
+                if let answer = pass.answers[question] {
+                    lines.append("\(question.eyebrow): \(answer)")
+                }
+            }
+            guard !lines.isEmpty else { continue }
+            if passes.count > 1 {
+                blocks.append("[Toilet \(index + 1)]\n" + lines.joined(separator: "\n"))
+            } else {
+                blocks.append(lines.joined(separator: "\n"))
+            }
+        }
+        let existing = draft.toilet.review.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let passText = blocks.joined(separator: "\n\n")
+        if passText.isEmpty {
+            draft.toilet.review.text = existing
+        } else if existing.isEmpty {
+            draft.toilet.review.text = passText
+        } else {
+            draft.toilet.review.text = "\(passText)\n\n\(existing)"
+        }
+        let passPhotoIDs = Set(passes.flatMap(\.photos).map(\.id))
+        let extras = draft.toilet.review.photos.filter { !passPhotoIDs.contains($0.id) }
+        draft.toilet.review.photos = passes.flatMap(\.photos) + extras
     }
 
     private func toiletAnswerBinding(for question: ToiletQuestion) -> Binding<String?> {
@@ -861,46 +1313,9 @@ struct ContributeReviewFlowView: View {
         )
     }
 
-    private func applyToiletInitialMapping() {
-        if toiletInitialAnswer == "Yes" {
-            draft.toilet.hasDisabledToilet = true
-        } else if toiletInitialAnswer == "No" {
-            draft.toilet.hasDisabledToilet = false
-        } else {
-            draft.toilet.hasDisabledToilet = nil
-        }
-    }
-
     private func applyToiletQuestionMapping(_ question: ToiletQuestion) {
-        let answer = toiletAnswers[question]
-
-        switch question {
-        case .doorKind:
-            if answer == "Automatic" {
-                toiletTags.insert(ContributeTagOption(symbol: "door.left.hand.open", label: "AUTOMATIC DOORS"))
-            } else if answer == "Sliding" {
-                toiletTags.insert(ContributeTagOption(symbol: "door.left.hand.open", label: "SLIDING DOORS"))
-            } else if answer == "Manual" {
-                toiletTags.insert(ContributeTagOption(symbol: "door.left.hand.open", label: "MANUAL DOORS"))
-            }
-        case .grabBars:
-            if answer == "Yes" || answer == "Positioned awkwardly" {
-                toiletTags.insert(ContributeTagOption(symbol: "figure.roll", label: "GRAB BARS"))
-            }
-        case .space:
-            if answer == "Yes" {
-                toiletTags.insert(ContributeTagOption(symbol: "arrow.up.and.down.and.arrow.left.and.right", label: "SPACE TO MANEUVER"))
-            }
-        case .sink:
-            if answer == "Yes" {
-                toiletTags.insert(ContributeTagOption(symbol: "sink.fill", label: "REACHABLE SINK"))
-            }
-        case .emergency:
-            if answer == "Yes" || answer == "No" || answer == "Not sure" {
-                toiletTags.insert(ContributeTagOption(symbol: "bell.fill", label: "EMERGENCY BUTTON"))
-            }
-        default: break
-        }
+        _ = question
+        applyToiletTagsFromPasses()
     }
 
     private func applyToiletLocationMapping() {
@@ -924,6 +1339,9 @@ struct ContributeReviewFlowView: View {
 
     private func submit() async {
         guard !isSubmitting else { return }
+        foldEntrancePassesIntoDraft()
+        foldElevatorPassesIntoDraft()
+        foldToiletPassesIntoDraft()
         appendSupplementalNotesToDraft()
         isSubmitting = true
         defer { isSubmitting = false }
@@ -976,6 +1394,31 @@ struct ContributeReviewFlowView: View {
             ? "You need to be signed in to post a review. Sign in and submit again — your answers are saved."
             : "Check your connection and try again."
     }
+}
+
+private struct EntrancePassDraft {
+    var sectionPhotos: [ReviewPhotoDraft]
+    var locations: Set<EntranceLocation>
+    var lobbyTags: Set<ContributeTagOption>
+    var basementTags: Set<ContributeTagOption>
+    var lobbyRampAnswer: String?
+    var basementRampAnswer: String?
+    var lobbyHandrailAnswer: String?
+    var basementHandrailAnswer: String?
+    var lobby: EntranceDraft
+    var basement: EntranceDraft
+}
+
+private struct ElevatorPassDraft {
+    var answers: [ElevatorQuestion: String]
+    var location: String
+    var photos: [ReviewPhotoDraft]
+}
+
+private struct ToiletPassDraft {
+    var answers: [ToiletQuestion: String]
+    var location: String
+    var photos: [ReviewPhotoDraft]
 }
 
 private extension Array {

@@ -160,8 +160,25 @@ class ContributeFlowViewModel(
         }
     }
 
-    fun setToiletInitial(answer: String) {
-        mutate { flow.state = flow.state.copy(toiletInitialAnswer = answer) }
+    fun setElevatorLocation(text: String) {
+        mutate {
+            flow.state = flow.state.copy(elevatorNotes = flow.state.elevatorNotes.copy(text = text))
+        }
+    }
+
+    fun chooseAnotherEntrance(answer: String) {
+        flow.chooseAnotherEntrance(answer)
+        publishFlow()
+    }
+
+    fun chooseAnotherElevator(answer: String) {
+        flow.chooseAnotherElevator(answer)
+        publishFlow()
+    }
+
+    fun chooseAnotherToilet(answer: String) {
+        flow.chooseAnotherToilet(answer)
+        publishFlow()
     }
 
     fun setToiletAnswer(question: ToiletSurveyQuestion, answer: String) {
@@ -188,6 +205,15 @@ class ContributeFlowViewModel(
                 ContributeStep.EntrancePhotos -> {
                     flow.state = flow.state.copy(entrancePhotos = flow.state.entrancePhotos + photo)
                 }
+                ContributeStep.ElevatorPhotos -> {
+                    val notes = flow.state.elevatorNotes
+                    flow.state = flow.state.copy(elevatorNotes = notes.copy(photos = notes.photos + photo))
+                }
+                ContributeStep.ToiletPhotos,
+                is ContributeStep.Toilet,
+                -> {
+                    flow.state = flow.state.copy(toiletPhotos = flow.state.toiletPhotos + photo)
+                }
                 is ContributeStep.SupplementalNotes -> {
                     val category = step.category
                     val next = flow.state.supplementalNotes.toMutableMap()
@@ -199,8 +225,22 @@ class ContributeFlowViewModel(
                     val notes = flow.state.toiletNotes.copy(photos = flow.state.toiletNotes.photos + photo)
                     flow.state = flow.state.copy(toiletNotes = notes)
                 }
+                is ContributeStep.EntranceRamp -> appendLocationPhoto(step.location, photo)
+                is ContributeStep.EntranceHandrail -> appendLocationPhoto(step.location, photo)
                 else -> Unit
             }
+        }
+    }
+
+    private fun appendLocationPhoto(location: EntranceLocation, photo: LocalReviewPhoto) {
+        val current = when (location) {
+            EntranceLocation.Lobby -> flow.state.lobbyNotes
+            EntranceLocation.Basement -> flow.state.basementNotes
+        }
+        val updated = current.copy(photos = current.photos + photo)
+        flow.state = when (location) {
+            EntranceLocation.Lobby -> flow.state.copy(lobbyNotes = updated)
+            EntranceLocation.Basement -> flow.state.copy(basementNotes = updated)
         }
     }
 
@@ -208,10 +248,27 @@ class ContributeFlowViewModel(
         mutate {
             fun strip(notes: FacilityNotes) = notes.copy(photos = notes.photos.filter { it.fileId != fileId })
             val supplemental = flow.state.supplementalNotes.mapValues { (_, notes) -> strip(notes) }
+            val passes = flow.state.completedElevatorPasses.map { pass ->
+                pass.copy(notes = strip(pass.notes))
+            }
+            val entrancePasses = flow.state.completedEntrancePasses.map { pass ->
+                pass.copy(
+                    photos = pass.photos.filter { it.fileId != fileId },
+                    lobbyNotes = strip(pass.lobbyNotes),
+                    basementNotes = strip(pass.basementNotes),
+                )
+            }
+            val toiletPasses = flow.state.completedToiletPasses.map { pass ->
+                pass.copy(photos = pass.photos.filter { it.fileId != fileId })
+            }
             flow.state = flow.state.copy(
                 entrancePhotos = flow.state.entrancePhotos.filter { it.fileId != fileId },
+                completedEntrancePasses = entrancePasses,
+                toiletPhotos = flow.state.toiletPhotos.filter { it.fileId != fileId },
+                completedToiletPasses = toiletPasses,
                 lobbyNotes = strip(flow.state.lobbyNotes),
                 basementNotes = strip(flow.state.basementNotes),
+                completedElevatorPasses = passes,
                 elevatorNotes = strip(flow.state.elevatorNotes),
                 toiletNotes = strip(flow.state.toiletNotes),
                 supplementalNotes = supplemental,

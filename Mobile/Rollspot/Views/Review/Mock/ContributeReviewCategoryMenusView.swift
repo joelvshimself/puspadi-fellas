@@ -6,11 +6,10 @@ struct ContributeReviewCategoryMenusView: View {
     let onBack: () -> Void
     let onContinue: () -> Void
 
-    private let cardWidth: CGFloat = 116
-    private let cardHeight: CGFloat = 171
+    private let cardAspectRatio: CGFloat = 855.0 / 580.0
     private let columns = [
-        GridItem(.fixed(116), spacing: 12),
-        GridItem(.fixed(116), spacing: 12),
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12),
     ]
 
     var body: some View {
@@ -30,14 +29,10 @@ struct ContributeReviewCategoryMenusView: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    HStack {
-                        Spacer(minLength: 0)
-                        LazyVGrid(columns: columns, spacing: 12) {
-                            ForEach(ContributeReviewCategory.menuOrder) { category in
-                                categoryCard(category)
-                            }
+                    LazyVGrid(columns: columns, spacing: 12) {
+                        ForEach(ContributeReviewCategory.menuOrder) { category in
+                            categoryCard(category)
                         }
-                        Spacer(minLength: 0)
                     }
                 }
                 .padding(20)
@@ -75,21 +70,24 @@ struct ContributeReviewCategoryMenusView: View {
             }
         } label: {
             ZStack(alignment: .topTrailing) {
-                VStack(spacing: 10) {
+                VStack(spacing: 12) {
                     categoryIcon(category)
-                        .frame(height: 48)
+                        .frame(height: 64)
                     HStack(alignment: .center, spacing: 4) {
                         Text(category.menuTitle.uppercased())
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 14, weight: .semibold))
                             .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.8)
                             .foregroundStyle(.primary)
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(.secondary)
                     }
                 }
-                .padding(.horizontal, 8)
-                .frame(width: cardWidth, height: cardHeight)
+                .padding(.horizontal, 10)
+                .frame(maxWidth: .infinity)
+                .aspectRatio(cardAspectRatio, contentMode: .fit)
                 .background(
                     isSelected ? Color.accentColor.opacity(0.12) : Color(.secondarySystemBackground),
                     in: RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -110,6 +108,7 @@ struct ContributeReviewCategoryMenusView: View {
             }
         }
         .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder
@@ -122,11 +121,11 @@ struct ContributeReviewCategoryMenusView: View {
         case .toilet:
             Image("bathroomasset").resizable().scaledToFit()
         case .outdoorPathways:
-            Image(systemName: "figure.walk").font(.system(size: 36)).foregroundStyle(Color.accentColor)
+            Image("pathwayicon").resizable().scaledToFit()
         case .seating:
-            Image(systemName: "chair.lounge").font(.system(size: 36)).foregroundStyle(Color.accentColor)
+            Image("seatingasset").resizable().scaledToFit()
         case .parking:
-            Image(systemName: "parkingsign").font(.system(size: 36)).foregroundStyle(Color.accentColor)
+            Image("parkingasset").resizable().scaledToFit()
         }
     }
 }

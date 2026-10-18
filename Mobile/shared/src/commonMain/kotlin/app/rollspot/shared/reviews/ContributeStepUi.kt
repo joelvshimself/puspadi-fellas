@@ -4,6 +4,7 @@ enum class ContributeHeroAsset {
     EntranceMall,
     Lobby,
     Basement,
+    Elevator,
     ElevatorQuestion,
     ToiletSurvey,
     None,
@@ -23,11 +24,18 @@ object ContributeStepPresentation {
         is ContributeStep.EntranceTags,
         is ContributeStep.EntranceRamp,
         is ContributeStep.EntranceHandrail,
+        ContributeStep.EntranceAnother,
         -> "Entrances"
-        is ContributeStep.Elevator -> "Elevators"
-        ContributeStep.ToiletInitial,
+        ContributeStep.ElevatorPhotos,
+        ContributeStep.ElevatorAnother,
+        -> "Elevator"
+        ContributeStep.ElevatorLocation,
+        is ContributeStep.Elevator,
+        -> "Elevators"
+        ContributeStep.ToiletPhotos,
         is ContributeStep.Toilet,
         ContributeStep.ToiletLocation,
+        ContributeStep.ToiletAnother,
         -> "Accessible Toilets"
         ContributeStep.FinalReview -> "Final Review"
         ContributeStep.Submitted -> ""
@@ -41,11 +49,17 @@ object ContributeStepPresentation {
         is ContributeStep.EntranceTags,
         is ContributeStep.EntranceRamp,
         is ContributeStep.EntranceHandrail,
+        ContributeStep.EntranceAnother,
         -> 1
-        is ContributeStep.Elevator -> 2
-        ContributeStep.ToiletInitial,
+        ContributeStep.ElevatorPhotos,
+        ContributeStep.ElevatorLocation,
+        ContributeStep.ElevatorAnother,
+        is ContributeStep.Elevator,
+        -> 2
+        ContributeStep.ToiletPhotos,
         is ContributeStep.Toilet,
         ContributeStep.ToiletLocation,
+        ContributeStep.ToiletAnother,
         -> 3
         ContributeStep.FinalReview,
         ContributeStep.Submitted,
@@ -81,10 +95,16 @@ object ContributeStepPresentation {
             EntranceLocation.Lobby -> ContributeHeroAsset.Lobby
             EntranceLocation.Basement -> ContributeHeroAsset.Basement
         }
+        ContributeStep.EntranceAnother -> ContributeHeroAsset.Lobby
+        ContributeStep.ElevatorPhotos,
+        ContributeStep.ElevatorLocation,
+        ContributeStep.ElevatorAnother,
+        -> ContributeHeroAsset.Elevator
         is ContributeStep.Elevator -> ContributeHeroAsset.ElevatorQuestion
-        ContributeStep.ToiletInitial,
-        is ContributeStep.Toilet,
+        ContributeStep.ToiletPhotos,
         ContributeStep.ToiletLocation,
+        ContributeStep.ToiletAnother,
+        is ContributeStep.Toilet,
         -> ContributeHeroAsset.ToiletSurvey
         ContributeStep.FinalReview,
         ContributeStep.Submitted,
@@ -104,8 +124,8 @@ object ContributeStepPresentation {
             ToiletSurveyQuestion.Seat -> "Toilet Seat"
             ToiletSurveyQuestion.GrabBars -> "Grab Bars"
             ToiletSurveyQuestion.Space -> "Space to Maneuver"
-            ToiletSurveyQuestion.Sink -> "Sink Height"
-            ToiletSurveyQuestion.Emergency -> "Emergency Button"
+            ToiletSurveyQuestion.Sink -> "Sink"
+            ToiletSurveyQuestion.Emergency -> "Emergency Aid"
         }
         else -> null
     }
@@ -124,12 +144,17 @@ object ContributeStepPresentation {
             "Could you push your wheelchair up the ramp without help?"
         is ContributeStep.EntranceHandrail ->
             "Could you reach and grip the handrail from your wheelchair?"
+        ContributeStep.EntranceAnother -> "Review another entrance?"
         is ContributeStep.Elevator -> when (step.question) {
             ElevatorQuestion.WideEntrance -> "Could you enter the elevator?"
             ElevatorQuestion.SpaceToManeuver -> "Could you turn your wheelchair freely inside?"
-            ElevatorQuestion.ReachableButtons -> "Could you reach the buttons from your wheelchair?"
+            ElevatorQuestion.ReachableButtons -> "Could you reach the control buttons from your wheelchair?"
         }
-        ContributeStep.ToiletInitial -> "Does the mall have accessible toilets?"
+        ContributeStep.ElevatorPhotos,
+        ContributeStep.ToiletPhotos,
+        -> "Take or upload a photo"
+        ContributeStep.ElevatorLocation -> "Where is the elevator located?"
+        ContributeStep.ElevatorAnother -> "Review another elevator?"
         is ContributeStep.Toilet -> when (step.question) {
             ToiletSurveyQuestion.DoorKind -> "What kind of door does the toilet have?"
             ToiletSurveyQuestion.Seat -> "Is the toilet seat easy to transfer to from your wheelchair?"
@@ -137,8 +162,9 @@ object ContributeStepPresentation {
             ToiletSurveyQuestion.Space -> "Could you turn your wheelchair freely inside?"
             ToiletSurveyQuestion.Sink -> "Could you reach the sink?"
             ToiletSurveyQuestion.Emergency ->
-                "Could you reach the emergency button from your wheelchair or fallen position?"
+                "Could you reach the emergency aid from your wheelchair or fallen position?"
         }
+        ContributeStep.ToiletAnother -> "Review another accessible toilet?"
         ContributeStep.ToiletLocation -> "Where is the accessible toilet?"
         ContributeStep.FinalReview -> "Add notes and photos to support your review."
         ContributeStep.Submitted -> ""
@@ -147,8 +173,14 @@ object ContributeStepPresentation {
     fun questionSubtitle(step: ContributeStep): String? = when (step) {
         ContributeStep.CategoryPick ->
             "Fill in at least one facility to help others know what to expect."
-        ContributeStep.EntrancePhotos -> "(Optional)"
+        ContributeStep.EntrancePhotos,
+        ContributeStep.ElevatorPhotos,
+        ContributeStep.ElevatorLocation,
+        ContributeStep.ToiletPhotos,
+        ContributeStep.ToiletLocation,
+        -> "(Optional)"
         ContributeStep.EntranceLocationPick -> "You can select multiple places"
+        is ContributeStep.EntranceTags -> "You can select multiple answers"
         is ContributeStep.SupplementalNotes -> "Add notes and photos for this area."
         else -> null
     }
@@ -156,8 +188,10 @@ object ContributeStepPresentation {
     fun optionsFor(step: ContributeStep): List<String> = when (step) {
         is ContributeStep.EntranceRamp -> ContributeCatalog.rampOptions
         is ContributeStep.EntranceHandrail -> ContributeCatalog.handrailOptions
+        ContributeStep.EntranceAnother -> ContributeCatalog.entranceAnotherOptions
         is ContributeStep.Elevator -> ContributeCatalog.elevatorOptions
-        ContributeStep.ToiletInitial -> ContributeCatalog.toiletInitialOptions
+        ContributeStep.ElevatorAnother -> ContributeCatalog.elevatorAnotherOptions
+        ContributeStep.ToiletAnother -> ContributeCatalog.toiletAnotherOptions
         is ContributeStep.Toilet -> toiletOptions(step.question)
         else -> emptyList()
     }
@@ -172,8 +206,8 @@ object ContributeStepPresentation {
 
     private fun toiletOptions(question: ToiletSurveyQuestion): List<String> = when (question) {
         ToiletSurveyQuestion.DoorKind -> listOf("Manual", "Sliding", "Automatic")
-        ToiletSurveyQuestion.Seat -> listOf("Yes", "No", "Not sure")
-        ToiletSurveyQuestion.GrabBars -> listOf("Yes", "Positioned awkwardly", "No")
+        ToiletSurveyQuestion.Seat -> listOf("Yes", "Too low", "Too high", "Not sure")
+        ToiletSurveyQuestion.GrabBars -> listOf("Yes", "Positioned awkwardly", "No", "Not sure")
         ToiletSurveyQuestion.Space,
         ToiletSurveyQuestion.Sink,
         -> listOf("Yes", "No", "Not sure")

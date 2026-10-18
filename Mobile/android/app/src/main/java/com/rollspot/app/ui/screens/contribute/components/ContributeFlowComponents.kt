@@ -7,7 +7,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -16,11 +18,21 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DoorFront
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Circle
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Photo
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.viewinterop.AndroidView
+import android.net.Uri
+import android.widget.VideoView
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,13 +42,15 @@ import androidx.compose.ui.graphics.asImageBitmap
 import android.graphics.BitmapFactory
 import app.rollspot.shared.reviews.LocalReviewPhoto
 import androidx.compose.ui.layout.ContentScale
+import androidx.annotation.DrawableRes
+import androidx.annotation.RawRes
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.rollspot.shared.reviews.ContributeHeroAsset
-import app.rollspot.shared.reviews.ContributeStepPresentation
 import com.rollspot.app.R
 import com.rollspot.app.ui.screens.contribute.rememberHeroPainter
 import com.rollspot.app.ui.screens.contribute.tagChipDrawable
@@ -70,37 +84,22 @@ fun ContributeFlowHeader(title: String, onBack: () -> Unit) {
 
 @Composable
 fun ContributeStepProgressBar(currentStep: Int, subStepProgress: Float) {
-    val titles = ContributeStepPresentation.progressStepTitles
-    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            titles.forEachIndexed { index, label ->
-                val stepNum = index + 1
-                Text(
-                    label,
-                    fontSize = 11.sp,
-                    fontWeight = if (stepNum == currentStep) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (stepNum <= currentStep) RollspotBlue else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        Box(Modifier.fillMaxWidth().height(4.dp)) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(2.dp)
-                    .align(Alignment.Center)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-            )
-            val fraction = ((currentStep - 1) + subStepProgress.coerceIn(0f, 1f)) / 4f
-            Box(
-                Modifier
-                    .fillMaxWidth(fraction.coerceIn(0.05f, 1f))
-                    .height(2.dp)
-                    .align(Alignment.CenterStart)
-                    .background(RollspotBlue),
-            )
-        }
+    val fraction = ((currentStep - 1) + subStepProgress.coerceIn(0f, 1f)) / 4f
+    val clamped = fraction.coerceIn(0.05f, 1f)
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 8.dp)
+            .height(4.dp)
+            .clip(RoundedCornerShape(2.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth(clamped)
+                .fillMaxHeight()
+                .background(RollspotBlue),
+        )
     }
 }
 
@@ -115,6 +114,161 @@ fun ContributeHeroImage(asset: ContributeHeroAsset, modifier: Modifier = Modifie
             .height(180.dp),
         contentScale = ContentScale.Fit,
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun FollowUpStillCard(
+    @DrawableRes drawableRes: Int,
+    infoTitle: String,
+    infoSections: List<Pair<String, String>>,
+    modifier: Modifier = Modifier,
+) {
+    var showInfo by remember { mutableStateOf(false) }
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(220.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color.White)
+            .clickable { showInfo = true },
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(
+            painter = painterResource(drawableRes),
+            contentDescription = null,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            contentScale = ContentScale.Fit,
+        )
+        OverlayCircleButton(
+            onClick = { showInfo = true },
+            fill = RollspotBlue,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
+        ) {
+            Icon(Icons.Outlined.Info, contentDescription = infoTitle, tint = Color.White, modifier = Modifier.size(16.dp))
+        }
+    }
+    if (showInfo) {
+        FollowUpInfoSheet(infoTitle = infoTitle, infoSections = infoSections, onDismiss = { showInfo = false })
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RampLoopVideoCard(
+    @RawRes rawRes: Int,
+    infoTitle: String,
+    infoSections: List<Pair<String, String>>,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    var playing by remember { mutableStateOf(true) }
+    var showInfo by remember { mutableStateOf(false) }
+    val videoView = remember(rawRes) {
+        VideoView(context).apply {
+            setVideoURI(Uri.parse("android.resource://${context.packageName}/$rawRes"))
+            setOnPreparedListener { player ->
+                player.isLooping = true
+                start()
+            }
+        }
+    }
+    DisposableEffect(videoView) {
+        onDispose { videoView.stopPlayback() }
+    }
+
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(220.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color.White),
+    ) {
+        AndroidView(factory = { videoView }, modifier = Modifier.fillMaxSize())
+        Box(Modifier.fillMaxSize().clickable { showInfo = true })
+        OverlayCircleButton(
+            onClick = {
+                if (playing) videoView.pause() else videoView.start()
+                playing = !playing
+            },
+            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+        ) {
+            Icon(
+                if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                contentDescription = if (playing) "Pause" else "Play",
+                modifier = Modifier.size(16.dp),
+            )
+        }
+        OverlayCircleButton(
+            onClick = { showInfo = true },
+            fill = RollspotBlue,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
+        ) {
+            Icon(Icons.Outlined.Info, contentDescription = infoTitle, tint = Color.White, modifier = Modifier.size(16.dp))
+        }
+    }
+
+    if (showInfo) {
+        FollowUpInfoSheet(infoTitle = infoTitle, infoSections = infoSections, onDismiss = { showInfo = false })
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FollowUpInfoSheet(
+    infoTitle: String,
+    infoSections: List<Pair<String, String>>,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp)
+                .navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(infoTitle, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            infoSections.forEach { (title, body) ->
+                RampInfoBlock(title = title, body = body)
+            }
+        }
+    }
+}
+
+@Composable
+private fun OverlayCircleButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    fill: Color = MaterialTheme.colorScheme.surfaceVariant,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .background(fill)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun RampInfoBlock(title: String, body: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (title.isNotEmpty()) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        }
+        Text(body, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
 
 @Composable
@@ -147,14 +301,85 @@ fun ContributeContinueButton(
 }
 
 @Composable
-fun ContributeQuestionBlock(eyebrow: String?, title: String, subtitle: String? = null) {
+fun ContributeQuestionBlock(
+    eyebrow: String?,
+    title: String,
+    subtitle: String? = null,
+    onInfo: (() -> Unit)? = null,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         eyebrow?.let {
             Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Row(verticalAlignment = Alignment.Top) {
+            Text(
+                title,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            if (onInfo != null) {
+                IconButton(onClick = onInfo, modifier = Modifier.size(36.dp)) {
+                    Box(
+                        Modifier
+                            .size(28.dp)
+                            .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Outlined.Info,
+                            contentDescription = "Accessible entrance info",
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
         subtitle?.let {
             Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AccessibleEntranceInfoSheet(onDismiss: () -> Unit) {
+    val points = listOf(
+        "Ramps",
+        "Handrails",
+        "Automatic doors",
+        "Security assistance",
+        "Wheelchair loans available",
+    )
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp)
+                .navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Image(
+                painter = painterResource(R.drawable.contribute_lobby),
+                contentDescription = null,
+                modifier = Modifier.fillMaxWidth().height(160.dp),
+                contentScale = ContentScale.Fit,
+            )
+            Text("Accessible Entrance", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(
+                "Entrances require non-obstructed pathways for someone to navigate independently to be accessible.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            HorizontalDivider()
+            points.forEach { point ->
+                Text("•  $point", style = MaterialTheme.typography.bodyLarge)
+            }
         }
     }
 }
@@ -253,6 +478,70 @@ fun ContributeEntranceLocationRow(label: String, selected: Boolean, onClick: () 
         } else {
             Icon(Icons.Outlined.Circle, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
         }
+    }
+}
+
+@Composable
+fun FollowUpPhotosRow(
+    photos: List<LocalReviewPhoto>,
+    onAddPhoto: () -> Unit,
+    onRemovePhoto: (String) -> Unit,
+) {
+    if (photos.isEmpty()) {
+        FollowUpAddPhotoTile(wide = true, onClick = onAddPhoto)
+    } else {
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            FollowUpAddPhotoTile(wide = false, onClick = onAddPhoto)
+            photos.forEach { photo ->
+                val bitmap = remember(photo.fileId) {
+                    BitmapFactory.decodeByteArray(photo.jpeg, 0, photo.jpeg.size)?.asImageBitmap()
+                }
+                Box(Modifier.size(120.dp)) {
+                    if (bitmap != null) {
+                        Image(
+                            bitmap = bitmap,
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp)),
+                            contentScale = ContentScale.Crop,
+                        )
+                    }
+                    IconButton(
+                        onClick = { onRemovePhoto(photo.fileId) },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(4.dp)
+                            .size(24.dp)
+                            .background(Color.White.copy(alpha = 0.9f), CircleShape),
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Remove", modifier = Modifier.size(14.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FollowUpAddPhotoTile(wide: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        Modifier
+            .then(if (wide) Modifier.fillMaxWidth() else Modifier.width(120.dp))
+            .height(120.dp)
+            .clip(shape)
+            .border(BorderStroke(1.5.dp, RollspotBlue.copy(alpha = 0.4f)), shape)
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(Icons.Outlined.Photo, contentDescription = null, tint = RollspotBlue, modifier = Modifier.size(28.dp))
+        Spacer(Modifier.height(6.dp))
+        Text("Add Photos", fontWeight = FontWeight.SemiBold, color = RollspotBlue, fontSize = 14.sp)
+        Text("(Optional)", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
     }
 }
 

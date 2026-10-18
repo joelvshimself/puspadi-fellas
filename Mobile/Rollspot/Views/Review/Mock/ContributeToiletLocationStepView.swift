@@ -2,6 +2,11 @@ import SwiftUI
 
 /// Location note screen for Accessible Toilets: "Where is the accessible toilet? (Optional)"
 struct ContributeToiletLocationStepView: View {
+    var navTitle: String = "Accessible Toilets"
+    var question: String = "Where is the accessible toilet?"
+    var illustrationAssetName: String? = nil
+    var stepNumber: Int = 3
+    var subStepProgress: CGFloat = 0.85
     @Binding var locationText: String
     let onBack: () -> Void
     let onContinue: () -> Void
@@ -11,18 +16,26 @@ struct ContributeToiletLocationStepView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
-                PhotoFlowHeader(title: "Accessible Toilets".localized, onBack: onBack)
-                ContributeStepProgressBar(currentStep: 3, subStepProgress: 0.85)
+                PhotoFlowHeader(title: navTitle.localized, onBack: onBack)
+                ContributeStepProgressBar(currentStep: stepNumber, subStepProgress: subStepProgress)
             }
             .background(Color(.systemBackground))
             .zIndex(1)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    ContributeFacilityIllustration(kind: .toilet)
+                    if let illustrationAssetName {
+                        Image(illustrationAssetName)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 180)
+                    } else {
+                        ContributeFacilityIllustration(kind: .toilet)
+                    }
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Where is the accessible toilet?".localized)
+                        Text(question.localized)
                             .font(.title2.bold())
                         Text("(Optional)".localized)
                             .font(.subheadline)
