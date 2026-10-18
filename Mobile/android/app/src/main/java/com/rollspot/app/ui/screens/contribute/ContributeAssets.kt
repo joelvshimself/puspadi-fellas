@@ -34,14 +34,15 @@ fun tagChipDrawable(tag: String): Int? = when (tag) {
     else -> null
 }
 
+/** Category tiles on "Help make every visit easier", from `grafical assts` SVGs. */
 @DrawableRes
-fun categoryMenuIcon(category: ContributeReviewCategory): Int? = when (category) {
+fun categoryMenuIcon(category: ContributeReviewCategory): Int = when (category) {
     ContributeReviewCategory.Entrance -> R.drawable.contribute_menu_entrance
     ContributeReviewCategory.Elevator -> R.drawable.contribute_menu_elevator
     ContributeReviewCategory.Toilet -> R.drawable.contribute_menu_toilet
-    ContributeReviewCategory.OutdoorPathways -> R.drawable.contribute_pathway
-    ContributeReviewCategory.Seating -> R.drawable.contribute_seating
-    ContributeReviewCategory.Parking -> R.drawable.contribute_parking
+    ContributeReviewCategory.OutdoorPathways -> R.drawable.contribute_menu_pathway
+    ContributeReviewCategory.Seating -> R.drawable.contribute_menu_seating
+    ContributeReviewCategory.Parking -> R.drawable.contribute_menu_parking
 }
 
 @Composable

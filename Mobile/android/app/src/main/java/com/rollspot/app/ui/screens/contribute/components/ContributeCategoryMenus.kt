@@ -10,13 +10,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -135,22 +133,10 @@ private fun ContributeCategoryCard(
 
 @Composable
 private fun CategoryMenuIcon(category: ContributeReviewCategory, modifier: Modifier = Modifier) {
-    val drawable = categoryMenuIcon(category)
-    if (drawable != null) {
-        Image(
-            painter = painterResource(drawable),
-            contentDescription = null,
-            modifier = modifier,
-            contentScale = ContentScale.Fit,
-        )
-    } else {
-        Icon(categoryFallbackVector(category), contentDescription = null, modifier = modifier, tint = RollspotBlue)
-    }
-}
-
-private fun categoryFallbackVector(category: ContributeReviewCategory): ImageVector = when (category) {
-    ContributeReviewCategory.OutdoorPathways -> Icons.Outlined.Terrain
-    ContributeReviewCategory.Seating -> Icons.Outlined.Weekend
-    ContributeReviewCategory.Parking -> Icons.Outlined.LocalParking
-    else -> Icons.Outlined.Place
+    Image(
+        painter = painterResource(categoryMenuIcon(category)),
+        contentDescription = null,
+        modifier = modifier,
+        contentScale = ContentScale.Fit,
+    )
 }

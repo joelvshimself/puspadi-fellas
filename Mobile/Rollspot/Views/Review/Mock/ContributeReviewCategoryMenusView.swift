@@ -111,21 +111,22 @@ struct ContributeReviewCategoryMenusView: View {
         .frame(maxWidth: .infinity)
     }
 
-    @ViewBuilder
+    /// SVG icons from `grafical assts`, one per category tile.
     private func categoryIcon(_ category: ContributeReviewCategory) -> some View {
+        Image(menuIconAsset(category))
+            .renderingMode(.original)
+            .resizable()
+            .scaledToFit()
+    }
+
+    private func menuIconAsset(_ category: ContributeReviewCategory) -> String {
         switch category {
-        case .entrance:
-            Image("entranceasset").resizable().scaledToFit()
-        case .elevator:
-            Image("elevatorasset").resizable().scaledToFit()
-        case .toilet:
-            Image("bathroomasset").resizable().scaledToFit()
-        case .outdoorPathways:
-            Image("pathwayicon").resizable().scaledToFit()
-        case .seating:
-            Image("seatingasset").resizable().scaledToFit()
-        case .parking:
-            Image("parkingasset").resizable().scaledToFit()
+        case .entrance: "Menu Entrance"
+        case .elevator: "Menu Elevator"
+        case .toilet: "Menu Toilet"
+        case .outdoorPathways: "Menu Pathway"
+        case .seating: "Menu Seating"
+        case .parking: "Menu Parking"
         }
     }
 }
