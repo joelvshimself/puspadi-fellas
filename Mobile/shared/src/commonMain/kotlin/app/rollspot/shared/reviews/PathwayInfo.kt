@@ -66,3 +66,20 @@ object PathwayInfoCatalog {
         ),
     )
 }
+
+data class ParkingInfoSection(val title: String, val body: String)
+
+object ParkingInfo {
+    const val title = "Accessible Parking"
+    const val videoKey = "parking"
+    val sections: List<ParkingInfoSection> = listOf(
+        ParkingInfoSection(
+            title = "Space",
+            body = "Wider than a standard spot, with designated access aisle for a wheelchair to unload.",
+        ),
+        ParkingInfoSection(
+            title = "Distance",
+            body = "Ideally located on the shortest, most direct route to the entrance, not the far end of the lot.",
+        ),
+    )
+}

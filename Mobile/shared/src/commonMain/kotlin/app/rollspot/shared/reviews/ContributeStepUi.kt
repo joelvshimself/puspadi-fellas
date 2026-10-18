@@ -8,6 +8,7 @@ enum class ContributeHeroAsset {
     ElevatorQuestion,
     ToiletSurvey,
     Pathway,
+    Seating,
     None,
 }
 
@@ -23,6 +24,12 @@ object ContributeStepPresentation {
         ContributeStep.PathwayPhotos,
         ContributeStep.PathwayNotice,
         -> "Outdoor Pathways"
+        ContributeStep.SeatingPhotos,
+        ContributeStep.SeatingQuestion,
+        -> "Seating"
+        ContributeStep.ParkingPhotos,
+        ContributeStep.ParkingQuestion,
+        -> "Accessible Parking"
         ContributeStep.EntrancePhotos,
         ContributeStep.EntranceLocationPick,
         is ContributeStep.EntranceTags,
@@ -50,6 +57,10 @@ object ContributeStepPresentation {
         is ContributeStep.SupplementalNotes,
         ContributeStep.PathwayPhotos,
         ContributeStep.PathwayNotice,
+        ContributeStep.SeatingPhotos,
+        ContributeStep.SeatingQuestion,
+        ContributeStep.ParkingPhotos,
+        ContributeStep.ParkingQuestion,
         -> 4
         ContributeStep.EntrancePhotos,
         ContributeStep.EntranceLocationPick,
@@ -87,8 +98,13 @@ object ContributeStepPresentation {
         ContributeStep.CategoryPick,
         is ContributeStep.SupplementalNotes,
         ContributeStep.PathwayNotice,
+        ContributeStep.SeatingQuestion,
         -> ContributeHeroAsset.None
         ContributeStep.PathwayPhotos -> ContributeHeroAsset.Pathway
+        ContributeStep.SeatingPhotos -> ContributeHeroAsset.Seating
+        ContributeStep.ParkingPhotos,
+        ContributeStep.ParkingQuestion,
+        -> ContributeHeroAsset.Basement
         ContributeStep.EntrancePhotos,
         ContributeStep.EntranceLocationPick,
         -> ContributeHeroAsset.Lobby
@@ -128,6 +144,7 @@ object ContributeStepPresentation {
             ElevatorQuestion.SpaceToManeuver -> "Space to Maneuver"
             ElevatorQuestion.ReachableButtons -> "Reachable Buttons"
         }
+        ContributeStep.SeatingQuestion -> "Wheelchair Friendly Seating"
         is ContributeStep.Toilet -> when (step.question) {
             ToiletSurveyQuestion.DoorKind -> "Doors"
             ToiletSurveyQuestion.Seat -> "Toilet Seat"
@@ -145,6 +162,10 @@ object ContributeStepPresentation {
             "Tell us about ${ContributeCategoryLabels.supplementalSectionTitle(step.category).lowercase()}"
         ContributeStep.PathwayPhotos -> "Take or upload a photo"
         ContributeStep.PathwayNotice -> "What did you notice along the pathway?"
+        ContributeStep.SeatingPhotos -> "Take or upload a photo"
+        ContributeStep.SeatingQuestion -> "Are there wheelchair friendly seatings?"
+        ContributeStep.ParkingPhotos -> "Take or upload a photo"
+        ContributeStep.ParkingQuestion -> "Is there accessible parking?"
         ContributeStep.EntrancePhotos -> "Take or upload a photo"
         ContributeStep.EntranceLocationPick -> "Where can you find the accessible entrances?"
         is ContributeStep.EntranceTags -> when (step.location) {
@@ -193,7 +214,10 @@ object ContributeStepPresentation {
         ContributeStep.EntranceLocationPick -> "You can select multiple places"
         is ContributeStep.EntranceTags -> "You can select multiple answers"
         is ContributeStep.SupplementalNotes -> "Add notes and photos for this area."
-        ContributeStep.PathwayPhotos -> "(Optional)"
+        ContributeStep.PathwayPhotos,
+        ContributeStep.SeatingPhotos,
+        ContributeStep.ParkingPhotos,
+        -> "(Optional)"
         else -> null
     }
 
@@ -205,6 +229,8 @@ object ContributeStepPresentation {
         ContributeStep.ElevatorAnother -> ContributeCatalog.elevatorAnotherOptions
         ContributeStep.ToiletAnother -> ContributeCatalog.toiletAnotherOptions
         is ContributeStep.Toilet -> toiletOptions(step.question)
+        ContributeStep.SeatingQuestion -> ContributeCatalog.seatingOptions
+        ContributeStep.ParkingQuestion -> ContributeCatalog.parkingOptions
         else -> emptyList()
     }
 

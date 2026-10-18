@@ -193,6 +193,14 @@ class ContributeFlowViewModel(
         }
     }
 
+    fun setSeatingAnswer(answer: String) {
+        mutate { flow.state = flow.state.copy(seatingAnswer = answer) }
+    }
+
+    fun setParkingAnswer(answer: String) {
+        mutate { flow.state = flow.state.copy(parkingAnswer = answer) }
+    }
+
     fun setToiletLocation(note: String) {
         mutate { flow.state = flow.state.copy(toiletLocationNote = note) }
     }
@@ -217,6 +225,12 @@ class ContributeFlowViewModel(
                 is ContributeStep.Toilet,
                 -> {
                     flow.state = flow.state.copy(toiletPhotos = flow.state.toiletPhotos + photo)
+                }
+                ContributeStep.SeatingPhotos -> {
+                    flow.state = flow.state.copy(seatingPhotos = flow.state.seatingPhotos + photo)
+                }
+                ContributeStep.ParkingPhotos -> {
+                    flow.state = flow.state.copy(parkingPhotos = flow.state.parkingPhotos + photo)
                 }
                 ContributeStep.PathwayPhotos -> appendSupplementalPhoto(ContributeReviewCategory.OutdoorPathways, photo)
                 is ContributeStep.SupplementalNotes -> appendSupplementalPhoto(step.category, photo)
@@ -277,6 +291,8 @@ class ContributeFlowViewModel(
                 completedElevatorPasses = passes,
                 elevatorNotes = strip(flow.state.elevatorNotes),
                 toiletNotes = strip(flow.state.toiletNotes),
+                seatingPhotos = flow.state.seatingPhotos.filter { it.fileId != fileId },
+                parkingPhotos = flow.state.parkingPhotos.filter { it.fileId != fileId },
                 supplementalNotes = supplemental,
             )
         }

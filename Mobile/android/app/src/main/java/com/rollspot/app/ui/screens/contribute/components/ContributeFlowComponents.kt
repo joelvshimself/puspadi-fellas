@@ -65,6 +65,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.rollspot.shared.reviews.ContributeHeroAsset
+import app.rollspot.shared.reviews.ParkingInfo
 import app.rollspot.shared.reviews.PathwayInfoCatalog
 import app.rollspot.shared.reviews.PathwayInfoPage
 import kotlinx.coroutines.launch
@@ -178,11 +179,37 @@ fun RampLoopVideoCard(
     @RawRes rawRes: Int,
     infoTitle: String,
     infoSections: List<Pair<String, String>>,
+    @RawRes infoRawRes: Int? = null,
     modifier: Modifier = Modifier,
+) {
+    var showInfo by remember { mutableStateOf(false) }
+    LoopingVideoSurface(
+        rawRes = rawRes,
+        modifier = modifier,
+        onSurfaceClick = { showInfo = true },
+        infoContentDescription = infoTitle,
+        onInfo = { showInfo = true },
+    )
+    if (showInfo) {
+        FollowUpInfoSheet(
+            infoTitle = infoTitle,
+            infoSections = infoSections,
+            infoRawRes = infoRawRes,
+            onDismiss = { showInfo = false },
+        )
+    }
+}
+
+@Composable
+private fun LoopingVideoSurface(
+    @RawRes rawRes: Int,
+    modifier: Modifier = Modifier,
+    onSurfaceClick: (() -> Unit)? = null,
+    infoContentDescription: String? = null,
+    onInfo: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var playing by remember { mutableStateOf(true) }
-    var showInfo by remember { mutableStateOf(false) }
     val videoView = remember(rawRes) {
         VideoView(context).apply {
             setVideoURI(Uri.parse("android.resource://${context.packageName}/$rawRes"))
@@ -204,7 +231,9 @@ fun RampLoopVideoCard(
             .background(Color.White),
     ) {
         AndroidView(factory = { videoView }, modifier = Modifier.fillMaxSize())
-        Box(Modifier.fillMaxSize().clickable { showInfo = true })
+        if (onSurfaceClick != null) {
+            Box(Modifier.fillMaxSize().clickable { onSurfaceClick() })
+        }
         OverlayCircleButton(
             onClick = {
                 if (playing) videoView.pause() else videoView.start()
@@ -218,17 +247,20 @@ fun RampLoopVideoCard(
                 modifier = Modifier.size(16.dp),
             )
         }
-        OverlayCircleButton(
-            onClick = { showInfo = true },
-            fill = RollspotBlue,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
-        ) {
-            Icon(Icons.Outlined.Info, contentDescription = infoTitle, tint = Color.White, modifier = Modifier.size(16.dp))
+        if (onInfo != null) {
+            OverlayCircleButton(
+                onClick = onInfo,
+                fill = RollspotBlue,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
+            ) {
+                Icon(
+                    Icons.Outlined.Info,
+                    contentDescription = infoContentDescription,
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
         }
-    }
-
-    if (showInfo) {
-        FollowUpInfoSheet(infoTitle = infoTitle, infoSections = infoSections, onDismiss = { showInfo = false })
     }
 }
 
@@ -237,6 +269,7 @@ fun RampLoopVideoCard(
 private fun FollowUpInfoSheet(
     infoTitle: String,
     infoSections: List<Pair<String, String>>,
+    @RawRes infoRawRes: Int? = null,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(
@@ -251,9 +284,15 @@ private fun FollowUpInfoSheet(
                 .navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            if (infoRawRes != null) {
+                LoopingVideoSurface(rawRes = infoRawRes)
+            }
             Text(infoTitle, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             infoSections.forEach { (title, body) ->
-                RampInfoBlock(title = title, body = body)
+                RampInfoBlock(title = title, body = body, headingMuted = infoRawRes != null)
+            }
+            if (infoRawRes != null) {
+                HorizontalDivider()
             }
         }
     }
@@ -279,10 +318,19 @@ private fun OverlayCircleButton(
 }
 
 @Composable
-private fun RampInfoBlock(title: String, body: String) {
+private fun RampInfoBlock(title: String, body: String, headingMuted: Boolean = false) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (title.isNotEmpty()) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = if (headingMuted) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+            )
         }
         Text(body, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -751,6 +799,39 @@ fun PathwayInfoSheet(onDismiss: () -> Unit) {
                 label = "pathwayInfo",
             ) { index ->
                 PathwayInfoCopy(pages[index])
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ParkingInfoSheet(onDismiss: () -> Unit) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp)
+                .navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Box(Modifier.fillMaxWidth().height(210.dp)) {
+                PathwayCarouselVideo(rawRes = R.raw.parking_accessible_parking, active = true)
+            }
+            Text(ParkingInfo.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            ParkingInfo.sections.forEach { section ->
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(section.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        section.body,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }

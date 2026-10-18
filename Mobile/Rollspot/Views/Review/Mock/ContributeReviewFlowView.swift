@@ -28,6 +28,10 @@ struct ContributeReviewFlowView: View {
     @State private var selectedCategories: Set<ContributeReviewCategory>
     @State private var supplementalNotes: [ContributeReviewCategory: ReviewNoteDraft]
     @State private var pathwayNotices: Set<String> = []
+    @State private var seatingAnswer: String?
+    @State private var seatingNote = ReviewNoteDraft()
+    @State private var parkingAnswer: String?
+    @State private var parkingNote = ReviewNoteDraft()
     @State private var screenIndex: Int
     @State private var entranceLocations: Set<EntranceLocation>
     @State private var entranceSectionPhotos: ReviewNoteDraft = ReviewNoteDraft()
@@ -147,6 +151,10 @@ struct ContributeReviewFlowView: View {
         case toiletAnother
         case pathwayPhotos
         case pathwayNotice
+        case seatingPhotos
+        case seatingQuestion
+        case parkingPhotos
+        case parkingQuestion
         case supplementalNotes(ContributeReviewCategory)
         case facilityQuestion(FacilityKind)
         case facilityPhotos(FacilityKind)
@@ -197,10 +205,17 @@ struct ContributeReviewFlowView: View {
             }
         }
         for category in ContributeReviewCategory.supplemental where selectedCategories.contains(category) {
-            if category == .outdoorPathways {
+            switch category {
+            case .outdoorPathways:
                 list.append(.pathwayPhotos)
                 list.append(.pathwayNotice)
-            } else {
+            case .seating:
+                list.append(.seatingPhotos)
+                list.append(.seatingQuestion)
+            case .parking:
+                list.append(.parkingPhotos)
+                list.append(.parkingQuestion)
+            case .entrance, .elevator, .toilet:
                 list.append(.supplementalNotes(category))
             }
         }
@@ -219,6 +234,12 @@ struct ContributeReviewFlowView: View {
             || !selectedCategories.isEmpty
             || supplementalNotes.values.contains(where: { !$0.text.isEmpty || !$0.photos.isEmpty })
             || !pathwayNotices.isEmpty
+            || seatingAnswer != nil
+            || !seatingNote.photos.isEmpty
+            || !seatingNote.text.isEmpty
+            || parkingAnswer != nil
+            || !parkingNote.photos.isEmpty
+            || !parkingNote.text.isEmpty
             || !entranceLocations.isEmpty
             || !completedEntrancePasses.isEmpty
             || !entranceSectionPhotos.photos.isEmpty
@@ -326,6 +347,59 @@ struct ContributeReviewFlowView: View {
                 progress: progress(for: screen),
                 subStepProgress: subProgress(for: screen),
                 note: supplementalNoteBinding(for: .outdoorPathways),
+                onBack: goBackOneStep,
+                onContinue: goNext
+            )
+        case .seatingPhotos:
+            ContributeEntrancePhotosStepView(
+                navTitle: "Seating",
+                illustrationAssetName: "Toilet Survey Asset",
+                stepNumber: 4,
+                progress: progress(for: screen),
+                subStepProgress: subProgress(for: screen),
+                note: $seatingNote,
+                onBack: goBackOneStep,
+                onContinue: goNext
+            )
+        case .seatingQuestion:
+            ContributeAccessFollowupStepView(
+                navTitle: "Seating",
+                illustrationAssetName: "Toilet Survey Asset",
+                eyebrow: "Wheelchair Friendly Seating",
+                questionTitle: "Are there wheelchair friendly seatings?",
+                progress: progress(for: screen),
+                options: ["Yes", "No", "Not sure"],
+                photoRevealOption: "",
+                selection: $seatingAnswer,
+                note: $seatingNote,
+                stepNumber: 4,
+                subStepProgress: subProgress(for: screen),
+                loopingVideoName: "SEATING_SEATING",
+                videoInfoTitle: "Wheelchair Friendly Seating",
+                videoInfoSections: [
+                    ("Height", "Low enough to comfortably reach the tabletop from a seated position."),
+                    ("Clearance", "Open space underneath so a wheelchair can roll up close and not blocked by a solid base or crossbar."),
+                ],
+                infoVideoName: "SEATING_SEATING",
+                onBack: goBackOneStep,
+                onContinue: goNext
+            )
+        case .parkingPhotos:
+            ContributeEntrancePhotosStepView(
+                navTitle: "Accessible Parking",
+                illustrationAssetName: "Basement Asset",
+                stepNumber: 4,
+                progress: progress(for: screen),
+                subStepProgress: subProgress(for: screen),
+                note: $parkingNote,
+                onBack: goBackOneStep,
+                onContinue: goNext
+            )
+        case .parkingQuestion:
+            ContributeParkingQuestionStepView(
+                progress: progress(for: screen),
+                subStepProgress: subProgress(for: screen),
+                selection: $parkingAnswer,
                 onBack: goBackOneStep,
                 onContinue: goNext
             )
@@ -865,7 +939,7 @@ struct ContributeReviewFlowView: View {
         case .category, .entranceSectionPhotos, .entranceLocation, .entranceQuestion, .entranceRampFollowup, .entranceHandrailFollowup, .entranceAnother, .entrancePhotos: 1
         case .elevatorPhotos, .elevatorQuestion, .elevatorLocation, .elevatorAnother: 2
         case .toiletPhotos, .toiletQuestion, .toiletLocation, .toiletAnother: 3
-        case .pathwayPhotos, .pathwayNotice, .facilityQuestion, .facilityPhotos, .supplementalNotes, .finalReview: 4
+        case .pathwayPhotos, .pathwayNotice, .seatingPhotos, .seatingQuestion, .parkingPhotos, .parkingQuestion, .facilityQuestion, .facilityPhotos, .supplementalNotes, .finalReview: 4
         }
 
         let stepScreens = screens.filter { s in
@@ -873,7 +947,7 @@ struct ContributeReviewFlowView: View {
             case .category, .entranceSectionPhotos, .entranceLocation, .entranceQuestion, .entranceRampFollowup, .entranceHandrailFollowup, .entranceAnother, .entrancePhotos: stepNumber == 1
             case .elevatorPhotos, .elevatorQuestion, .elevatorLocation, .elevatorAnother: stepNumber == 2
             case .toiletPhotos, .toiletQuestion, .toiletLocation, .toiletAnother: stepNumber == 3
-            case .pathwayPhotos, .pathwayNotice, .facilityQuestion, .facilityPhotos, .supplementalNotes, .finalReview: stepNumber == 4
+            case .pathwayPhotos, .pathwayNotice, .seatingPhotos, .seatingQuestion, .parkingPhotos, .parkingQuestion, .facilityQuestion, .facilityPhotos, .supplementalNotes, .finalReview: stepNumber == 4
             }
         }
 
@@ -985,28 +1059,43 @@ struct ContributeReviewFlowView: View {
             get: {
                 var merged = ReviewNoteDraft()
                 merged.text = draft.toilet.review.text
-                merged.photos = draft.allReviewPhotos
+                merged.photos = draft.allReviewPhotos + seatingNote.photos + parkingNote.photos
                 return merged
             },
             set: { newValue in
-                let oldPhotos = draft.allReviewPhotos
-                let oldIDs = Set(oldPhotos.map(\.id))
+                let facilityPhotos = draft.allReviewPhotos
+                let seatingPhotos = seatingNote.photos
+                let parkingPhotos = parkingNote.photos
+                let facilityIDs = Set(facilityPhotos.map(\.id))
+                let seatingIDs = Set(seatingPhotos.map(\.id))
+                let parkingIDs = Set(parkingPhotos.map(\.id))
                 let newIDs = Set(newValue.photos.map(\.id))
 
                 draft.toilet.review.text = newValue.text
 
-                for id in oldIDs.subtracting(newIDs) {
+                for id in facilityIDs.subtracting(newIDs) {
                     draft.removeReviewPhoto(id: id)
+                }
+                for id in seatingIDs.subtracting(newIDs) {
+                    seatingNote.removePhoto(id: id)
+                }
+                for id in parkingIDs.subtracting(newIDs) {
+                    parkingNote.removePhoto(id: id)
                 }
 
                 for photo in newValue.photos {
-                    if let existing = oldPhotos.first(where: { $0.id == photo.id }),
-                       existing.caption != photo.caption {
+                    if facilityIDs.contains(photo.id) {
                         draft.updateReviewPhotoCaption(id: photo.id, caption: photo.caption)
+                    }
+                    if seatingIDs.contains(photo.id) {
+                        seatingNote.updatePhotoCaption(id: photo.id, caption: photo.caption)
+                    }
+                    if parkingIDs.contains(photo.id) {
+                        parkingNote.updatePhotoCaption(id: photo.id, caption: photo.caption)
                     }
                 }
 
-                for photo in newValue.photos where !oldIDs.contains(photo.id) {
+                for photo in newValue.photos where !facilityIDs.contains(photo.id) && !seatingIDs.contains(photo.id) && !parkingIDs.contains(photo.id) {
                     appendFinalReviewPhoto(photo)
                 }
             }
@@ -1357,16 +1446,28 @@ struct ContributeReviewFlowView: View {
                 let noticed = ContributePathwayNoticeStepView.options.filter { pathwayNotices.contains($0) }
                 blocks.append("[Outdoor Pathways]\nNoticed: \(noticed.joined(separator: ", "))")
             }
+            if category == .seating || category == .parking { continue }
             guard let note = supplementalNotes[category], !note.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
             blocks.append("[\(category.menuTitle)]\n\(note.text.trimmingCharacters(in: .whitespacesAndNewlines))")
         }
-        guard !blocks.isEmpty else { return }
-        let prefix = blocks.joined(separator: "\n\n")
-        if draft.toilet.review.text.isEmpty {
-            draft.toilet.review.text = prefix
-        } else {
-            draft.toilet.review.text = "\(prefix)\n\n\(draft.toilet.review.text)"
+        if let answer = seatingAnswer {
+            blocks.append("[Seating]\nWheelchair friendly seating: \(answer)")
         }
+        if let answer = parkingAnswer {
+            blocks.append("[Parking]\nAccessible parking: \(answer)")
+        }
+        if !blocks.isEmpty {
+            let prefix = blocks.joined(separator: "\n\n")
+            if draft.toilet.review.text.isEmpty {
+                draft.toilet.review.text = prefix
+            } else {
+                draft.toilet.review.text = "\(prefix)\n\n\(draft.toilet.review.text)"
+            }
+        }
+        let existingIDs = Set(draft.toilet.review.photos.map(\.id))
+        draft.toilet.review.photos.append(contentsOf: seatingNote.photos.filter { !existingIDs.contains($0.id) })
+        let afterSeating = Set(draft.toilet.review.photos.map(\.id))
+        draft.toilet.review.photos.append(contentsOf: parkingNote.photos.filter { !afterSeating.contains($0.id) })
     }
 
     private func submit() async {

@@ -250,7 +250,7 @@ private struct PathwayVideoCarousel: View {
     }
 }
 
-private struct PathwayVideoCard: View {
+struct PathwayVideoCard: View {
     let resourceName: String
     let isActive: Bool
     @StateObject private var model = RampLoopPlayer()

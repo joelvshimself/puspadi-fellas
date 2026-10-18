@@ -25,6 +25,8 @@ struct ContributeAccessFollowupStepView: View {
     var loopingVideoName: String? = nil
     var videoInfoTitle: String = ""
     var videoInfoSections: [(title: String, body: String)] = []
+    /// When set, the info sheet repeats this looping video above the copy.
+    var infoVideoName: String? = nil
     let onBack: () -> Void
     let onContinue: () -> Void
 
@@ -55,7 +57,8 @@ struct ContributeAccessFollowupStepView: View {
                                 RampLoopVideoCard(
                                     resourceName: loopingVideoName,
                                     infoTitle: videoInfoTitle,
-                                    infoSections: videoInfoSections
+                                    infoSections: videoInfoSections,
+                                    infoVideoName: infoVideoName
                                 )
                                 .id(loopingVideoName)
                             } else if !videoInfoSections.isEmpty {

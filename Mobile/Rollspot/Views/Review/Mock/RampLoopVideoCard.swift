@@ -7,6 +7,7 @@ struct RampLoopVideoCard: View {
     let resourceName: String
     let infoTitle: String
     let infoSections: [(title: String, body: String)]
+    var infoVideoName: String? = nil
     @StateObject private var model = RampLoopPlayer()
     @State private var showInfo = false
 
@@ -44,7 +45,7 @@ struct RampLoopVideoCard: View {
         .onAppear { model.start(resource: resourceName) }
         .onDisappear { model.pause() }
         .sheet(isPresented: $showInfo) {
-            FollowUpInfoSheet(title: infoTitle, sections: infoSections)
+            FollowUpInfoSheet(title: infoTitle, sections: infoSections, videoName: infoVideoName)
         }
     }
 
@@ -117,19 +118,48 @@ struct FollowUpStillCard: View {
 private struct FollowUpInfoSheet: View {
     let title: String
     let sections: [(title: String, body: String)]
+    var videoName: String? = nil
+    @StateObject private var model = RampLoopPlayer()
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                if let videoName {
+                    ZStack(alignment: .topTrailing) {
+                        LoopingPlayerView(player: model.player)
+                        Button {
+                            model.toggle()
+                        } label: {
+                            Image(systemName: model.isPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(.primary)
+                                .frame(width: 32, height: 32)
+                                .background(Color(.systemGray6), in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(10)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 200)
+                    .background(Color(.systemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .onAppear { model.start(resource: videoName) }
+                    .onDisappear { model.pause() }
+                }
+
                 Text(title)
                     .font(.title2.bold())
                 ForEach(Array(sections.enumerated()), id: \.offset) { _, item in
                     section(title: item.title, body: item.body)
                 }
+                if videoName != nil {
+                    Divider()
+                }
             }
             .padding(24)
             .padding(.top, 8)
         }
+        .presentationBackground(videoName == nil ? Color(.systemBackground) : Color(.systemGray6))
         .presentationDragIndicator(.visible)
         .presentationDetents([.medium, .large])
     }
@@ -139,6 +169,7 @@ private struct FollowUpInfoSheet: View {
             if !title.isEmpty {
                 Text(title)
                     .font(.headline)
+                    .foregroundStyle(videoName == nil ? Color.primary : Color.secondary)
             }
             Text(body)
                 .font(.body)

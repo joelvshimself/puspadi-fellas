@@ -45,6 +45,10 @@ sealed class ContributeStep {
     data class SupplementalNotes(val category: ContributeReviewCategory) : ContributeStep()
     data object PathwayPhotos : ContributeStep()
     data object PathwayNotice : ContributeStep()
+    data object SeatingPhotos : ContributeStep()
+    data object SeatingQuestion : ContributeStep()
+    data object ParkingPhotos : ContributeStep()
+    data object ParkingQuestion : ContributeStep()
     data object FinalReview : ContributeStep()
     data object Submitted : ContributeStep()
 }
@@ -114,6 +118,10 @@ data class ContributeFlowState(
     val elevatorNotes: FacilityNotes = FacilityNotes(),
     val toiletNotes: FacilityNotes = FacilityNotes(),
     val pathwayNotices: Set<String> = emptySet(),
+    val seatingAnswer: String? = null,
+    val seatingPhotos: List<LocalReviewPhoto> = emptyList(),
+    val parkingAnswer: String? = null,
+    val parkingPhotos: List<LocalReviewPhoto> = emptyList(),
     val showExitConfirmation: Boolean = false,
 )
 
@@ -146,6 +154,8 @@ object ContributeCatalog {
     val elevatorAnotherOptions = listOf("Yes", "No")
     val entranceAnotherOptions = listOf("Yes", "No")
     val toiletAnotherOptions = listOf("Yes", "No")
+    val seatingOptions = listOf("Yes", "No", "Not sure")
+    val parkingOptions = listOf("Yes", "No", "Not sure")
 
     const val NOTICE_NOTHING = "Nothing notable"
     val pathwayNoticeOptions = listOf(
@@ -209,11 +219,20 @@ class ContributeFlow(
         }
         for (category in ContributeReviewCategory.supplemental) {
             if (category !in s.selectedCategories) continue
-            if (category == ContributeReviewCategory.OutdoorPathways) {
-                list += ContributeStep.PathwayPhotos
-                list += ContributeStep.PathwayNotice
-            } else {
-                list += ContributeStep.SupplementalNotes(category)
+            when (category) {
+                ContributeReviewCategory.OutdoorPathways -> {
+                    list += ContributeStep.PathwayPhotos
+                    list += ContributeStep.PathwayNotice
+                }
+                ContributeReviewCategory.Seating -> {
+                    list += ContributeStep.SeatingPhotos
+                    list += ContributeStep.SeatingQuestion
+                }
+                ContributeReviewCategory.Parking -> {
+                    list += ContributeStep.ParkingPhotos
+                    list += ContributeStep.ParkingQuestion
+                }
+                else -> list += ContributeStep.SupplementalNotes(category)
             }
         }
         list += ContributeStep.FinalReview
@@ -247,6 +266,10 @@ class ContributeFlow(
         is ContributeStep.SupplementalNotes -> true
         ContributeStep.PathwayPhotos -> true
         ContributeStep.PathwayNotice -> state.pathwayNotices.isNotEmpty()
+        ContributeStep.SeatingPhotos -> true
+        ContributeStep.SeatingQuestion -> state.seatingAnswer != null
+        ContributeStep.ParkingPhotos -> true
+        ContributeStep.ParkingQuestion -> state.parkingAnswer != null
         ContributeStep.FinalReview -> true
         ContributeStep.Submitted -> true
     }
@@ -394,6 +417,10 @@ class ContributeFlow(
             s.toiletPhotos.isNotEmpty() ||
             s.toiletLocationNote.isNotBlank() ||
             s.pathwayNotices.isNotEmpty() ||
+            s.seatingAnswer != null ||
+            s.seatingPhotos.isNotEmpty() ||
+            s.parkingAnswer != null ||
+            s.parkingPhotos.isNotEmpty() ||
             s.lobbyNotes.text.isNotBlank() ||
             s.basementNotes.text.isNotBlank() ||
             s.elevatorNotes.text.isNotBlank() ||
@@ -428,7 +455,9 @@ class ContributeFlow(
         entrancePassesForReport().flatMap { it.photos + it.lobbyNotes.photos + it.basementNotes.photos } +
             elevatorNotesForReport().photos +
             toiletPassesForReport().flatMap { it.photos } + state.toiletNotes.photos +
-            state.supplementalNotes.values.flatMap { it.photos }
+            state.supplementalNotes.values.flatMap { it.photos } +
+            state.seatingPhotos +
+            state.parkingPhotos
 
     /** Section-level entrance photos attach to Lobby when selected, otherwise Basement. */
     fun primaryEntranceForSectionPhotos(): EntranceLocation? = when {
@@ -469,6 +498,8 @@ class ContributeFlow(
             map(ReviewPhotoSlot.Elevator, elevatorNotesForReport()) +
             map(ReviewPhotoSlot.Toilet, FacilityNotes(photos = toiletPassesForReport().flatMap { it.photos })) +
             map(ReviewPhotoSlot.Toilet, state.toiletNotes) +
+            map(ReviewPhotoSlot.Toilet, FacilityNotes(photos = state.seatingPhotos)) +
+            map(ReviewPhotoSlot.Toilet, FacilityNotes(photos = state.parkingPhotos)) +
             supplemental
     }
 
@@ -720,6 +751,18 @@ class ContributeFlow(
             append("[Outdoor Pathways]\n")
             append("Noticed: ${noticed.joinToString(", ")}")
         }
+        val seating = state.seatingAnswer?.trim().orEmpty()
+        if (seating.isNotEmpty()) {
+            if (isNotEmpty()) append("\n\n")
+            append("[Seating]\n")
+            append("Wheelchair friendly seating: $seating")
+        }
+        val parking = state.parkingAnswer?.trim().orEmpty()
+        if (parking.isNotEmpty()) {
+            if (isNotEmpty()) append("\n\n")
+            append("[Parking]\n")
+            append("Accessible parking: $parking")
+        }
     }
 
     private fun toiletReport(): ToiletReport {
@@ -755,7 +798,11 @@ class ContributeFlow(
             }
         }
         val supplementalPhotos = ContributeReviewCategory.supplemental.flatMap { supplementalNotesFor(it).photos }
-        val allToiletPhotos = passes.flatMap { it.photos } + state.toiletNotes.photos + supplementalPhotos
+        val allToiletPhotos = passes.flatMap { it.photos } +
+            state.toiletNotes.photos +
+            state.seatingPhotos +
+            state.parkingPhotos +
+            supplementalPhotos
         val notes = if (noteText.isBlank() && allToiletPhotos.isEmpty()) {
             FacilityNotes()
         } else {

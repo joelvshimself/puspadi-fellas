@@ -278,10 +278,22 @@ class ContributeFlowTest {
     }
 
     @Test
-    fun supplementalStepWhenParkingSelected() {
+    fun parkingStepsReplaceGenericNotes() {
         val flow = ContributeFlow("p", "Mall")
         flow.toggleCategory(ContributeReviewCategory.Parking)
-        assertTrue(flow.steps().any { it is ContributeStep.SupplementalNotes })
+        val steps = flow.steps()
+        assertTrue(steps.contains(ContributeStep.ParkingPhotos))
+        assertTrue(steps.contains(ContributeStep.ParkingQuestion))
+        assertTrue(steps.indexOf(ContributeStep.ParkingPhotos) < steps.indexOf(ContributeStep.ParkingQuestion))
+        assertFalse(
+            steps.any {
+                it is ContributeStep.SupplementalNotes && it.category == ContributeReviewCategory.Parking
+            },
+        )
+        assertTrue(flow.canContinue(ContributeStep.ParkingPhotos))
+        assertFalse(flow.canContinue(ContributeStep.ParkingQuestion))
+        flow.state = flow.state.copy(parkingAnswer = "Yes")
+        assertTrue(flow.canContinue(ContributeStep.ParkingQuestion))
     }
 
     @Test
@@ -323,6 +335,60 @@ class ContributeFlowTest {
         val reviewText = flow.toSubmission().toilet?.review?.text
         assertTrue(reviewText?.contains("[Outdoor Pathways]") == true)
         assertTrue(reviewText?.contains("Noticed: Tight gap, Narrow pathway") == true)
+    }
+
+    @Test
+    fun seatingStepsReplaceGenericNotes() {
+        val flow = ContributeFlow("p", "Mall")
+        flow.toggleCategory(ContributeReviewCategory.Seating)
+        flow.toggleCategory(ContributeReviewCategory.Parking)
+        val steps = flow.steps()
+        assertTrue(steps.contains(ContributeStep.SeatingPhotos))
+        assertTrue(steps.contains(ContributeStep.SeatingQuestion))
+        val seatingPhotos = steps.indexOf(ContributeStep.SeatingPhotos)
+        val seatingQuestion = steps.indexOf(ContributeStep.SeatingQuestion)
+        val parking = steps.indexOf(ContributeStep.ParkingPhotos)
+        assertTrue(seatingPhotos < seatingQuestion)
+        assertTrue(seatingQuestion < parking)
+        assertFalse(
+            steps.any {
+                it is ContributeStep.SupplementalNotes && it.category == ContributeReviewCategory.Seating
+            },
+        )
+        assertTrue(flow.canContinue(ContributeStep.SeatingPhotos))
+        assertFalse(flow.canContinue(ContributeStep.SeatingQuestion))
+        flow.state = flow.state.copy(seatingAnswer = "Yes")
+        assertTrue(flow.canContinue(ContributeStep.SeatingQuestion))
+    }
+
+    @Test
+    fun seatingAnswerAndPhotosFoldIntoSubmission() {
+        val flow = ContributeFlow("p", "Mall")
+        val photo = LocalReviewPhoto("seat-1", byteArrayOf(9))
+        flow.state = flow.state.copy(
+            selectedCategories = setOf(ContributeReviewCategory.Seating),
+            seatingAnswer = "No",
+            seatingPhotos = listOf(photo),
+        )
+        val reviewText = flow.toSubmission().toilet?.review?.text
+        assertTrue(reviewText?.contains("[Seating]") == true)
+        assertTrue(reviewText?.contains("Wheelchair friendly seating: No") == true)
+        assertEquals(1, flow.pendingPhotos().size)
+    }
+
+    @Test
+    fun parkingAnswerAndPhotosFoldIntoSubmission() {
+        val flow = ContributeFlow("p", "Mall")
+        val photo = LocalReviewPhoto("park-1", byteArrayOf(7))
+        flow.state = flow.state.copy(
+            selectedCategories = setOf(ContributeReviewCategory.Parking),
+            parkingAnswer = "Not sure",
+            parkingPhotos = listOf(photo),
+        )
+        val reviewText = flow.toSubmission().toilet?.review?.text
+        assertTrue(reviewText?.contains("[Parking]") == true)
+        assertTrue(reviewText?.contains("Accessible parking: Not sure") == true)
+        assertEquals(1, flow.pendingPhotos().size)
     }
 
     @Test

@@ -43,6 +43,7 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
 
     var showEntranceInfo by remember { mutableStateOf(false) }
     var showPathwayInfo by remember { mutableStateOf(false) }
+    var showParkingInfo by remember { mutableStateOf(false) }
 
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         uri ?: return@rememberLauncherForActivityResult
@@ -172,6 +173,7 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
                 step is ContributeStep.EntranceHandrail -> R.raw.entrance_handrail to handrailVideoInfo
                 step is ContributeStep.Elevator -> elevatorVideo(step.question)
                 step is ContributeStep.Toilet -> toiletVideo(step.question)
+                step is ContributeStep.SeatingQuestion -> seatingVideo
                 else -> null
             }
             if (!isCategoryPick && hero != ContributeHeroAsset.None && followUpVideo == null && followUpStill == null) {
@@ -182,7 +184,12 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
             }
             followUpVideo?.let { (rawRes, info) ->
                 key(rawRes) {
-                    RampLoopVideoCard(rawRes = rawRes, infoTitle = info.first, infoSections = info.second)
+                    RampLoopVideoCard(
+                        rawRes = rawRes,
+                        infoTitle = info.first,
+                        infoSections = info.second,
+                        infoRawRes = if (step is ContributeStep.SeatingQuestion) rawRes else null,
+                    )
                 }
             }
 
@@ -203,6 +210,50 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
                         selected = ui.flowSnapshot?.selectedCategories ?: emptySet(),
                         onToggle = vm::toggleCategory,
                     )
+                }
+                ContributeStep.SeatingPhotos -> {
+                    ContributeAddPhotosBox(
+                        photos = ui.flowSnapshot?.seatingPhotos ?: emptyList(),
+                        onAddPhoto = { photoPicker.launch("image/*") },
+                        onRemovePhoto = vm::removePhoto,
+                    )
+                }
+                ContributeStep.SeatingQuestion -> {
+                    val selected = ui.flowSnapshot?.seatingAnswer
+                    ContributeStepPresentation.optionsFor(step).forEach { opt ->
+                        ContributeSingleChoiceRow(
+                            label = opt,
+                            selected = selected == opt,
+                            onClick = { vm.setSeatingAnswer(opt) },
+                        )
+                    }
+                }
+                ContributeStep.ParkingPhotos -> {
+                    ContributeAddPhotosBox(
+                        photos = ui.flowSnapshot?.parkingPhotos ?: emptyList(),
+                        onAddPhoto = { photoPicker.launch("image/*") },
+                        onRemovePhoto = vm::removePhoto,
+                    )
+                }
+                ContributeStep.ParkingQuestion -> {
+                    TextButton(onClick = { showParkingInfo = true }, contentPadding = PaddingValues(0.dp)) {
+                        Icon(Icons.Outlined.Info, contentDescription = null, tint = RollspotBlue)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Learn more about accessible parking",
+                            color = RollspotBlue,
+                            textDecoration = TextDecoration.Underline,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    val selected = ui.flowSnapshot?.parkingAnswer
+                    ContributeStepPresentation.optionsFor(step).forEach { opt ->
+                        ContributeSingleChoiceRow(
+                            label = opt,
+                            selected = selected == opt,
+                            onClick = { vm.setParkingAnswer(opt) },
+                        )
+                    }
                 }
                 ContributeStep.PathwayPhotos -> {
                     ContributeAddPhotosBox(
@@ -414,7 +465,7 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
                             it.completedElevatorPasses.flatMap { pass -> pass.notes.photos } +
                             it.elevatorNotes.photos +
                             it.completedToiletPasses.flatMap { pass -> pass.photos } +
-                            it.toiletPhotos + it.toiletNotes.photos
+                            it.toiletPhotos + it.toiletNotes.photos + it.seatingPhotos + it.parkingPhotos
                     } ?: emptyList()
                     ContributePhotosSection(
                         note = snap?.toiletNotes?.text ?: "",
@@ -450,7 +501,15 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
     if (showPathwayInfo) {
         PathwayInfoSheet(onDismiss = { showPathwayInfo = false })
     }
+    if (showParkingInfo) {
+        ParkingInfoSheet(onDismiss = { showParkingInfo = false })
+    }
 }
+
+private val seatingVideo = R.raw.seating to ("Wheelchair Friendly Seating" to listOf(
+    "Height" to "Low enough to comfortably reach the tabletop from a seated position.",
+    "Clearance" to "Open space underneath so a wheelchair can roll up close and not blocked by a solid base or crossbar.",
+))
 
 private val rampVideoInfo = "Ramps" to listOf(
     "Slope" to "Steep slopes require wheelchair users to push hard. The taller the step up, the longer the ramp needs to be to stay gentle.",
