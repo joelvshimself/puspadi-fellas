@@ -6,7 +6,10 @@ struct ContributeReviewCategoryMenusView: View {
     let onBack: () -> Void
     let onContinue: () -> Void
 
-    private let cardAspectRatio: CGFloat = 855.0 / 580.0
+    private let cardWidth: CGFloat = 181
+    private let cardHeight: CGFloat = 116
+    /// Extra width on each facility option, split evenly on both sides.
+    private let optionButtonExtraWidth: CGFloat = 10
     private let columns = [
         GridItem(.flexible(), spacing: 12),
         GridItem(.flexible(), spacing: 12),
@@ -86,8 +89,7 @@ struct ContributeReviewCategoryMenusView: View {
                     }
                 }
                 .padding(.horizontal, 10)
-                .frame(maxWidth: .infinity)
-                .aspectRatio(cardAspectRatio, contentMode: .fit)
+                .frame(width: cardWidth, height: cardHeight)
                 .background(
                     isSelected ? Color.accentColor.opacity(0.12) : Color(.secondarySystemBackground),
                     in: RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -108,7 +110,7 @@ struct ContributeReviewCategoryMenusView: View {
             }
         }
         .buttonStyle(.plain)
-        .frame(maxWidth: .infinity)
+        .padding(.horizontal, -optionButtonExtraWidth / 2)
     }
 
     /// SVG icons from `grafical assts`, one per category tile.
@@ -128,5 +130,21 @@ struct ContributeReviewCategoryMenusView: View {
         case .seating: "Menu Seating"
         case .parking: "Menu Parking"
         }
+    }
+}
+
+#Preview {
+    ContributeReviewCategoryMenusPreview()
+}
+
+private struct ContributeReviewCategoryMenusPreview: View {
+    @State private var selection: Set<ContributeReviewCategory> = [.entrance]
+
+    var body: some View {
+        ContributeReviewCategoryMenusView(
+            selection: $selection,
+            onBack: {},
+            onContinue: {}
+        )
     }
 }
