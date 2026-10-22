@@ -381,6 +381,31 @@ class ContributeFlowTest {
         assertFalse(flow.canContinue(ContributeStep.CategoryPick))
     }
 
+    /** Found on the Android emulator: one stray "review another" made Submit impossible. */
+    @Test
+    fun backingOutOfAPartlyAnsweredExtraElevatorKeepsTheFinishedOne() {
+        val flow = ContributeFlow("p", "Mall", "sub-1")
+        flow.openCategory(ContributeReviewCategory.Elevator)
+        flow.state = flow.state.copy(
+            elevatorAnswers = mapOf(
+                ElevatorQuestion.WideEntrance to "Yes",
+                ElevatorQuestion.SpaceToManeuver to "Yes",
+                ElevatorQuestion.ReachableButtons to "Yes",
+            ),
+        )
+        flow.state = flow.state.copy(stepIndex = flow.steps().indexOf(ContributeStep.ElevatorAnother))
+        flow.chooseAnotherElevator("Yes")
+        // Start the second elevator, answer one question, then back all the way out.
+        flow.goNext()
+        flow.state = flow.state.copy(elevatorAnswers = mapOf(ElevatorQuestion.WideEntrance to "No"))
+        while (flow.currentStep() != ContributeStep.CategoryPick) flow.goBack()
+
+        assertEquals(CategorySectionStatus.Complete, flow.state.sectionStatus[ContributeReviewCategory.Elevator])
+        assertTrue(flow.canContinue(ContributeStep.CategoryPick), "Submit must be possible")
+        val passes = flow.toSubmission().elevator?.passes.orEmpty()
+        assertEquals(listOf("yes"), passes.map { it.wideEntrance }, "only the finished elevator is sent")
+    }
+
     @Test
     fun elevatorOmittedWhenEntranceIsOpen() {
         val flow = flowWith(category = ContributeReviewCategory.Entrance)

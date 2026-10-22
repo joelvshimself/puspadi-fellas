@@ -265,14 +265,59 @@ class ContributeFlow(
         )
     }
 
+    /**
+     * Back out of the open section to the menu. If the section already has finished passes
+     * (e.g. the user answered one elevator, tapped "review another" and then backed out), those
+     * still count: the unfinished pass is dropped and the section stays Complete. Otherwise
+     * the section is InProgress. Without this, one stray "Yes" made Submit impossible.
+     */
     fun leaveActiveSection() {
         val category = state.activeCategory ?: return
+        val keepsFinishedPasses = when (category) {
+            ContributeReviewCategory.Entrance -> state.completedEntrancePasses.isNotEmpty()
+            ContributeReviewCategory.Elevator -> state.completedElevatorPasses.isNotEmpty()
+            ContributeReviewCategory.Toilet -> state.completedToiletPasses.isNotEmpty()
+            else -> false
+        }
+        if (keepsFinishedPasses) discardCurrentPass(category)
         state = state.copy(
-            sectionStatus = state.sectionStatus + (category to CategorySectionStatus.InProgress),
+            sectionStatus = state.sectionStatus + (
+                category to if (keepsFinishedPasses) CategorySectionStatus.Complete else CategorySectionStatus.InProgress
+            ),
             activeCategory = null,
             stepIndex = 0,
             showExitConfirmation = false,
         )
+    }
+
+    private fun discardCurrentPass(category: ContributeReviewCategory) {
+        state = when (category) {
+            ContributeReviewCategory.Entrance -> state.copy(
+                entrancePhotos = emptyList(),
+                entranceLocations = emptySet(),
+                lobbyTags = emptySet(),
+                basementTags = emptySet(),
+                lobbyRampAnswer = null,
+                basementRampAnswer = null,
+                lobbyHandrailAnswer = null,
+                basementHandrailAnswer = null,
+                lobbyEvidence = emptyMap(),
+                basementEvidence = emptyMap(),
+            )
+            ContributeReviewCategory.Elevator -> state.copy(
+                elevatorAnswers = emptyMap(),
+                elevatorPhotos = emptyList(),
+                elevatorLocation = "",
+                elevatorEvidence = emptyMap(),
+            )
+            ContributeReviewCategory.Toilet -> state.copy(
+                toiletAnswers = emptyMap(),
+                toiletLocationNote = "",
+                toiletPhotos = emptyList(),
+                toiletEvidence = emptyMap(),
+            )
+            else -> state
+        }
     }
 
     fun setCategoryNote(category: ContributeReviewCategory, text: String) {

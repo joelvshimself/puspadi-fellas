@@ -50,6 +50,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -104,6 +105,12 @@ fun PlaceDetailScreen(placeId: String, onNavigateBack: () -> Unit, onContribute:
     val sdk = rollspotSdk()
     val viewModel: PlaceDetailViewModel = viewModel(key = placeId) { PlaceDetailViewModel(sdk, placeId) }
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // Coming back from the review form (or anywhere else): reload so a just-submitted review
+    // shows. The shared model keeps the current content on screen while it refreshes.
+    LifecycleResumeEffect(Unit) {
+        viewModel.onScreenResumed()
+        onPauseOrDispose { }
+    }
 
     Box(Modifier.fillMaxSize().background(Color.White)) {
         when (val current = state) {

@@ -20,6 +20,15 @@ class PlaceDetailViewModel(sdk: RollspotSdk, placeKey: String) : ViewModel() {
 
     fun retry() = model.refresh()
 
+    // Lives in the view model because the screen leaves composition while another destination
+    // (e.g. the review form) is on top; a remembered flag would reset and skip the reload.
+    private var shownBefore = false
+
+    /** Every return to the page after the first reloads it, so a just-submitted review shows. */
+    fun onScreenResumed() {
+        if (shownBefore) model.refresh() else shownBefore = true
+    }
+
     override fun onCleared() {
         model.close()
     }
