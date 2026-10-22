@@ -27,8 +27,8 @@ struct SplashScreenView: View {
                 .truncatingRemainder(dividingBy: 1) * 360
 
             ZStack {
-                Color.white
-                    .ignoresSafeArea()
+                // Same light-blue top fade as the sign-in screens (design "Get Started / Default").
+                AuthGradientBackground()
 
                 ZStack {
                     Image("Spla")

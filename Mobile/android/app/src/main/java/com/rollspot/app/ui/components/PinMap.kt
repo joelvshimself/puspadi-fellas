@@ -77,7 +77,9 @@ fun PinMap(
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val mapView = remember {
         MapLibre.getInstance(context)
-        MapView(context).also { it.onCreate(null) }
+        // TextureView mode: glass surfaces (Haze) can only blur what draws into the view hierarchy.
+        MapView(context, org.maplibre.android.maps.MapLibreMapOptions.createFromAttributes(context).textureMode(true))
+            .also { it.onCreate(null) }
     }
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var styleReady by remember { mutableStateOf(false) }

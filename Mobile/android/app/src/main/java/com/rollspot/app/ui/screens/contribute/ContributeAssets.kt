@@ -16,7 +16,8 @@ fun heroDrawable(asset: ContributeHeroAsset): Int? = when (asset) {
     ContributeHeroAsset.Elevator -> R.drawable.contribute_elevator
     ContributeHeroAsset.ElevatorQuestion -> R.drawable.contribute_elevator_question
     ContributeHeroAsset.ToiletSurvey -> R.drawable.contribute_toilet_survey
-    ContributeHeroAsset.Pathway -> R.drawable.contribute_pathway
+    // Design: the pathway photo step uses the same amenities illustration as seating.
+    ContributeHeroAsset.Pathway -> R.drawable.contribute_toilet_survey
     ContributeHeroAsset.Seating -> R.drawable.contribute_toilet_survey
     ContributeHeroAsset.None -> null
 }

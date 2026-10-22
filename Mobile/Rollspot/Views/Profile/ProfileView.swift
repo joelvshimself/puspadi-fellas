@@ -139,7 +139,6 @@ struct ProfileView: View {
             .background(Color.mockSectionBackground)
         }
         .background(Color.mockSectionBackground.ignoresSafeArea())
-        .navigationTitle("Profile".localized)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .toolbar {

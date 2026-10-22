@@ -345,3 +345,21 @@ class PlaceDetailTest {
         assertEquals("ramp at the door", detail.gallery[1].caption)
     }
 }
+
+class ReviewCountTest {
+    @Test
+    fun oneReviewCoveringSeveralFacilitiesCountsOnce() {
+        fun review(id: String, kind: FacilityKind) = FacilityReview(
+            id = "$id:$kind", reviewId = id, kind = kind, createdAt = "2026-10-22T00:00:00Z", bodyText = "",
+            providedTags = emptyList(), photoUrls = emptyList(), photoCaptions = emptyList(),
+            reviewerName = null, reviewerRole = null, reviewerAvatarUrl = null, reviewerIsPseudonym = false,
+        )
+        val detail = PlaceDetail(
+            place = app.rollspot.shared.api.Place(id = "p1", osmRef = "way/1", name = "P", lat = 0.0, lng = 0.0),
+            grades = emptyList(), overall = app.rollspot.shared.places.OverallAccessibility.NO_DATA,
+            reviews = listOf(review("a", FacilityKind.ENTRANCE), review("a", FacilityKind.ELEVATOR), review("b", FacilityKind.TOILET)),
+            photos = emptyList(), reviewPhotos = emptyList(), reviewPhotosLoadFailed = false,
+        )
+        kotlin.test.assertEquals(2, detail.reviewCount)
+    }
+}

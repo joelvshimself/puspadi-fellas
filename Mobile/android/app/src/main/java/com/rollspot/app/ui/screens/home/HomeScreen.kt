@@ -1,5 +1,26 @@
 package com.rollspot.app.ui.screens.home
 
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.TransformOrigin
+import com.rollspot.app.ui.components.ContinueSurveyBanner
+import com.rollspot.app.ui.theme.Rollspot
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.rollspot.app.ui.theme.LocalHazeState
+import com.rollspot.app.ui.theme.glass
+import com.rollspot.app.ui.theme.pressScale
+import dev.chrisbanes.haze.hazeSource
 import android.Manifest
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -65,7 +86,7 @@ private val FilterGrades = listOf(
  * Every rule (which places, search, filter widening) lives in the shared MapModel.
  */
 @Composable
-fun HomeScreen(navController: NavController) {
+fun HomeScreen(navController: NavController, review: String? = null) {
     val sdk = rollspotSdk()
     val viewModel: HomeViewModel = viewModel { HomeViewModel(sdk) }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -79,6 +100,31 @@ fun HomeScreen(navController: NavController) {
     var centeredOnUser by rememberSaveable { mutableStateOf(false) }
     var handledFocusNonce by rememberSaveable { mutableStateOf(0) }
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    var showIntro by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (review == null && !OnboardingIntroPrefs.hasSeen(context)) {
+            kotlinx.coroutines.delay(700)
+            showIntro = true
+        }
+    }
+    // Home "Continue Survey": the banner shows once per draft, then folds into the profile button.
+    val waiting by sdk.drafts.waiting.collectAsStateWithLifecycle()
+    var bannerVisible by remember { mutableStateOf(false) }
+    var foldedDraftId by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(waiting?.placeId) {
+        val id = waiting?.placeId
+        if (id == null) { bannerVisible = false; return@LaunchedEffect }
+        if (id == foldedDraftId) return@LaunchedEffect
+        bannerVisible = true
+        kotlinx.coroutines.delay(4_000)
+        bannerVisible = false
+        foldedDraftId = id
+    }
+    fun resume(placeId: String) {
+        bannerVisible = false
+        foldedDraftId = placeId
+        navController.navigate("contribute/flow/$placeId")
+    }
 
     fun flyTo(lat: Double, lng: Double, radiusMeters: Int? = null) {
         cameraTarget = CameraTarget(lat, lng, (cameraTarget?.nonce ?: 0) + 1, radiusMeters)
@@ -97,6 +143,7 @@ fun HomeScreen(navController: NavController) {
         permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
 
     LaunchedEffect(Unit) {
+        if (review != null) return@LaunchedEffect // design review pins the camera itself
         if (location.hasPermission) {
             if (!centeredOnUser) { centeredOnUser = true; centerOnMe() }
         } else {
@@ -118,10 +165,25 @@ fun HomeScreen(navController: NavController) {
         navController.navigate("place/${pin.id}")
     }
 
+    // Debug design review (same states as iOS -designReview home*).
+    LaunchedEffect(review) {
+        if (review == null) return@LaunchedEffect
+        flyTo(-8.7180, 115.1700) // same area as the iOS review shots (Kuta)
+        kotlinx.coroutines.delay(3_000) // let nearby places load first
+        when (review) {
+            "homeFilter" -> filterOpen = true
+            "homeFilterChosen" -> viewModel.setGradeFilter(OverallAccessibility.ACCESSIBLE)
+            "homeSearch" -> searchOpen = true
+            "homeSearchQuery" -> { viewModel.onQueryChanged("beach"); searchOpen = true }
+        }
+    }
+
     BackHandler(enabled = searchOpen || filterOpen) {
         if (searchOpen) { searchOpen = false; viewModel.clearQuery() } else filterOpen = false
     }
 
+    val haze = remember { dev.chrisbanes.haze.HazeState() }
+    CompositionLocalProvider(LocalHazeState provides haze) {
     Box(Modifier.fillMaxSize()) {
         PinMap(
             pins = state.visiblePins,
@@ -131,7 +193,7 @@ fun HomeScreen(navController: NavController) {
             cameraTarget = cameraTarget,
             onCameraIdle = viewModel::onRegionChanged,
             onPinClick = { id -> state.pins.firstOrNull { it.id == id }?.let(::open) },
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().hazeSource(haze),
         )
 
         if (state.isLoading || state.isWidening) {
@@ -145,7 +207,7 @@ fun HomeScreen(navController: NavController) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box {
-                CircleButton(Icons.Default.FilterList, stringResource(R.string.filter_accessibility), background = FilterButtonTint) { filterOpen = !filterOpen }
+                CircleButton(Icons.Default.FilterList, stringResource(R.string.filter_accessibility), tint = FilterButtonTint.copy(alpha = 0.45f)) { filterOpen = !filterOpen }
                 if (state.gradeFilter != null) {
                     Box(
                         Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-4).dp).size(18.dp)
@@ -154,13 +216,48 @@ fun HomeScreen(navController: NavController) {
                     ) { Text("1", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
                 }
             }
+            // Saved + profile share one glass capsule (iOS homeGlass on the same pill).
             Row(
-                Modifier.height(48.dp).background(Color.White.copy(alpha = 0.92f), CircleShape).padding(horizontal = 16.dp),
+                Modifier.homeShadow(CircleShape).height(48.dp).glass(CircleShape).padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(22.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(Icons.Default.Bookmark, stringResource(R.string.saved_places), Modifier.size(22.dp).clickable { navController.navigate("saved") })
-                Icon(Icons.Default.Person, stringResource(R.string.profile), Modifier.size(22.dp).clickable { navController.navigate("profile") })
+                Box {
+                    Icon(Icons.Default.Person, stringResource(R.string.profile), Modifier.size(22.dp).clickable { navController.navigate("profile") })
+                    // The folded banner: one contribution waiting.
+                    androidx.compose.animation.AnimatedVisibility(
+                        waiting != null && !bannerVisible,
+                        Modifier.align(Alignment.TopEnd).offset(x = 10.dp, y = (-10).dp),
+                        enter = scaleIn(initialScale = 0.6f) + fadeIn(),
+                        exit = scaleOut(targetScale = 0.6f) + fadeOut(),
+                    ) {
+                        Box(
+                            Modifier.size(18.dp).background(RollspotBlue, CircleShape).border(2.dp, Color.White, CircleShape),
+                            contentAlignment = Alignment.Center,
+                        ) { Text("1", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                    }
+                }
+            }
+        }
+
+        // "Continue Survey" banner under the top bar; it folds up into the profile button.
+        val reduceMotion = remember { !android.animation.ValueAnimator.areAnimatorsEnabled() }
+        androidx.compose.animation.AnimatedVisibility(
+            visible = bannerVisible && waiting != null && !searchOpen && !filterOpen,
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(start = 16.dp, end = 16.dp, top = 72.dp),
+            enter = slideInVertically(tween(250, easing = Rollspot.EaseOut)) { -it / 2 } + fadeIn(tween(250)),
+            exit = if (reduceMotion) fadeOut(tween(200)) else scaleOut(
+                spring(dampingRatio = 0.85f, stiffness = 300f), targetScale = 0.15f, transformOrigin = TransformOrigin(1f, 0f),
+            ) + fadeOut(tween(300)),
+        ) {
+            val shape = RoundedCornerShape(20.dp)
+            waiting?.let { contribution ->
+                ContinueSurveyBanner(
+                    contribution,
+                    onOpen = { resume(contribution.placeId) },
+                    modifier = Modifier.fillMaxWidth().shadow(12.dp, shape, ambientColor = Color(0x1F000000), spotColor = Color(0x1F000000)).glass(shape, tint = 0.7f),
+                )
             }
         }
 
@@ -201,16 +298,23 @@ fun HomeScreen(navController: NavController) {
         }
 
         if (searchOpen) {
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)))
+            // iOS search scrim: rgba(181,181,181,0.6) over a blurred map.
+            Box(Modifier.fillMaxSize().glass(androidx.compose.ui.graphics.RectangleShape, tint = 0f, blur = 12.dp).background(Color(0x99B5B5B5)))
             SearchSheet(
                 state = state,
                 onQueryChange = viewModel::onQueryChanged,
                 onClose = { searchOpen = false; viewModel.clearQuery() },
                 onPick = ::open,
                 onSearchNearby = { focusManager.clearFocus() },
-                modifier = Modifier.padding(top = 12.dp),
             )
         }
+
+        // One-time intro over the map (iOS OnboardingIntroSheet), shortly after the first launch.
+        OnboardingIntroSheet(visible = showIntro, onExplore = {
+            OnboardingIntroPrefs.markSeen(context)
+            showIntro = false
+        })
+    }
     }
 }
 
@@ -218,14 +322,27 @@ fun HomeScreen(navController: NavController) {
 private fun CircleButton(
     icon: ImageVector,
     description: String,
-    background: Color = Color.White.copy(alpha = 0.92f),
+    tint: Color = Color.Transparent,
     onClick: () -> Unit,
 ) {
+    // 48dp Liquid-Glass-style circle with iOS's button shadow (ButtonsTop 285:1346).
+    val interaction = remember { MutableInteractionSource() }
     Box(
-        Modifier.size(48.dp).background(background, CircleShape).clickable(onClick = onClick),
+        Modifier
+            .homeShadow(CircleShape)
+            .size(48.dp)
+            .pressScale(interaction)
+            .glass(CircleShape)
+            .background(tint, CircleShape)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
-    ) { Icon(icon, contentDescription = description, Modifier.size(24.dp), tint = Color(0xFF1C1C1E)) }
+    ) { Icon(icon, contentDescription = null, Modifier.size(22.dp), tint = Color(0xFF1C1C1E)) }
 }
+
+/** iOS SheetMetrics button shadow: 25% black, radius ~3, y 3.7. */
+internal fun Modifier.homeShadow(shape: androidx.compose.ui.graphics.Shape): Modifier =
+    this.shadow(elevation = 4.dp, shape = shape, ambientColor = Color.Black.copy(alpha = 0.25f), spotColor = Color.Black.copy(alpha = 0.25f))
 
 /** The filter fan-out from the design: dimmed map, one round option per grade. */
 @Composable

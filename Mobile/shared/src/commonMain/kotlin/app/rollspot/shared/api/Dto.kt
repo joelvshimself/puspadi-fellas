@@ -247,6 +247,15 @@ data class ReviewSubmission(
     val toilet: ToiletReport? = null,
 )
 
+/** GET /v1/reviews/:id/edit. New photos upload under [ContributionSubmission.submissionId]. */
+@Serializable
+data class ReviewForEdit(
+    val reviewId: String,
+    val placeId: String,
+    val placeName: String,
+    val submission: ContributionSubmission,
+)
+
 @Serializable
 data class ReviewSubmitted(val reviewId: String, val placeId: String, val grade: List<FeatureGrade> = emptyList())
 
@@ -255,6 +264,8 @@ data class MyReview(
     val id: String,
     val placeId: String,
     val placeName: String,
+    /** Only reviews from the structured (v2) contribute flow can be edited. */
+    val editable: Boolean = false,
     val createdAt: String,
     val reviewText: String,
     val providedFeatures: List<String> = emptyList(),

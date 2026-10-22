@@ -27,7 +27,7 @@ struct SelectionPills<Option: Identifiable & Hashable>: View {
                 .padding(.vertical, 10)
                 .background(
                     Capsule()
-                        .fill(isSelected ? Color.accentColor : Color(.secondarySystemBackground))
+                        .fill(isSelected ? ContributePalette.blue : Color(.secondarySystemBackground))
                 )
         }
         .buttonStyle(.plain)
@@ -64,7 +64,7 @@ struct MultiSelectPills<Option: Identifiable & Hashable>: View {
                 .padding(.vertical, 10)
                 .background(
                     Capsule()
-                        .fill(isSelected ? Color.accentColor : Color(.secondarySystemBackground))
+                        .fill(isSelected ? ContributePalette.blue : Color(.secondarySystemBackground))
                 )
         }
         .buttonStyle(.plain)
@@ -96,7 +96,7 @@ struct YesNoPills: View {
                 .padding(.vertical, 12)
                 .background(
                     Capsule()
-                        .fill(isSelected ? Color.accentColor : Color(.secondarySystemBackground))
+                        .fill(isSelected ? ContributePalette.blue : Color(.secondarySystemBackground))
                 )
         }
         .buttonStyle(.plain)

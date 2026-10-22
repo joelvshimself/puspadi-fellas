@@ -1,0 +1,26 @@
+appId: ${APP_ID}
+---
+- launchApp:
+    arguments:
+      ROLLSPOT_API_BASE_URL: ${API}
+- extendedWaitUntil:
+    visible: "Search a place"
+    timeout: 20000
+- tapOn: "Profile"
+- extendedWaitUntil:
+    visible: "SETTINGS"
+    timeout: 15000
+- tapOn: "SETTINGS"
+- extendedWaitUntil:
+    visible: "Sign Out"
+    timeout: 10000
+- takeScreenshot: 07a-settings
+- tapOn: "Sign Out"
+- extendedWaitUntil:
+    visible: "Search a place"
+    timeout: 15000
+- tapOn: "Profile"
+- extendedWaitUntil:
+    visible: "Welcome to Rollspot"
+    timeout: 15000
+- takeScreenshot: 07b-signed-out

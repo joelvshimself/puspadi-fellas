@@ -10,6 +10,7 @@ struct MyAccountView: View {
     @State private var mobilityProfile: MobilityProfile?
     @State private var showMobilitySheet = false
     @State private var showDeleteAccountSheet = false
+    @State private var showChangePassword = false
     @State private var isAccountDeleted = false
     @State private var feedbackText = ""
     @State private var isLoading = true
@@ -23,26 +24,34 @@ struct MyAccountView: View {
                     value: email.isEmpty ? "—" : email
                 )
 
-                mobilityField
-
-                Button {
-                    showDeleteAccountSheet = true
-                } label: {
-                    Text("Delete Account".localized)
-                        .font(.body.weight(.bold))
-                        .foregroundStyle(Color(red: 0.72, green: 0.16, blue: 0.18))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
-                        .background(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .fill(Color.red.opacity(0.14))
-                        )
+                if auth.canChangePassword {
+                    passwordField
                 }
-                .padding(.top, 8)
+
+                mobilityField
             }
             .padding(.horizontal, 24)
             .padding(.top, 12)
-            .padding(.bottom, 40)
+            .padding(.bottom, 24)
+        }
+        // Pinned to the bottom, as in the design.
+        .safeAreaInset(edge: .bottom) {
+            Button {
+                showDeleteAccountSheet = true
+            } label: {
+                Text("Delete Account".localized)
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(Color(red: 0.72, green: 0.16, blue: 0.18))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(Color.red.opacity(0.14))
+                    )
+            }
+            .buttonStyle(PressableButtonStyle())
+            .padding(.horizontal, 24)
+            .padding(.bottom, 12)
         }
         .background(
             LinearGradient(
@@ -70,7 +79,14 @@ struct MyAccountView: View {
                 }
             }
         }
-        .task { await loadAccount() }
+        .task {
+            await loadAccount()
+            #if DEBUG
+            showMobilitySheet = DesignReview.is(.mobilityProfile)
+            showDeleteAccountSheet = DesignReview.is(.deleteAccount)
+            isAccountDeleted = DesignReview.is(.accountDeleted)
+            #endif
+        }
         .sheet(isPresented: $showMobilitySheet) {
             MobilityProfileSheet(selected: mobilityProfile) { profile in
                 try await auth.updateMobilityProfile(profile)
@@ -83,6 +99,11 @@ struct MyAccountView: View {
             .presentationDetents([.height(248)])
             .presentationDragIndicator(.visible)
             .modifier(MobilitySheetPresentationChrome())
+        }
+        .sheet(isPresented: $showChangePassword) {
+            ChangePasswordSheet()
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showDeleteAccountSheet) {
             deleteAccountSheet
@@ -97,6 +118,40 @@ struct MyAccountView: View {
             if isLoading {
                 ProgressView()
             }
+        }
+    }
+
+    /// "••••••••  Change": the password is never shown, only replaced.
+    private var passwordField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Password".localized)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+
+            HStack {
+                Text(verbatim: "••••••••")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    showChangePassword = true
+                } label: {
+                    Text("Change".localized)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AuthPalette.brandBlue)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(Color.white))
+                }
+                .buttonStyle(PressableButtonStyle())
+            }
+            .padding(.leading, 16)
+            .padding(.trailing, 10)
+            .frame(height: 54)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(AuthPalette.fieldFill)
+            )
         }
     }
 
@@ -208,6 +263,23 @@ struct MyAccountView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 24) {
+                HStack {
+                    Spacer()
+                    Button {
+                        Task { await leaveDeletedAccount() }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 36, height: 36)
+                            .background(Circle().fill(AuthPalette.fieldFill))
+                    }
+                    .buttonStyle(PressableButtonStyle())
+                    .accessibilityLabel("Close".localized)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+
                 Spacer()
 
                 Image(systemName: "checkmark.circle.fill")
@@ -245,14 +317,9 @@ struct MyAccountView: View {
                 Spacer()
 
                 Button {
-                    Task {
-                        await auth.signOut()
-                        isAccountDeleted = false
-                        dismiss()
-                        onBackToHome?()
-                    }
+                    Task { await leaveDeletedAccount() }
                 } label: {
-                    Text("Okey".localized)
+                    Text("Back to Home".localized)
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
@@ -266,6 +333,13 @@ struct MyAccountView: View {
                 .padding(.bottom, 32)
             }
         }
+    }
+
+    private func leaveDeletedAccount() async {
+        await auth.signOut()
+        isAccountDeleted = false
+        dismiss()
+        onBackToHome?()
     }
 
     private func accountField(label: String, value: String) -> some View {

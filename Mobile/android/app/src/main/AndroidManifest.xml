@@ -18,6 +18,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.Rollspot"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
@@ -45,7 +46,17 @@
                     android:host="place" />
             </intent-filter>
         </activity>
-        
+
+        <!-- "Take New Photo": the camera app writes the picture through this provider. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.photos"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/photo_paths" />
+        </provider>
     </application>
 
 </manifest>

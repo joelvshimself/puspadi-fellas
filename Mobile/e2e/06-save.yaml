@@ -1,0 +1,34 @@
+appId: ${APP_ID}
+---
+- launchApp:
+    arguments:
+      ROLLSPOT_API_BASE_URL: ${API}
+- extendedWaitUntil:
+    visible: "Search a place"
+    timeout: 20000
+- openLink: "puspadifellas://place?place_id=${PLACE}"
+- extendedWaitUntil:
+    visible: "CONTRIBUTE"
+    timeout: 15000
+- tapOn: "Save place"
+- extendedWaitUntil:
+    visible: "Remove from saved"
+    timeout: 10000
+- tapOn: "Back"
+- extendedWaitUntil:
+    visible: "Saved places"
+    timeout: 10000
+- tapOn: "Saved places"
+- extendedWaitUntil:
+    visible: "Center of Kuta"
+    timeout: 15000
+- takeScreenshot: 06a-saved-list
+- tapOn: "Center of Kuta"
+- extendedWaitUntil:
+    visible: "Remove from saved"
+    timeout: 15000
+- tapOn: "Remove from saved"
+- extendedWaitUntil:
+    visible: "Save place"
+    timeout: 10000
+- takeScreenshot: 06b-unsaved

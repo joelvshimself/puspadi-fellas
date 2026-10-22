@@ -1,3 +1,4 @@
+import CoreLocation
 import Foundation
 
 /// Local persistence for in-progress contribute review flows.
@@ -23,6 +24,13 @@ enum UnfinishedReviewStore {
         let completedCategories: [String]
         let inProgressCategories: [String]
         let categoryNotes: [String: String]
+        /// The section open when the app left (resume lands back inside it), and its answers.
+        var activeCategory: String? = nil
+        var seatingAnswer: String? = nil
+        var parkingAnswer: String? = nil
+        var pathwayNotices: [String] = []
+        var elevatorAnswers: [String: String] = [:]
+        var toiletAnswers: [String: String] = [:]
 
         init(
             placeId: String,
@@ -73,6 +81,7 @@ enum UnfinishedReviewStore {
             case entranceLocations, lobbyEntranceTags, basementEntranceTags, elevatorTags, toiletTags
             case lobbyNote, basementNote, elevatorNote, toiletNote, updatedAt
             case completedCategories, inProgressCategories, categoryNotes
+            case activeCategory, seatingAnswer, parkingAnswer, pathwayNotices, elevatorAnswers, toiletAnswers
         }
 
         init(from decoder: Decoder) throws {
@@ -97,6 +106,12 @@ enum UnfinishedReviewStore {
             completedCategories = try c.decodeIfPresent([String].self, forKey: .completedCategories) ?? []
             inProgressCategories = try c.decodeIfPresent([String].self, forKey: .inProgressCategories) ?? []
             categoryNotes = try c.decodeIfPresent([String: String].self, forKey: .categoryNotes) ?? [:]
+            activeCategory = try c.decodeIfPresent(String.self, forKey: .activeCategory)
+            seatingAnswer = try c.decodeIfPresent(String.self, forKey: .seatingAnswer)
+            parkingAnswer = try c.decodeIfPresent(String.self, forKey: .parkingAnswer)
+            pathwayNotices = try c.decodeIfPresent([String].self, forKey: .pathwayNotices) ?? []
+            elevatorAnswers = try c.decodeIfPresent([String: String].self, forKey: .elevatorAnswers) ?? [:]
+            toiletAnswers = try c.decodeIfPresent([String: String].self, forKey: .toiletAnswers) ?? [:]
         }
 
         func encode(to encoder: Encoder) throws {
@@ -121,7 +136,23 @@ enum UnfinishedReviewStore {
             try c.encode(completedCategories, forKey: .completedCategories)
             try c.encode(inProgressCategories, forKey: .inProgressCategories)
             try c.encode(categoryNotes, forKey: .categoryNotes)
+            try c.encodeIfPresent(activeCategory, forKey: .activeCategory)
+            try c.encodeIfPresent(seatingAnswer, forKey: .seatingAnswer)
+            try c.encodeIfPresent(parkingAnswer, forKey: .parkingAnswer)
+            try c.encode(pathwayNotices, forKey: .pathwayNotices)
+            try c.encode(elevatorAnswers, forKey: .elevatorAnswers)
+            try c.encode(toiletAnswers, forKey: .toiletAnswers)
         }
+    }
+
+    /// The open section and its single-choice answers.
+    struct SectionAnswers {
+        var activeCategory: String? = nil
+        var seatingAnswer: String? = nil
+        var parkingAnswer: String? = nil
+        var pathwayNotices: [String] = []
+        var elevatorAnswers: [String: String] = [:]
+        var toiletAnswers: [String: String] = [:]
     }
 
     private static let key = "unfinishedReviewSnapshots"
@@ -139,7 +170,8 @@ enum UnfinishedReviewStore {
         draft: ReviewDraft,
         completedCategories: [String] = [],
         inProgressCategories: [String] = [],
-        categoryNotes: [String: String] = [:]
+        categoryNotes: [String: String] = [:],
+        section: SectionAnswers = SectionAnswers()
     ) {
         let placeId = place.reviewPlaceId
         var all = loadAll()
@@ -165,7 +197,15 @@ enum UnfinishedReviewStore {
             inProgressCategories: inProgressCategories,
             categoryNotes: categoryNotes
         )
+        all[placeId]?.activeCategory = section.activeCategory
+        all[placeId]?.seatingAnswer = section.seatingAnswer
+        all[placeId]?.parkingAnswer = section.parkingAnswer
+        all[placeId]?.pathwayNotices = section.pathwayNotices
+        all[placeId]?.elevatorAnswers = section.elevatorAnswers
+        all[placeId]?.toiletAnswers = section.toiletAnswers
         persist(all)
+        // The Home "Continue Survey" banner reads the shared list.
+        RollspotServices.sdk.drafts.remember(placeId: placeId, placeName: place.name)
     }
 
     static func snapshot(for place: Place) -> Snapshot? {
@@ -177,9 +217,25 @@ enum UnfinishedReviewStore {
     }
 
     static func clear(for place: Place) {
+        clear(placeId: place.reviewPlaceId)
+    }
+
+    static func clear(placeId: String) {
         var all = loadAll()
-        all.removeValue(forKey: place.reviewPlaceId)
+        all.removeValue(forKey: placeId)
         persist(all)
+        RollspotServices.sdk.drafts.forget(placeId: placeId)
+    }
+
+    /// The place to resume a waiting contribution at, rebuilt from its snapshot.
+    static func place(forPlaceId placeId: String) -> Place? {
+        guard let snap = loadAll()[placeId] else { return nil }
+        return Place.fromSearchResult(
+            name: snap.placeName,
+            category: "Place",
+            coordinate: CLLocationCoordinate2D(latitude: snap.lat, longitude: snap.lng),
+            placeId: snap.placeId
+        )
     }
 
     static func restoreTags(_ labels: [String], for kind: FacilityKind) -> Set<ContributeTagOption> {

@@ -9,7 +9,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import com.rollspot.app.ui.DesignReview
+import com.rollspot.app.ui.DesignReviewRoot
 import com.rollspot.app.ui.RollspotApp
+import com.rollspot.app.ui.screens.splash.SplashScreen
 import com.rollspot.app.ui.theme.RollspotTheme
 
 class MainActivity : ComponentActivity() {
@@ -17,10 +24,16 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         handleDeepLink(intent)
+        val review = intent?.getStringExtra(DesignReview.EXTRA)
         setContent {
             RollspotTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    RollspotApp()
+                    if (DesignReview.isEnabled(review)) {
+                        DesignReviewRoot(review!!, intent?.getStringExtra(DesignReview.EMAIL_EXTRA), intent?.getStringExtra(DesignReview.PASSWORD_EXTRA))
+                    } else {
+                        var showSplash by rememberSaveable { mutableStateOf(true) }
+                        if (showSplash) SplashScreen(onFinished = { showSplash = false }) else RollspotApp()
+                    }
                 }
             }
         }

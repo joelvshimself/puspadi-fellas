@@ -304,7 +304,12 @@ struct SearchSheet: View {
 
             ZStack(alignment: .leading) {
                 if searchText.isEmpty {
-                    TypewriterPlaceholderView()
+                    // Static, as in the design (it used to cycle phrases).
+                    Text("Search a place".localized)
+                        .font(.system(size: SheetMetrics.textSize))
+                        .tracking(SheetMetrics.textTracking)
+                        .foregroundStyle(.primary.opacity(SheetMetrics.placeholderOpacity))
+                        .allowsHitTesting(false)
                 }
 
                 TextField("", text: $searchText)
@@ -338,7 +343,7 @@ struct SearchSheet: View {
             LazyVStack(alignment: .leading, spacing: SheetMetrics.rowSpacing) {
                 // A one-letter query isn't a search yet (shared minimum length): keep showing Nearby.
                 if !store.isSearchActive {
-                    sectionHeader("Nearby".localized)
+                    sectionHeader("Nearby Malls".localized)
                     if nearbyPlaces.isEmpty && store.hasLoadedOnce {
                         message("No places in this area yet. Move the map to explore.".localized)
                     } else if nearbyPlaces.isEmpty {
@@ -476,99 +481,3 @@ struct SearchSheet: View {
     }
 }
 
-// MARK: - Typewriter Placeholder
-
-/// Animated typewriter placeholder for search bar with rotating suggestions.
-struct TypewriterPlaceholderView: View {
-    @EnvironmentObject private var languageManager: LanguageManager
-
-    private let englishPhrases: [String] = [
-        "Search a place...",
-        "Search Malls in around you...",
-        "Discover accessible spots...",
-        "Search shopping centers..."
-    ]
-
-    private let indonesianPhrases: [String] = [
-        "Cari tempat...",
-        "Cari Mall di sekitar kamu...",
-        "Cari tempat aksesibel...",
-        "Cari pusat perbelanjaan..."
-    ]
-
-    private var phrases: [String] {
-        languageManager.currentLanguage == .indonesia ? indonesianPhrases : englishPhrases
-    }
-
-    @State private var displayedText: String = ""
-    @State private var phraseIndex: Int = 0
-    @State private var charIndex: Int = 0
-    @State private var isDeleting: Bool = false
-    @State private var timer: Timer? = nil
-
-    var body: some View {
-        HStack(spacing: 0) {
-            Text(displayedText)
-                .font(.system(size: SheetMetrics.textSize))
-                .foregroundStyle(.secondary.opacity(0.65))
-            Spacer()
-        }
-        .allowsHitTesting(false)
-        .onAppear { startTyping() }
-        .onDisappear { stopTyping() }
-        .onChange(of: languageManager.currentLanguage) { _, _ in
-            phraseIndex = 0
-            charIndex = 0
-            isDeleting = false
-            displayedText = ""
-            startTyping()
-        }
-    }
-
-    private func startTyping() {
-        stopTyping()
-        stepAnimation()
-    }
-
-    private func stopTyping() {
-        timer?.invalidate()
-        timer = nil
-    }
-
-    private func stepAnimation() {
-        let currentPhrases = phrases
-        guard !currentPhrases.isEmpty else { return }
-        let targetPhrase = currentPhrases[phraseIndex % currentPhrases.count]
-
-        if !isDeleting {
-            if charIndex < targetPhrase.count {
-                charIndex += 1
-                let index = targetPhrase.index(targetPhrase.startIndex, offsetBy: charIndex)
-                displayedText = String(targetPhrase[..<index])
-                timer = Timer.scheduledTimer(withTimeInterval: 0.07, repeats: false) { _ in
-                    stepAnimation()
-                }
-            } else {
-                timer = Timer.scheduledTimer(withTimeInterval: 2.2, repeats: false) { _ in
-                    isDeleting = true
-                    stepAnimation()
-                }
-            }
-        } else {
-            if charIndex > 0 {
-                charIndex -= 1
-                let index = targetPhrase.index(targetPhrase.startIndex, offsetBy: charIndex)
-                displayedText = String(targetPhrase[..<index])
-                timer = Timer.scheduledTimer(withTimeInterval: 0.035, repeats: false) { _ in
-                    stepAnimation()
-                }
-            } else {
-                isDeleting = false
-                phraseIndex = (phraseIndex + 1) % currentPhrases.count
-                timer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: false) { _ in
-                    stepAnimation()
-                }
-            }
-        }
-    }
-}

@@ -112,6 +112,7 @@ extension MyReviewsState {
                     id: id,
                     placeId: row.placeId,
                     placeName: row.placeName,
+                    editable: row.editable,
                     createdAt: row.createdAt,
                     dateLabel: row.dateLabel,
                     reviewText: row.text,

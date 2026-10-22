@@ -10,3 +10,13 @@ extension Data {
         return array
     }
 }
+
+extension KotlinByteArray {
+    func asData() -> Data {
+        var data = Data(count: Int(size))
+        for index in 0..<Int(size) {
+            data[index] = UInt8(bitPattern: get(index: Int32(index)))
+        }
+        return data
+    }
+}

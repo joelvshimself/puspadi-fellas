@@ -58,25 +58,25 @@ struct ContributeCategoryStepView: View {
             HStack(spacing: 14) {
                 Image(systemName: categoryIcon(kind))
                     .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(isSelected ? Color.accentColor : .primary)
+                    .foregroundStyle(isSelected ? ContributePalette.blue : .primary)
                     .frame(width: 24)
 
                 Text(categoryLabel(kind))
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(isSelected ? Color.accentColor : .primary)
+                    .foregroundStyle(isSelected ? ContributePalette.blue : .primary)
 
                 Spacer()
 
                 Image(systemName: isSelected ? "checkmark.square.fill" : "square")
                     .font(.system(size: 20))
-                    .foregroundStyle(isSelected ? Color.accentColor : Color(.tertiaryLabel))
+                    .foregroundStyle(isSelected ? ContributePalette.blue : Color(.tertiaryLabel))
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 16)
             .background(Color(.secondarySystemBackground), in: Capsule())
             .overlay {
                 Capsule()
-                    .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
+                    .strokeBorder(isSelected ? ContributePalette.blue : Color.clear, lineWidth: 1.5)
             }
         }
         .buttonStyle(.plain)
