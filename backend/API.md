@@ -46,13 +46,61 @@ The Kotlin client in `Mobile/shared/.../api/RollspotApi.kt` mirrors this file. *
 | Method | Path | Notes |
 |---|---|---|
 | POST 🔒 | `/v1/reviews` | Body below. Idempotent per `submissionId`: a retry returns the original review. → `{ reviewId, placeId, grade }` |
+| GET | `/v1/reviews/:id` | One review (same shape as items in `/v1/places/:key/reviews`) plus `placeId`. → `{ placeId, review }` |
 | GET 🔒 | `/v1/me/reviews` | → `{ userName, userRole, profileImageUrl, reviews: { id, placeId, placeName, createdAt, reviewText, providedFeatures, photoUrls, photoCaptions }[] }` |
 | DELETE 🔒 | `/v1/reviews/:id` | Own reviews only. 204 |
-| PUT 🔒 | `/v1/media/review-photos/:placeKey/:facility/:photoId` | Raw `image/jpeg` body ≤ 10 MB. facility ∈ lobby, basement, elevator, toilet, exit_side, other, uploads. Same photoId = overwrite (safe retry). → `{ url }` |
+| PUT 🔒 | `/v1/media/review-photos/:placeKey/:submissionId/:fileId` | Raw `image/jpeg` body ≤ 10 MB. Reuse the review's `submissionId` and a stable per-photo `fileId`; same pair overwrites (safe retry). Facility is set on `POST /v1/reviews`, not in this path. → `{ url }` |
 | GET | `/v1/media/:objectKey` | Photo bytes |
 
 ```jsonc
-// POST /v1/reviews
+// POST /v1/reviews — version 2 is the contribute flow. Omit version for the legacy body below.
+{ "version": 2,
+  "submissionId": "client-generated uuid, reused on retry",
+  "placeId": "uuid or osm:way/123",
+  "persona": "wheelchair" | "secondary",   // optional; otherwise taken from the profile
+  "entrance": { "passes": [EntrancePass], "notes": "string | null" } | omitted,
+  "elevator": { "passes": [ElevatorPass], "notes": "string | null" } | omitted,
+  "toilet": { "passes": [ToiletPass], "notes": "string | null" } | omitted,
+  "pathways": { "notices": [Notice], "photos": [Photo], "notes": "string | null" } | omitted,
+  "seating": { "answer": Answer, "photos": [Photo], "notes": "string | null" } | omitted,
+  "parking": { "answer": Answer, "photos": [Photo], "notes": "string | null" } | omitted,
+  "final": { "text": "string | null", "photos": [Photo] } | omitted }
+// notes is the optional descriptive review written at the end of that section (max 4000 characters).
+// The apps no longer send final; it remains accepted for older clients.
+// Photo is { "url": "<url from the media upload>", "caption": "" }
+// At least one of entrance, elevator, toilet, pathways, seating, parking is required.
+// A pass is one entrance, elevator, or toilet the contributor reviewed.
+// Evidence photos (kind "evidence") are allowed only on an answer of not_sure,
+// and at most 3 per pass across all of that pass's questions.
+// Section photos (the "Take or upload a photo" screen) are at most 5 per pass.
+// Final photos are at most 5. A review holds at most 60 photos, each owned by
+// this user and this submissionId.
+
+// EntrancePass: { "photos": [Photo], "points": [Point] }  // 1–10 passes, 1–2 points, locations unique
+// Point: { "location": "lobby" | "basement", "tags": [Tag], "ramp": Ramp | null, "handrail": Handrail | null,
+//          "evidence": { "ramp": [Photo], "handrail": [Photo] } }
+// Tag (lobby): ramp, handrail, automatic_doors, manual_doors, security_assistance, wheelchairs_available
+// Tag (basement): elevator, disabled_parking, ramp, handrail, security_assistance
+// ramp is required exactly when tags contain ramp. Same for handrail.
+// Ramp: yes | with_push | too_steep | not_sure
+// Handrail: yes | with_effort | no | not_sure
+
+// ElevatorPass: { "photos": [Photo], "wideEntrance": Tri, "spaceToManeuver": Tri | null,
+//   "reachableButtons": Tri | null, "location": "string | null",
+//   "evidence": { "wideEntrance": [Photo], "spaceToManeuver": [Photo], "reachableButtons": [Photo] } }
+// Tri: yes | no | not_sure. space and buttons are omitted when wideEntrance is no, and required otherwise.
+
+// ToiletPass: { "photos": [Photo], "door": "manual" | "sliding" | "automatic",
+//   "seat": "yes" | "too_low" | "too_high" | "not_sure",
+//   "grabBars": "yes" | "awkward" | "no" | "not_sure",
+//   "space": Tri, "sink": Tri, "emergency": "yes" | "no" | "not_sure" | "none",
+//   "location": "string | null",
+//   "evidence": { "seat": [Photo], "grabBars": [Photo], "space": [Photo], "sink": [Photo], "emergency": [Photo] } }
+
+// Notice: loose_surface | rough_surface | tight_gap | narrow_path | steep_section | curb_no_ramp | nothing_notable
+// nothing_notable cannot be combined with another notice. Answer: yes | no | not_sure.
+
+// Legacy POST /v1/reviews (gallery uploads and older apps)
 { "submissionId": "client-generated uuid, reused on retry",
   "placeId": "uuid or osm:way/123",
   "entrances": [{ "location": "lobby" | "basement" | "exit_side" | "other",
@@ -63,6 +111,13 @@ The Kotlin client in `Mobile/shared/.../api/RollspotApi.kt` mirrors this file. *
 // Note: photoUrls are the `url`s returned by the media upload
 { "text": "string | null", "photoUrls": ["…"], "photoCaptions": ["…"] }
 ```
+
+Reads keep the legacy fields and, for version 2, add `schema_version`, `persona`, `final_text`,
+`final_photos`, `entrance_passes`, `elevator_passes`, `toilet_passes`, `areas`, and `section_notes`.
+`section_notes` is `{ entrance, elevator, toilet, pathways, seating, parking }`, each a string or null.
+Each photo is
+`{ url, caption, section, kind, question, pass_index, location }`. `kind` is `section`, `evidence`,
+`final`, or `legacy`.
 
 ## Profile 🔒
 | Method | Path | Notes |

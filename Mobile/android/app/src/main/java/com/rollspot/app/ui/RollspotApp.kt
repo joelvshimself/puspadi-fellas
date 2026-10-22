@@ -9,6 +9,8 @@ import androidx.navigation.navArgument
 import com.rollspot.app.ui.screens.home.HomeScreen
 import com.rollspot.app.ui.screens.place.PlaceDetailScreen
 import com.rollspot.app.ui.screens.saved.SavedScreen
+import com.rollspot.app.ui.screens.contribute.ContributeFlowScreen
+import com.rollspot.app.ui.screens.contribute.ContributePlaceSearchScreen
 import com.rollspot.app.ui.screens.contribute.ContributeScreen
 import com.rollspot.app.ui.screens.account.AccountScreen
 import com.rollspot.app.ui.screens.auth.AuthFlowScreen
@@ -35,8 +37,7 @@ fun RollspotApp() {
             PlaceDetailScreen(
                 placeId = placeId,
                 onNavigateBack = { navController.popBackStack() },
-                // Contribute is its own feature (F4); the place page only hands off to it.
-                onContribute = { navController.navigate("contribute") },
+                onContribute = { navController.navigate("contribute/flow/$placeId") },
             )
         }
 
@@ -67,7 +68,30 @@ fun RollspotApp() {
         }
 
         composable("contribute") {
-            ContributeScreen(onNavigateBack = { navController.popBackStack() })
+            ContributeScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onStartReview = { navController.navigate("contribute/search") },
+            )
+        }
+        composable("contribute/search") {
+            ContributePlaceSearchScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onPlaceSelected = { placeId ->
+                    navController.navigate("contribute/flow/$placeId") {
+                        popUpTo("contribute/search") { inclusive = true }
+                    }
+                },
+            )
+        }
+        composable(
+            route = "contribute/flow/{placeId}",
+            arguments = listOf(navArgument("placeId") { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val placeId = backStackEntry.arguments?.getString("placeId").orEmpty()
+            ContributeFlowScreen(
+                placeId = placeId,
+                onFinished = { navController.popBackStack() },
+            )
         }
     }
 }

@@ -47,11 +47,46 @@ enum ElevatorQuestion: String, CaseIterable {
         case (.spaceToManeuver, .wheelchair):
             "Could you turn your wheelchair freely inside?"
         case (.spaceToManeuver, .everyone):
-            "Could someone turn their wheelchair freely inside?"
+            "Could someone in a wheelchair turn freely inside?"
         case (.reachableButtons, .wheelchair):
-            "Could you reach the buttons from your wheelchair?"
+            "Could you reach the control buttons from your wheelchair?"
         case (.reachableButtons, .everyone):
-            "Could someone in a wheelchair reach the buttons?"
+            "Could you reach the control buttons from a seated position?"
+        }
+    }
+
+    var loopingVideoName: String {
+        switch self {
+        case .wideEntrance: "ELEVATOR_WIDE_ENTRANCE"
+        case .spaceToManeuver: "TOILET_SPACE_TO_MANEUVER"
+        case .reachableButtons: "ELEVATORS_REACHABLE_BUTTONS"
+        }
+    }
+
+    var videoInfoTitle: String {
+        switch self {
+        case .wideEntrance: "Elevator Entrance"
+        case .spaceToManeuver: "Space to Maneuver"
+        case .reachableButtons: "Control Buttons"
+        }
+    }
+
+    var videoInfoSections: [(title: String, body: String)] {
+        switch self {
+        case .wideEntrance:
+            [
+                ("Width", "Wide enough for a wheelchair to roll straight in without angling at the threshold."),
+                ("Level Threshold", "The elevator floor should be level with the floor outside it, no step up or wide gap where a wheel could get stuck."),
+            ]
+        case .spaceToManeuver:
+            [
+                ("", "Enough room to enter and turn a full circle without hitting the walls."),
+            ]
+        case .reachableButtons:
+            [
+                ("Height", "Elevator buttons should be low enough to press from a seated position."),
+                ("Emergency", "The help button must work without needing to stand or lift a handset."),
+            ]
         }
     }
 

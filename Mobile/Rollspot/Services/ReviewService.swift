@@ -1,4 +1,5 @@
 import Foundation
+import Shared
 
 private actor ReviewMutationGate {
     private var active: Set<String> = []
@@ -18,13 +19,10 @@ final class ReviewService {
     static let shared = ReviewService()
 
     private let client = CloudflareAPIClient.shared
+    private let reviews = RollspotServices.sdk.reviews
     private let mutationGate = ReviewMutationGate()
 
     private init() {
-    }
-
-    private struct UploadResponse: Decodable {
-        let url: String
     }
 
     struct SubmitResponse: Decodable {
@@ -66,18 +64,35 @@ final class ReviewService {
     }
 
     @discardableResult
+    func submit(contribution: AssembledContribution) async throws -> SubmitResponse {
+        let mutationKey = contribution.submission.submissionId
+        guard await mutationGate.begin(mutationKey) else { throw ReviewMutationInProgress() }
+        do {
+            let submitted = try await reviews.submitContribution(
+                submission: contribution.submission,
+                photos: contribution.photos
+            )
+            let response = submitted.asSubmitResponse()
+            await mutationGate.end(mutationKey)
+            return response
+        } catch {
+            await mutationGate.end(mutationKey)
+            throw error
+        }
+    }
+
+    @discardableResult
     func submit(_ draft: ReviewDraft) async throws -> SubmitResponse {
         let mutationKey = draft.submissionId.uuidString
         guard await mutationGate.begin(mutationKey) else { throw ReviewMutationInProgress() }
         print("[ReviewService] Submitting review for place \(draft.placeId)…")
         do {
-            let photoUrls = try await uploadAllPhotos(for: draft)
-            let payload = draft.buildSubmissionPayload(photoUrls: photoUrls)
-            let response: SubmitResponse = try await client.post(
-                ["v1", "reviews"],
-                body: payload,
-                authenticated: true
+            let payload = draft.buildSubmissionPayload(photoUrls: ReviewPhotoURLMap())
+            let submitted = try await reviews.submit(
+                submission: payload.asSharedSubmission(),
+                photos: draft.pendingReviewPhotos()
             )
+            let response = submitted.asSubmitResponse()
             await mutationGate.end(mutationKey)
             print("[ReviewService] Review submitted successfully — reviewId: \(response.reviewId), placeId: \(response.placeId)")
             return response
@@ -106,7 +121,6 @@ final class ReviewService {
         guard !jpegPhotos.isEmpty else { return }
 
         let draft = ReviewDraft(placeId: place.reviewPlaceId, coordinate: place.coordinate, name: place.name)
-        var urlMap = ReviewPhotoURLMap()
 
         // Photos only — no facility answers. This used to set
         // `elevator.exists = true` / `toilet.hasDisabledToilet = true` so the
@@ -117,32 +131,16 @@ final class ReviewService {
         switch facility {
         case .entrance:
             draft.lobby.review.photos = jpegPhotos
-            (urlMap.lobby, urlMap.lobbyCaptions) = try await uploadPhotosWithCaptions(
-                jpegPhotos,
-                placeId: draft.placeId,
-                facility: "lobby"
-            )
         case .elevator:
             draft.elevator.review.photos = jpegPhotos
-            (urlMap.elevator, urlMap.elevatorCaptions) = try await uploadPhotosWithCaptions(
-                jpegPhotos,
-                placeId: draft.placeId,
-                facility: "elevator"
-            )
         case .toilet:
             draft.toilet.review.photos = jpegPhotos
-            (urlMap.toilet, urlMap.toiletCaptions) = try await uploadPhotosWithCaptions(
-                jpegPhotos,
-                placeId: draft.placeId,
-                facility: "toilet"
-            )
         }
 
-        let payload = draft.buildSubmissionPayload(photoUrls: urlMap)
-        let _: SubmitResponse = try await client.post(
-            ["v1", "reviews"],
-            body: payload,
-            authenticated: true
+        let payload = draft.buildSubmissionPayload(photoUrls: ReviewPhotoURLMap())
+        _ = try await reviews.submit(
+            submission: payload.asSharedSubmission(),
+            photos: draft.pendingReviewPhotos()
         )
     }
 
@@ -152,76 +150,14 @@ final class ReviewService {
         AsyncStream { $0.finish() }
     }
 
-    // MARK: - Storage upload
-
-    private func uploadAllPhotos(for draft: ReviewDraft) async throws -> ReviewPhotoURLMap {
-        var map = ReviewPhotoURLMap()
-        (map.lobby, map.lobbyCaptions) = try await uploadPhotosWithCaptions(
-            draft.lobby.review.photos,
-            placeId: draft.placeId,
-            facility: "lobby"
-        )
-        (map.basement, map.basementCaptions) = try await uploadPhotosWithCaptions(
-            draft.basement.review.photos,
-            placeId: draft.placeId,
-            facility: "basement"
-        )
-        (map.elevator, map.elevatorCaptions) = try await uploadPhotosWithCaptions(
-            draft.elevator.review.photos,
-            placeId: draft.placeId,
-            facility: "elevator"
-        )
-        (map.toilet, map.toiletCaptions) = try await uploadPhotosWithCaptions(
-            draft.toilet.review.photos,
-            placeId: draft.placeId,
-            facility: "toilet"
-        )
-        return map
-    }
-
-    private func uploadPhotosWithCaptions(
-        _ photos: [ReviewPhotoDraft],
-        placeId: String,
-        facility: String
-    ) async throws -> ([String], [String]) {
-        let urls = try await uploadPhotos(photos, placeId: placeId, facility: facility)
-        let captions = photos.map {
-            $0.caption.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        return (urls, captions)
-    }
-
-    /// Uploads JPEGs for `placeId`/`facility` (one object per photo UUID) and
-    /// returns public URLs for the wire payload.
-    private func uploadPhotos(
-        _ photos: [ReviewPhotoDraft],
-        placeId: String,
-        facility: String
-    ) async throws -> [String] {
-        guard !photos.isEmpty else { return [] }
-
-        var urls: [String] = []
-        urls.reserveCapacity(photos.count)
-
-        for photo in photos {
-            let response: UploadResponse = try await client.putData(
-                ["v1", "media", "review-photos", placeId, facility, photo.id.uuidString],
-                data: photo.jpegData,
-                contentType: "image/jpeg"
-            )
-            urls.append(response.url)
-        }
-        return urls
-    }
-
     /// Fetches reviews authored by the signed-in user.
     func fetchMyReviews() async throws -> MyReviewsResponse {
-        try await client.get(["v1", "me", "reviews"], authenticated: true)
+        try await reviews.loadMine().asMyReviewsResponse()
     }
 
     /// Deletes the signed-in user's review and its photos.
     func deleteMyReview(id: UUID) async throws {
-        try await client.delete(["v1", "reviews", id.uuidString])
+        try await reviews.delete(reviewId: id.uuidString)
     }
 
     static func profileDateLabel(_ createdAt: String) -> String {

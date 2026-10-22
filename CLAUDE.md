@@ -74,6 +74,7 @@ curl -X POST -H "authorization: Bearer $ADMIN_TOKEN" localhost:8787/v1/admin/syn
 export JAVA_HOME=/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home
 cd Mobile && ./gradlew :shared:testDebugUnitTest :shared:iosSimulatorArm64Test
 cd Mobile && ./gradlew :androidApp:assembleDebug
+# Emulator (Pixel_9 + Wi‑Fi): Mobile/android/EMULATOR.md — use Mobile/scripts/run-android-debug.sh before installDebug
 
 # iOS (the "Build shared module" phase compiles Mobile/shared first; see Mobile/scripts/build-shared-for-xcode.sh)
 xcodebuild -project Mobile/Rollspot.xcodeproj -scheme Rollspot \

@@ -23,6 +23,8 @@ final class ReviewDraft: ObservableObject {
     /// `EntranceReport` array items.
     @Published var lobby = EntranceDraft(location: .lobby)
     @Published var basement = EntranceDraft(location: .basement)
+    /// Set just before submit when the contributor reviewed one or more entrances.
+    var entrancePassSnapshots: [EntrancePassSnapshot] = []
     @Published var elevator = ElevatorDraft()
     @Published var toilet = ToiletDraft()
 
@@ -57,6 +59,14 @@ enum DoorType: String, CaseIterable, Identifiable {
         case .automatic: "Automatic"
         }
     }
+}
+
+/// One finished walk through the entrance section, kept so a second entrance can be reviewed.
+struct EntrancePassSnapshot {
+    var sectionPhotos: [ReviewPhotoDraft]
+    var locations: Set<EntranceLocation>
+    var lobby: EntranceDraft
+    var basement: EntranceDraft
 }
 
 struct EntranceDraft {
@@ -150,8 +160,8 @@ struct ReviewNoteDraft {
 
     var canAddMorePhotos: Bool { photos.count < Self.maxPhotos }
 
-    mutating func addPhoto(from image: UIImage) {
-        guard canAddMorePhotos,
+    mutating func addPhoto(from image: UIImage, limit: Int = maxPhotos) {
+        guard photos.count < limit,
               let jpegData = image.jpegData(compressionQuality: Self.jpegQuality)
         else { return }
         photos.append(ReviewPhotoDraft(image: image, jpegData: jpegData))

@@ -20,6 +20,108 @@ enum UnfinishedReviewStore {
         let elevatorNote: String
         let toiletNote: String
         let updatedAt: Date
+        let completedCategories: [String]
+        let inProgressCategories: [String]
+        let categoryNotes: [String: String]
+
+        init(
+            placeId: String,
+            placeName: String,
+            lat: Double,
+            lng: Double,
+            startingFacility: String?,
+            screenIndex: Int,
+            selectedFacilities: [String],
+            entranceLocations: [String],
+            lobbyEntranceTags: [String],
+            basementEntranceTags: [String],
+            elevatorTags: [String],
+            toiletTags: [String],
+            lobbyNote: String,
+            basementNote: String,
+            elevatorNote: String,
+            toiletNote: String,
+            updatedAt: Date,
+            completedCategories: [String] = [],
+            inProgressCategories: [String] = [],
+            categoryNotes: [String: String] = [:]
+        ) {
+            self.placeId = placeId
+            self.placeName = placeName
+            self.lat = lat
+            self.lng = lng
+            self.startingFacility = startingFacility
+            self.screenIndex = screenIndex
+            self.selectedFacilities = selectedFacilities
+            self.entranceLocations = entranceLocations
+            self.lobbyEntranceTags = lobbyEntranceTags
+            self.basementEntranceTags = basementEntranceTags
+            self.elevatorTags = elevatorTags
+            self.toiletTags = toiletTags
+            self.lobbyNote = lobbyNote
+            self.basementNote = basementNote
+            self.elevatorNote = elevatorNote
+            self.toiletNote = toiletNote
+            self.updatedAt = updatedAt
+            self.completedCategories = completedCategories
+            self.inProgressCategories = inProgressCategories
+            self.categoryNotes = categoryNotes
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case placeId, placeName, lat, lng, startingFacility, screenIndex, selectedFacilities
+            case entranceLocations, lobbyEntranceTags, basementEntranceTags, elevatorTags, toiletTags
+            case lobbyNote, basementNote, elevatorNote, toiletNote, updatedAt
+            case completedCategories, inProgressCategories, categoryNotes
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            placeId = try c.decode(String.self, forKey: .placeId)
+            placeName = try c.decode(String.self, forKey: .placeName)
+            lat = try c.decode(Double.self, forKey: .lat)
+            lng = try c.decode(Double.self, forKey: .lng)
+            startingFacility = try c.decodeIfPresent(String.self, forKey: .startingFacility)
+            screenIndex = try c.decode(Int.self, forKey: .screenIndex)
+            selectedFacilities = try c.decode([String].self, forKey: .selectedFacilities)
+            entranceLocations = try c.decode([String].self, forKey: .entranceLocations)
+            lobbyEntranceTags = try c.decode([String].self, forKey: .lobbyEntranceTags)
+            basementEntranceTags = try c.decode([String].self, forKey: .basementEntranceTags)
+            elevatorTags = try c.decode([String].self, forKey: .elevatorTags)
+            toiletTags = try c.decode([String].self, forKey: .toiletTags)
+            lobbyNote = try c.decode(String.self, forKey: .lobbyNote)
+            basementNote = try c.decode(String.self, forKey: .basementNote)
+            elevatorNote = try c.decode(String.self, forKey: .elevatorNote)
+            toiletNote = try c.decode(String.self, forKey: .toiletNote)
+            updatedAt = try c.decode(Date.self, forKey: .updatedAt)
+            completedCategories = try c.decodeIfPresent([String].self, forKey: .completedCategories) ?? []
+            inProgressCategories = try c.decodeIfPresent([String].self, forKey: .inProgressCategories) ?? []
+            categoryNotes = try c.decodeIfPresent([String: String].self, forKey: .categoryNotes) ?? [:]
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(placeId, forKey: .placeId)
+            try c.encode(placeName, forKey: .placeName)
+            try c.encode(lat, forKey: .lat)
+            try c.encode(lng, forKey: .lng)
+            try c.encodeIfPresent(startingFacility, forKey: .startingFacility)
+            try c.encode(screenIndex, forKey: .screenIndex)
+            try c.encode(selectedFacilities, forKey: .selectedFacilities)
+            try c.encode(entranceLocations, forKey: .entranceLocations)
+            try c.encode(lobbyEntranceTags, forKey: .lobbyEntranceTags)
+            try c.encode(basementEntranceTags, forKey: .basementEntranceTags)
+            try c.encode(elevatorTags, forKey: .elevatorTags)
+            try c.encode(toiletTags, forKey: .toiletTags)
+            try c.encode(lobbyNote, forKey: .lobbyNote)
+            try c.encode(basementNote, forKey: .basementNote)
+            try c.encode(elevatorNote, forKey: .elevatorNote)
+            try c.encode(toiletNote, forKey: .toiletNote)
+            try c.encode(updatedAt, forKey: .updatedAt)
+            try c.encode(completedCategories, forKey: .completedCategories)
+            try c.encode(inProgressCategories, forKey: .inProgressCategories)
+            try c.encode(categoryNotes, forKey: .categoryNotes)
+        }
     }
 
     private static let key = "unfinishedReviewSnapshots"
@@ -34,7 +136,10 @@ enum UnfinishedReviewStore {
         basementEntranceTags: Set<ContributeTagOption>,
         elevatorTags: Set<ContributeTagOption>,
         toiletTags: Set<ContributeTagOption>,
-        draft: ReviewDraft
+        draft: ReviewDraft,
+        completedCategories: [String] = [],
+        inProgressCategories: [String] = [],
+        categoryNotes: [String: String] = [:]
     ) {
         let placeId = place.reviewPlaceId
         var all = loadAll()
@@ -55,7 +160,10 @@ enum UnfinishedReviewStore {
             basementNote: draft.basement.review.text,
             elevatorNote: draft.elevator.review.text,
             toiletNote: draft.toilet.review.text,
-            updatedAt: Date()
+            updatedAt: Date(),
+            completedCategories: completedCategories,
+            inProgressCategories: inProgressCategories,
+            categoryNotes: categoryNotes
         )
         persist(all)
     }

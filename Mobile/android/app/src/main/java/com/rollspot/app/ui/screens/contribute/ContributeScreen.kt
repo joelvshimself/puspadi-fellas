@@ -1,73 +1,64 @@
 package com.rollspot.app.ui.screens.contribute
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.rollspot.app.R
+import com.rollspot.app.ui.screens.contribute.components.ContributeContinueButton
+import com.rollspot.app.ui.screens.contribute.components.ContributeFlowHeader
 
 /**
  * Contribute screen for adding accessibility reviews.
- * Mirrors iOS ContributeView (currently TODO placeholder)
+ * Landing tab; the review wizard starts after place search.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContributeScreen(
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onStartReview: () -> Unit,
 ) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Contribute") },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
-                        )
-                    }
-                }
-            )
-        }
-    ) { padding ->
-        Box(
+    Column(Modifier.fillMaxSize()) {
+        ContributeFlowHeader(title = "Contribute", onBack = onNavigateBack)
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
-            contentAlignment = Alignment.Center
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = null,
-                    modifier = Modifier.size(64.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = "Contribute",
-                    style = MaterialTheme.typography.headlineMedium
-                )
-                Text(
-                    text = "Help make places more accessible.\nShare your experience and photos.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Button(
-                    onClick = { /* TODO: Start contribute flow */ },
-                    modifier = Modifier.padding(top = 16.dp)
-                ) {
-                    Text("Add Accessibility Review")
-                }
-            }
+            Image(
+                painter = painterResource(R.drawable.contribute_onboarding),
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 200.dp),
+                contentScale = ContentScale.Fit,
+            )
+            Spacer(Modifier.height(24.dp))
+            Text(
+                text = "Help make places more accessible",
+                style = MaterialTheme.typography.headlineSmall,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Share your experience and photos so others know what to expect.",
+                style = MaterialTheme.typography.bodyLarge,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
+        ContributeContinueButton(
+            title = "Add Accessibility Review",
+            enabled = true,
+            onClick = onStartReview,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
     }
 }

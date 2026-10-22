@@ -26,6 +26,7 @@ struct ContributeEntranceLocationStepView: View {
     @Binding var selection: Set<EntranceLocation>
     let onBack: () -> Void
     let onContinue: () -> Void
+    @State private var showEntranceInfo = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,7 +35,7 @@ struct ContributeEntranceLocationStepView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    Image("Entrance Mall Asset")
+                    Image("Lobby Asset")
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(maxWidth: .infinity)
@@ -42,9 +43,23 @@ struct ContributeEntranceLocationStepView: View {
                         .frame(height: 180)
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Which entrances did you use?".localized)
-                            .font(.title2.bold())
-                        Text("You can select multiple answers".localized)
+                        HStack(alignment: .top, spacing: 12) {
+                            Text("Where can you find the accessible entrances?".localized)
+                                .font(.title2.bold())
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Button {
+                                showEntranceInfo = true
+                            } label: {
+                                Image(systemName: "info")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(Color(.systemGray))
+                                    .frame(width: 28, height: 28)
+                                    .background(Color(.systemGray5), in: Circle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Accessible entrance info")
+                        }
+                        Text("You can select multiple places".localized)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -62,6 +77,9 @@ struct ContributeEntranceLocationStepView: View {
             ContributeContinueButton(isEnabled: !selection.isEmpty, action: onContinue)
         }
         .background(Color(.systemBackground))
+        .sheet(isPresented: $showEntranceInfo) {
+            AccessibleEntranceInfoSheet()
+        }
     }
 
     private func entranceRow(_ location: EntranceLocation) -> some View {
@@ -100,6 +118,48 @@ struct ContributeEntranceLocationStepView: View {
             }
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct AccessibleEntranceInfoSheet: View {
+    private let points = [
+        "Ramps",
+        "Handrails",
+        "Automatic doors",
+        "Security assistance",
+        "Wheelchair loans available",
+    ]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Image("Lobby Asset")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 160)
+
+                Text("Accessible Entrance")
+                    .font(.title2.bold())
+
+                Text("Entrances require non-obstructed pathways for someone to navigate independently to be accessible.")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(points, id: \.self) { point in
+                        Text("•  \(point)")
+                            .font(.body)
+                    }
+                }
+            }
+            .padding(24)
+            .padding(.top, 8)
+        }
+        .presentationDragIndicator(.visible)
+        .presentationDetents([.medium, .large])
     }
 }
 

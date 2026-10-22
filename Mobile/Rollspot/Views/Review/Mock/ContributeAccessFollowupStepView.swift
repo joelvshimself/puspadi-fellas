@@ -17,8 +17,18 @@ struct ContributeAccessFollowupStepView: View {
     let photoRevealOption: String
     @Binding var selection: String?
     @Binding var note: ReviewNoteDraft
+    /// Cap for this photo box. Evidence boxes pass the pass-wide remainder.
+    var photoLimit: Int = ReviewNoteDraft.maxPhotos
     var stepNumber: Int = 1
     var subStepProgress: CGFloat = 0.35
+    /// Tapping a choice continues immediately and hides the Continue button.
+    var advancesOnSelect: Bool = false
+    /// When set, a looping video replaces the still illustration.
+    var loopingVideoName: String? = nil
+    var videoInfoTitle: String = ""
+    var videoInfoSections: [(title: String, body: String)] = []
+    /// When set, the info sheet repeats this looping video above the copy.
+    var infoVideoName: String? = nil
     let onBack: () -> Void
     let onContinue: () -> Void
 
@@ -44,13 +54,31 @@ struct ContributeAccessFollowupStepView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
-                        Image(illustrationAssetName)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(maxWidth: .infinity)
-                            .scaleEffect(1.05)
-                            .frame(height: 180)
-                            .id(Self.topSectionID)
+                        Group {
+                            if let loopingVideoName {
+                                RampLoopVideoCard(
+                                    resourceName: loopingVideoName,
+                                    infoTitle: videoInfoTitle,
+                                    infoSections: videoInfoSections,
+                                    infoVideoName: infoVideoName
+                                )
+                                .id(loopingVideoName)
+                            } else if !videoInfoSections.isEmpty {
+                                FollowUpStillCard(
+                                    imageName: illustrationAssetName,
+                                    infoTitle: videoInfoTitle,
+                                    infoSections: videoInfoSections
+                                )
+                            } else {
+                                Image(illustrationAssetName)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(maxWidth: .infinity)
+                                    .scaleEffect(1.05)
+                                    .frame(height: 180)
+                            }
+                        }
+                        .id(Self.topSectionID)
 
                         VStack(alignment: .leading, spacing: 4) {
                             Text(eyebrow.localized)
@@ -116,13 +144,15 @@ struct ContributeAccessFollowupStepView: View {
                 }
             }
 
-            ContributeContinueButton(isEnabled: selection != nil, action: onContinue)
+            if !advancesOnSelect {
+                ContributeContinueButton(isEnabled: selection != nil, action: onContinue)
+            }
         }
         .background(Color(.systemBackground))
         .photosPicker(
             isPresented: $showPhotosPicker,
             selection: $photoPickerItems,
-            maxSelectionCount: ReviewNoteDraft.maxPhotos - note.photos.count,
+            maxSelectionCount: max(photoLimit - note.photos.count, 0),
             matching: .images
         )
         .onChange(of: photoPickerItems) { _, newItems in
@@ -135,7 +165,7 @@ struct ContributeAccessFollowupStepView: View {
         .fullScreenCover(isPresented: $showCamera) {
             CameraPicker(
                 onCapture: { image in
-                    note.addPhoto(from: image)
+                    note.addPhoto(from: image, limit: photoLimit)
                     showCamera = false
                 },
                 onCancel: { showCamera = false }
@@ -157,39 +187,53 @@ struct ContributeAccessFollowupStepView: View {
 
     @State private var showPhotoOptions = false
     @State private var selectedPhotoForCaption: ReviewPhotoDraft? = nil
+    @State private var isAdvancing = false
 
     private func optionRow(_ option: String) -> some View {
         let isSelected = selection == option
+        let filled = advancesOnSelect && isSelected
         return Button {
-            selection = option
+            guard !isAdvancing else { return }
+            if advancesOnSelect {
+                isAdvancing = true
+                withAnimation(.easeInOut(duration: 0.32)) {
+                    selection = option
+                }
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 280_000_000)
+                    onContinue()
+                    isAdvancing = false
+                }
+            } else {
+                selection = option
+            }
         } label: {
             Text(option.localized)
                 .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(isSelected ? Color.accentColor : .primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .foregroundStyle(filled ? Color.white : (advancesOnSelect || isSelected ? Color.accentColor : .primary))
+                .frame(maxWidth: .infinity, alignment: advancesOnSelect ? .center : .leading)
                 .padding(.horizontal, 18)
                 .padding(.vertical, 16)
-                .background(Color(.secondarySystemBackground), in: Capsule())
+                .background(filled ? Color.accentColor : Color(.secondarySystemBackground), in: Capsule())
                 .overlay {
-                    Capsule()
-                        .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
+                    if !advancesOnSelect {
+                        Capsule()
+                            .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
+                    }
                 }
+                .animation(.easeInOut(duration: 0.32), value: filled)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GentlePressButtonStyle())
     }
 
     private var addPhotosBox: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("(Optional)".localized)
-                .font(.system(size: 14))
-                .foregroundStyle(.secondary)
-
             if note.photos.isEmpty {
                 addPhotoButtonTile(isWide: true)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
-                        if note.canAddMorePhotos {
+                        if note.photos.count < photoLimit {
                             addPhotoButtonTile(isWide: false)
                         }
 
@@ -215,6 +259,9 @@ struct ContributeAccessFollowupStepView: View {
                     .foregroundStyle(Color.accentColor)
                     .lineLimit(1)
                     .fixedSize()
+                Text("(Optional)".localized)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
             }
             .frame(width: isWide ? nil : 120, height: 120)
             .frame(maxWidth: isWide ? .infinity : nil)
@@ -228,8 +275,8 @@ struct ContributeAccessFollowupStepView: View {
             }
         }
         .buttonStyle(.plain)
-        .disabled(!note.canAddMorePhotos)
-        .opacity(note.canAddMorePhotos ? 1 : 0.4)
+        .disabled(note.photos.count >= photoLimit)
+        .opacity(note.photos.count < photoLimit ? 1 : 0.4)
         .popover(isPresented: $showPhotoOptions, attachmentAnchor: .point(.center), arrowEdge: .top) {
             VStack(alignment: .leading, spacing: 16) {
                 Button {
@@ -309,12 +356,21 @@ struct ContributeAccessFollowupStepView: View {
     @MainActor
     private func loadPhotos(from items: [PhotosPickerItem]) async {
         for item in items {
-            guard note.canAddMorePhotos else { break }
+            guard note.photos.count < photoLimit else { break }
             if let data = try? await item.loadTransferable(type: Data.self),
                let image = UIImage(data: data) {
-                note.addPhoto(from: image)
+                note.addPhoto(from: image, limit: photoLimit)
             }
         }
+    }
+}
+
+private struct GentlePressButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.985 : 1)
+            .opacity(configuration.isPressed ? 0.92 : 1)
+            .animation(.easeOut(duration: 0.18), value: configuration.isPressed)
     }
 }
 
