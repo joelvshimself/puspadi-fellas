@@ -9,7 +9,7 @@ enum ContributeQuestionMetrics {
     static let cardHeight: CGFloat = 262
     static let cardRadius: CGFloat = 16
     /// Plain illustrations (location, tags, "review another?", "where is it?").
-    static let illustrationHeight: CGFloat = 118
+    static let illustrationHeight: CGFloat = 134
     /// Answer rows.
     static let optionHeight: CGFloat = 46
     static let optionSpacing: CGFloat = 8
@@ -74,7 +74,7 @@ struct ContributeOptionRow: View {
     let title: String
     let isSelected: Bool
     var leadingSymbol: String? = nil
-    /// Location rows show a filled radio dot on the right when selected.
+    /// Location rows show a filled blue check on the right when selected.
     var showsRadio: Bool = false
     let action: () -> Void
 
@@ -87,17 +87,18 @@ struct ContributeOptionRow: View {
                         .frame(width: 18)
                 }
                 Text(title.localized)
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.system(size: showsRadio ? 16 : 15, weight: .medium))
                 Spacer(minLength: 8)
                 if showsRadio && isSelected {
-                    Image(systemName: "largecircle.fill.circle")
+                    Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 17, weight: .medium))
                         .transition(.scale(scale: 0.6).combined(with: .opacity))
                 }
             }
             .foregroundStyle(isSelected ? ContributePalette.blue : Color(designHex: 0x3E4042))
             .padding(.horizontal, 16)
-            .frame(height: ContributeQuestionMetrics.optionHeight)
+            // Location rows are a little taller than answer rows in the design.
+            .frame(height: showsRadio ? 52 : ContributeQuestionMetrics.optionHeight)
             .background(isSelected ? Color.white : ContributePalette.fill, in: Capsule())
             .overlay {
                 Capsule().strokeBorder(ContributePalette.blue.opacity(isSelected ? 1 : 0), lineWidth: 1.5)

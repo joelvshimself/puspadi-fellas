@@ -241,7 +241,7 @@ class ContributeFlowTest {
             title(ContributeStep.Toilet(ToiletSurveyQuestion.Emergency)),
         )
         assertEquals(
-            "Is the toilet seat easy to transfer to from your wheelchair?",
+            "Is the toilet seat about level with a wheelchair seat?",
             title(ContributeStep.Toilet(ToiletSurveyQuestion.Seat)),
         )
         assertEquals(

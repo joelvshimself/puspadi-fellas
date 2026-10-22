@@ -175,13 +175,14 @@ struct ContributeFacilityQuestionStepView: View {
                             ContributeFacilityIllustration(kind: kind)
                         }
                     }
-                    .padding(.top, 26)
+                    // Tag screens sit the illustration lower than the location screen (Figma).
+                    .padding(.top, 66)
 
                     ContributeQuestionHeading(title: questionTitle, subtitle: "You can select multiple answers")
                         .padding(.top, 40)
 
                     // Icon chips; picked ones turn white with a blue outline (Figma "What does the lobby have?").
-                    FlowRow(spacing: 8) {
+                    FlowRow(spacing: 10) {
                         ForEach(options) { option in
                             ContributeTagChip(option: option, isSelected: selection.contains(option)) {
                                 toggle(option)
@@ -220,15 +221,15 @@ struct ContributeTagChip: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 tagIcon
-                    .font(.system(size: 11, weight: .medium))
-                Text(option.label.localized.capitalized)
                     .font(.system(size: 13, weight: .medium))
+                Text(option.label.localized.capitalized)
+                    .font(.system(size: 15, weight: .medium))
             }
             .foregroundStyle(isSelected ? ContributePalette.blue : Color(designHex: 0x3E4042))
-            .padding(.horizontal, 12)
-            .frame(height: 34)
+            .padding(.horizontal, 16)
+            .frame(height: 38)
             .background(Capsule().fill(isSelected ? Color.white : ContributePalette.fill))
             .overlay(Capsule().strokeBorder(ContributePalette.blue.opacity(isSelected ? 1 : 0), lineWidth: 1.5))
             .contentShape(Capsule())
@@ -247,7 +248,7 @@ struct ContributeTagChip: View {
                 .renderingMode(.template)
                 .resizable()
                 .scaledToFit()
-                .frame(width: 11, height: 11)
+                .frame(width: 13, height: 13)
         }
     }
 }

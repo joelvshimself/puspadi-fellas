@@ -49,7 +49,7 @@ struct ContributeAccessFollowupStepView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         illustration
-                            .padding(.top, advancesOnSelect ? 26 : 14)
+                            .padding(.top, advancesOnSelect ? 66 : 14)
 
                         ContributeQuestionHeading(eyebrow: eyebrow, title: questionTitle)
                             .padding(.top, advancesOnSelect ? 40 : 34)

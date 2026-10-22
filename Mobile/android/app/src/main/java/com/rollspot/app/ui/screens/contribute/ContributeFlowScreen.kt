@@ -297,8 +297,9 @@ fun ContributeFlowScreen(
                 }
                 hero != ContributeHeroAsset.None -> ContributeHeroImage(
                     hero,
-                    Modifier.padding(top = if (isPhotoStep) 30.dp else 26.dp),
-                    height = if (isPhotoStep) 120.dp else 118.dp,
+                    // Tag and "review another" screens sit the illustration lower (Figma).
+                    Modifier.padding(top = if (isPhotoStep) 30.dp else if (step is ContributeStep.EntranceTags || anotherChoice != null) 66.dp else 26.dp),
+                    height = if (isPhotoStep) 120.dp else 134.dp,
                 )
             }
 
@@ -371,7 +372,7 @@ fun ContributeFlowScreen(
                         EntranceLocation.Lobby -> snapshot?.lobbyTags.orEmpty()
                         EntranceLocation.Basement -> snapshot?.basementTags.orEmpty()
                     }
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         ContributeStepPresentation.tagOptions(step).forEach { tag ->
                             ContributeTagChip(label = tag, selected = tag in selected, onClick = { vm.toggleEntranceTag(step.location, tag) })
                         }

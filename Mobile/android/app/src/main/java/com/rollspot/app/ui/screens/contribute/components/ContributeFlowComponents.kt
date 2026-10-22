@@ -1,6 +1,6 @@
 package com.rollspot.app.ui.screens.contribute.components
 
-import androidx.compose.material.icons.filled.RadioButtonChecked
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.Dp
@@ -163,9 +163,9 @@ fun ContributeStepProgressBar(currentStep: Int, subStepProgress: Float) {
     }
 }
 
-/** Plain (card-less) illustration: 118dp on questions, 120dp on "Take or upload a photo" (Figma). */
+/** Plain (card-less) illustration: 134dp on questions, 120dp on "Take or upload a photo" (Figma). */
 @Composable
-fun ContributeHeroImage(asset: ContributeHeroAsset, modifier: Modifier = Modifier, height: Dp = 118.dp) {
+fun ContributeHeroImage(asset: ContributeHeroAsset, modifier: Modifier = Modifier, height: Dp = 134.dp) {
     val painter = rememberHeroPainter(asset) ?: return
     Image(
         painter = painter,
@@ -447,21 +447,21 @@ fun ContributeTagChip(label: String, selected: Boolean, onClick: () -> Unit) {
     val border by animateColorAsState(ContributeColors.Blue.copy(alpha = if (selected) 1f else 0f), tween(150), label = "chip")
     Row(
         Modifier
-            .height(34.dp)
+            .height(38.dp)
             .pressScale(interaction)
             .clip(CircleShape)
             .background(if (selected) Color.White else ContributeColors.Fill)
             .border(1.5.dp, border, CircleShape)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .semantics { this.selected = selected }
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        if (iconId != null) Image(painterResource(iconId), null, Modifier.size(11.dp))
+        if (iconId != null) Image(painterResource(iconId), null, Modifier.size(13.dp))
         Text(
             label.lowercase().split(" ").joinToString(" ") { word -> word.replaceFirstChar { it.titlecase() } },
-            fontSize = 13.sp,
+            fontSize = 15.sp,
             fontWeight = FontWeight.Medium,
             color = if (selected) ContributeColors.Blue else Color(0xFF3E4042),
         )
@@ -483,7 +483,8 @@ fun ContributeSingleChoiceRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .height(46.dp)
+            // Location rows are a little taller than answer rows in the design.
+            .height(if (showsRadio) 52.dp else 46.dp)
             .pressScale(interaction)
             .clip(CircleShape)
             .background(if (selected) Color.White else ContributeColors.Fill)
@@ -495,9 +496,9 @@ fun ContributeSingleChoiceRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         leadingIcon?.let { Icon(it, null, Modifier.size(18.dp), tint = content) }
-        Text(label, Modifier.weight(1f), fontSize = 15.sp, fontWeight = FontWeight.Medium, color = content)
+        Text(label, Modifier.weight(1f), fontSize = if (showsRadio) 16.sp else 15.sp, fontWeight = FontWeight.Medium, color = content)
         if (showsRadio && selected) {
-            Icon(Icons.Default.RadioButtonChecked, null, Modifier.size(18.dp), tint = ContributeColors.Blue)
+            Icon(Icons.Default.CheckCircle, null, Modifier.size(18.dp), tint = ContributeColors.Blue)
         }
     }
 }

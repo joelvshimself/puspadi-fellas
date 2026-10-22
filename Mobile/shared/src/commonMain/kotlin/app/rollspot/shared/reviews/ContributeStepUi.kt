@@ -186,6 +186,7 @@ object ContributeStepPresentation {
                 "Could you reach the control buttons from a seated position?"
         }
         is ContributeStep.Toilet -> when (step.question) {
+            ToiletSurveyQuestion.Seat -> "Is the toilet seat about level with a wheelchair seat?"
             ToiletSurveyQuestion.Space -> "Could someone in a wheelchair turn freely inside?"
             ToiletSurveyQuestion.Sink ->
                 "Can someone in a wheelchair reach the sink faucet comfortably?"
