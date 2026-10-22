@@ -343,7 +343,7 @@ struct SearchSheet: View {
             LazyVStack(alignment: .leading, spacing: SheetMetrics.rowSpacing) {
                 // A one-letter query isn't a search yet (shared minimum length): keep showing Nearby.
                 if !store.isSearchActive {
-                    sectionHeader("Nearby".localized)
+                    sectionHeader("Nearby Malls".localized)
                     if nearbyPlaces.isEmpty && store.hasLoadedOnce {
                         message("No places in this area yet. Move the map to explore.".localized)
                     } else if nearbyPlaces.isEmpty {

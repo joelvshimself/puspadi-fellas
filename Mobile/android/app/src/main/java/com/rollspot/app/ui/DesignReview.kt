@@ -40,6 +40,7 @@ object DesignReview {
 fun DesignReviewRoot(screen: String) {
     when (screen) {
         "splash" -> SplashScreen()
+        "home", "homeFilter", "homeFilterChosen", "homeSearch", "homeSearchQuery" -> RollspotApp(review = screen)
         else -> DesignReview.authPreview(screen)?.let { AuthFlowScreen(onDone = {}, onCancel = {}, preview = it) }
     }
 }

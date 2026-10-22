@@ -74,7 +74,7 @@ private val FilterGrades = listOf(
  * Every rule (which places, search, filter widening) lives in the shared MapModel.
  */
 @Composable
-fun HomeScreen(navController: NavController) {
+fun HomeScreen(navController: NavController, review: String? = null) {
     val sdk = rollspotSdk()
     val viewModel: HomeViewModel = viewModel { HomeViewModel(sdk) }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -106,6 +106,7 @@ fun HomeScreen(navController: NavController) {
         permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
 
     LaunchedEffect(Unit) {
+        if (review != null) return@LaunchedEffect // design review pins the camera itself
         if (location.hasPermission) {
             if (!centeredOnUser) { centeredOnUser = true; centerOnMe() }
         } else {
@@ -125,6 +126,19 @@ fun HomeScreen(navController: NavController) {
         searchOpen = false
         viewModel.clearQuery()
         navController.navigate("place/${pin.id}")
+    }
+
+    // Debug design review (same states as iOS -designReview home*).
+    LaunchedEffect(review) {
+        if (review == null) return@LaunchedEffect
+        flyTo(-8.7180, 115.1700) // same area as the iOS review shots (Kuta)
+        kotlinx.coroutines.delay(3_000) // let nearby places load first
+        when (review) {
+            "homeFilter" -> filterOpen = true
+            "homeFilterChosen" -> viewModel.setGradeFilter(OverallAccessibility.ACCESSIBLE)
+            "homeSearch" -> searchOpen = true
+            "homeSearchQuery" -> { viewModel.onQueryChanged("beach"); searchOpen = true }
+        }
     }
 
     BackHandler(enabled = searchOpen || filterOpen) {
@@ -213,14 +227,14 @@ fun HomeScreen(navController: NavController) {
         }
 
         if (searchOpen) {
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)))
+            // iOS search scrim: rgba(181,181,181,0.6) over a blurred map.
+            Box(Modifier.fillMaxSize().glass(androidx.compose.ui.graphics.RectangleShape, tint = 0f, blur = 12.dp).background(Color(0x99B5B5B5)))
             SearchSheet(
                 state = state,
                 onQueryChange = viewModel::onQueryChanged,
                 onClose = { searchOpen = false; viewModel.clearQuery() },
                 onPick = ::open,
                 onSearchNearby = { focusManager.clearFocus() },
-                modifier = Modifier.padding(top = 12.dp),
             )
         }
     }

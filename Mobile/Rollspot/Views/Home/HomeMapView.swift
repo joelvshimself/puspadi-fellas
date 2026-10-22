@@ -318,6 +318,9 @@ struct HomeMapView: View {
                         // direct call here ran two identical nearby searches
                         // side by side on every launch.
                         scheduleNearbyPlacesLoad()
+                        #if DEBUG
+                        if await applyDesignReview() { return }
+                        #endif
                         if !hasSeenOnboardingIntro {
                             try? await Task.sleep(nanoseconds: 700_000_000)
                             showOnboardingIntro = true
@@ -634,6 +637,25 @@ struct HomeMapView: View {
             showOnboardingIntro = true
         }
     }
+
+    #if DEBUG
+    /// Puts Home into the state a `-designReview home*` launch asks for. Returns true for home
+    /// review screens so the one-time intro sheet stays out of the screenshot.
+    private func applyDesignReview() async -> Bool {
+        guard let screen = DesignReview.current, screen.rawValue.hasPrefix("home") else { return false }
+        try? await Task.sleep(nanoseconds: 1_500_000_000) // let nearby places load first
+        switch screen {
+        case .homeFilter: showFilter = true
+        case .homeFilterChosen: mapStore.setGradeFilter(.accessible)
+        case .homeSearch: isSearchActive = true
+        case .homeSearchQuery:
+            isSearchActive = true
+            searchText = "beach"
+        default: break
+        }
+        return true
+    }
+    #endif
 
     private func openPlace(_ place: Place) {
         if place.isPark23Demo {

@@ -22,7 +22,7 @@ import com.rollspot.app.ui.screens.profile.SavedPlacesScreen
 import com.rollspot.app.ui.screens.auth.AuthFlowScreen
 
 @Composable
-fun RollspotApp() {
+fun RollspotApp(review: String? = null) {
     val navController = rememberNavController()
     val app = androidx.compose.ui.platform.LocalContext.current.applicationContext as com.rollspot.app.RollspotApplication
     val pendingPlace by app.pendingPlaceLink.collectAsState()
@@ -38,7 +38,7 @@ fun RollspotApp() {
         startDestination = "home"
     ) {
         composable("home") {
-            HomeScreen(navController = navController)
+            HomeScreen(navController = navController, review = review)
         }
         
         composable(

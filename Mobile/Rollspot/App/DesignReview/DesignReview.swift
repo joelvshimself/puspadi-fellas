@@ -12,6 +12,7 @@ enum DesignReview: String, CaseIterable {
     case name
     case mobility, mobilityFilled
     case allSet
+    case home, homeFilter, homeFilterChosen, homeSearch, homeSearchQuery
 
     static let current: DesignReview? = {
         let args = ProcessInfo.processInfo.arguments
@@ -43,6 +44,8 @@ struct DesignReviewRoot: View {
             login([.createPassword(DesignReview.sampleEmail), .name, .mobility], aids: ["Wheelchair"])
         case .allSet:
             login([.allSet])
+        case .home, .homeFilter, .homeFilterChosen, .homeSearch, .homeSearchQuery:
+            HomeMapView()
         }
     }
 

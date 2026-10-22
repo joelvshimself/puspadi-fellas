@@ -212,6 +212,7 @@ final class LanguageManager: ObservableObject {
         "Search a place": [.english: "Search a place", .indonesia: "Cari tempat"],
         "Partially Accessible": [.english: "Partially Accessible", .indonesia: "Cukup Aksesibel"],
         "Nearby": [.english: "Nearby", .indonesia: "Terdekat"],
+        "Nearby Malls": [.english: "Nearby Malls", .indonesia: "Mal Terdekat"],
         "Search nearby": [.english: "Search nearby", .indonesia: "Cari di sekitar"],
         "No places found for \"%@\" near here.": [.english: "No places found for \"%@\" near here.", .indonesia: "Tidak ada tempat ditemukan untuk \"%@\" di sekitar sini."],
         "Couldn't load this place.": [.english: "Couldn't load this place.", .indonesia: "Tempat ini tidak dapat dimuat."],
