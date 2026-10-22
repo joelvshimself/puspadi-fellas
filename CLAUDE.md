@@ -77,7 +77,7 @@ cd Mobile && ./gradlew :androidApp:assembleDebug
 
 # iOS (the "Build shared module" phase compiles Mobile/shared first; see Mobile/scripts/build-shared-for-xcode.sh)
 xcodebuild -project Mobile/Rollspot.xcodeproj -scheme Rollspot \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
+  -destination 'generic/platform=iOS Simulator' ARCHS=arm64 build
 ```
 
 **Pointing the apps at a local backend** (`npm run dev`):

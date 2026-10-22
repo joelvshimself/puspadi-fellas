@@ -14,4 +14,15 @@ if [ -z "${JAVA_HOME:-}" ]; then
 fi
 
 cd "$SRCROOT"
+
+# Gradle can't see Xcode upgrades, and a Shared.framework compiled by an older Swift
+# compiler fails with "Unable to resolve Swift module dependency ... 'Shared'".
+# Rebuild the framework from scratch whenever the Xcode version changes.
+stamp=shared/build/.xcode-version
+current="$(xcodebuild -version | tr '\n' ' ')"
+if [ "$(cat "$stamp" 2>/dev/null)" != "$current" ]; then
+  rm -rf shared/build/xcode-frameworks shared/build/bin/ios*
+  mkdir -p shared/build && printf '%s' "$current" > "$stamp"
+fi
+
 ./gradlew :shared:embedAndSignAppleFrameworkForXcode --console=plain
