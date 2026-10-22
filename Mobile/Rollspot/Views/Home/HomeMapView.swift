@@ -415,13 +415,16 @@ struct HomeMapView: View {
                 }
             }
             .overlay(alignment: .topTrailing) {
-                if let selectedGrade {
-                    Circle()
-                        .fill(selectedGrade.badgeForeground)
-                        .frame(width: 14, height: 14)
-                        .overlay(Circle().stroke(.background, lineWidth: 2))
+                if selectedGrade != nil {
+                    // Design "FILTER CHOSEN": a blue badge counting the active filter.
+                    Text("1")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 18, height: 18)
+                        .background(Circle().fill(AuthPalette.brandBlue))
+                        .overlay(Circle().stroke(.white, lineWidth: 2))
                         .offset(x: 4, y: -4)
-                        .transition(.scale.combined(with: .opacity))
+                        .transition(.scale(scale: 0.6).combined(with: .opacity))
                 }
             }
             

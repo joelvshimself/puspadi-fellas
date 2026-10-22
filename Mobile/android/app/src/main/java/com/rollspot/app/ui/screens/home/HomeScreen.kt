@@ -1,5 +1,14 @@
 package com.rollspot.app.ui.screens.home
 
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.rollspot.app.ui.theme.LocalHazeState
+import com.rollspot.app.ui.theme.glass
+import com.rollspot.app.ui.theme.pressScale
+import dev.chrisbanes.haze.hazeSource
 import android.Manifest
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -122,6 +131,8 @@ fun HomeScreen(navController: NavController) {
         if (searchOpen) { searchOpen = false; viewModel.clearQuery() } else filterOpen = false
     }
 
+    val haze = remember { dev.chrisbanes.haze.HazeState() }
+    CompositionLocalProvider(LocalHazeState provides haze) {
     Box(Modifier.fillMaxSize()) {
         PinMap(
             pins = state.visiblePins,
@@ -131,7 +142,7 @@ fun HomeScreen(navController: NavController) {
             cameraTarget = cameraTarget,
             onCameraIdle = viewModel::onRegionChanged,
             onPinClick = { id -> state.pins.firstOrNull { it.id == id }?.let(::open) },
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().hazeSource(haze),
         )
 
         if (state.isLoading || state.isWidening) {
@@ -145,7 +156,7 @@ fun HomeScreen(navController: NavController) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box {
-                CircleButton(Icons.Default.FilterList, stringResource(R.string.filter_accessibility), background = FilterButtonTint) { filterOpen = !filterOpen }
+                CircleButton(Icons.Default.FilterList, stringResource(R.string.filter_accessibility), tint = FilterButtonTint.copy(alpha = 0.45f)) { filterOpen = !filterOpen }
                 if (state.gradeFilter != null) {
                     Box(
                         Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-4).dp).size(18.dp)
@@ -154,8 +165,9 @@ fun HomeScreen(navController: NavController) {
                     ) { Text("1", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
                 }
             }
+            // Saved + profile share one glass capsule (iOS homeGlass on the same pill).
             Row(
-                Modifier.height(48.dp).background(Color.White.copy(alpha = 0.92f), CircleShape).padding(horizontal = 16.dp),
+                Modifier.homeShadow(CircleShape).height(48.dp).glass(CircleShape).padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(22.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -212,20 +224,34 @@ fun HomeScreen(navController: NavController) {
             )
         }
     }
+    }
 }
 
 @Composable
 private fun CircleButton(
     icon: ImageVector,
     description: String,
-    background: Color = Color.White.copy(alpha = 0.92f),
+    tint: Color = Color.Transparent,
     onClick: () -> Unit,
 ) {
+    // 48dp Liquid-Glass-style circle with iOS's button shadow (ButtonsTop 285:1346).
+    val interaction = remember { MutableInteractionSource() }
     Box(
-        Modifier.size(48.dp).background(background, CircleShape).clickable(onClick = onClick),
+        Modifier
+            .homeShadow(CircleShape)
+            .size(48.dp)
+            .pressScale(interaction)
+            .glass(CircleShape)
+            .background(tint, CircleShape)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
-    ) { Icon(icon, contentDescription = description, Modifier.size(24.dp), tint = Color(0xFF1C1C1E)) }
+    ) { Icon(icon, contentDescription = null, Modifier.size(22.dp), tint = Color(0xFF1C1C1E)) }
 }
+
+/** iOS SheetMetrics button shadow: 25% black, radius ~3, y 3.7. */
+internal fun Modifier.homeShadow(shape: androidx.compose.ui.graphics.Shape): Modifier =
+    this.shadow(elevation = 4.dp, shape = shape, ambientColor = Color.Black.copy(alpha = 0.25f), spotColor = Color.Black.copy(alpha = 0.25f))
 
 /** The filter fan-out from the design: dimmed map, one round option per grade. */
 @Composable

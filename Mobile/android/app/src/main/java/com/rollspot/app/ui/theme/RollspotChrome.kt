@@ -46,7 +46,7 @@ import dev.chrisbanes.haze.hazeEffect
  */
 object Rollspot {
     val BrandBlue = Color(0xFF007AFF)
-    val FieldFill = Color(0xFFF0F0F0)
+    val FieldFill = Color(0xFFF2F4F7) // design input fill
     val ErrorRed = Color(0xFFDB2E2E)
     val ErrorFill = Color(0xFFFFF0F0)
     val GradientTop = Color(0xFFB8E0FF)

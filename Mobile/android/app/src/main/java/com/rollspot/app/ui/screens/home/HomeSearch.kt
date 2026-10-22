@@ -1,5 +1,8 @@
 package com.rollspot.app.ui.screens.home
 
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.rollspot.app.ui.theme.glass
+import com.rollspot.app.ui.theme.pressScale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -51,34 +54,47 @@ import com.rollspot.app.ui.theme.RollspotBlue
 
 private val SheetShape = RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp)
 private val RowShape = RoundedCornerShape(14.dp)
-private val PeekHeight = 96.dp
+private val PeekHeight = 68.dp
 
-/** The collapsed bottom sheet: a grabber and the search field ("Search a place"). */
+/**
+ * The collapsed search: a floating glass capsule like iOS (measured from the iOS app: inset 24dp
+ * from each side, 26dp above the bottom, 68dp tall, fully rounded), holding a grabber and a
+ * 33dp white capsule field.
+ */
 @Composable
 fun SearchPeek(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = SheetShape,
-        color = Color.Transparent,
-        shadowElevation = 12.dp,
+    val interaction = remember { MutableInteractionSource() }
+    Column(
+        modifier
+            .navigationBarsPadding()
+            .padding(start = 24.dp, end = 24.dp, bottom = 26.dp)
+            .fillMaxWidth()
+            .height(PeekHeight)
+            .homeShadow(CircleShape)
+            .pressScale(interaction)
+            .glass(CircleShape, tint = 0.35f)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Column(
-            // Frosted white fading into the soft blue glow at the bottom edge, as in the design.
+        Box(Modifier.padding(top = 7.dp, bottom = 6.dp).width(43.dp).height(6.dp).background(Color(0xFF8C8C8C).copy(alpha = 0.7f), CircleShape))
+        Row(
             Modifier
-                .background(Brush.verticalGradient(listOf(Color(0xEBFFFFFF), Color(0xEBF4F8FF), Color(0xF2CFE0F8))))
-                .navigationBarsPadding()
-                .padding(horizontal = 16.dp)
-                .height(PeekHeight),
-            horizontalAlignment = Alignment.CenterHorizontally,
+                .fillMaxWidth()
+                .height(33.dp)
+                .background(Color.White.copy(alpha = 0.8f), CircleShape)
+                .border(1.dp, Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.06f), Color.Black.copy(alpha = 0.16f))), CircleShape)
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.padding(top = 8.dp, bottom = 12.dp).width(36.dp).height(5.dp).background(Color(0x40000000), CircleShape))
-            Row(
-                Modifier.fillMaxWidth().height(48.dp).background(Color.White, CircleShape).padding(horizontal = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFF3C3C43))
-                TypewriterPlaceholder(Modifier.padding(start = 10.dp), color = Color(0xFF8A8A8E))
-            }
+            Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFF3C3C43), modifier = Modifier.size(20.dp))
+            Text(
+                stringResource(R.string.search_a_place),
+                Modifier.padding(start = 8.dp),
+                fontSize = 17.sp,
+                letterSpacing = (-0.43).sp,
+                color = Color.Black.copy(alpha = 0.3f),
+            )
         }
     }
 }
@@ -113,7 +129,7 @@ fun SearchSheet(
                 ) {
                     Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFF3C3C43))
                     Box(Modifier.weight(1f).padding(start = 10.dp)) {
-                        if (field.text.isEmpty()) TypewriterPlaceholder(color = Color(0xFFB0B0B5))
+                        if (field.text.isEmpty()) Text(stringResource(R.string.search_a_place), fontSize = 17.sp, letterSpacing = (-0.43).sp, color = Color.Black.copy(alpha = 0.3f))
                         BasicTextField(
                             value = field,
                             onValueChange = {
@@ -206,20 +222,3 @@ private fun ResultRow(icon: androidx.compose.ui.graphics.vector.ImageVector, tin
 }
 
 /** The rotating "Search Malls in around you..." hint from the iOS app: types, holds, deletes, next phrase. */
-@Composable
-private fun TypewriterPlaceholder(modifier: Modifier = Modifier, color: Color) {
-    val phrases = stringArrayResource(R.array.search_phrases)
-    var shown by remember { mutableStateOf("") }
-    LaunchedEffect(phrases.toList()) {
-        var index = 0
-        while (true) {
-            val phrase = phrases[index % phrases.size]
-            for (n in 1..phrase.length) { shown = phrase.take(n); delay(70) }
-            delay(2_200)
-            for (n in phrase.length - 1 downTo 0) { shown = phrase.take(n); delay(35) }
-            delay(350)
-            index++
-        }
-    }
-    Text(shown, modifier, color = color, fontSize = 17.sp, maxLines = 1)
-}

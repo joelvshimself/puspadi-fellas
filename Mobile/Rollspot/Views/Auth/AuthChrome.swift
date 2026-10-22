@@ -5,7 +5,8 @@ import UIKit
 
 enum AuthPalette {
     static let brandBlue = Color(red: 0.0, green: 0.48, blue: 1.0)
-    static let fieldFill = Color(white: 0.94)
+    /// #F2F4F7, the design's input fill.
+    static let fieldFill = Color(red: 242 / 255, green: 244 / 255, blue: 247 / 255)
     static let heading = Color.primary
     static let subtitle = Color.secondary
     static let errorRed = Color(red: 0.86, green: 0.18, blue: 0.18)
