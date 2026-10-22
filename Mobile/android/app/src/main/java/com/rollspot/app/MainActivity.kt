@@ -33,8 +33,13 @@ class MainActivity : ComponentActivity() {
 
     private fun handleDeepLink(intent: Intent?) {
         val uri = intent?.data ?: return
+        val app = application as RollspotApplication
         if (uri.scheme == "puspadi" && uri.host == "auth") {
-            (application as RollspotApplication).authCallbacks.tryEmit(Unit)
+            app.authCallbacks.tryEmit(Unit)
+        }
+        // Same link format iOS shares (DeepLinkRouter.swift): the place opens on either app.
+        if (uri.scheme == "puspadifellas" && uri.host == "place") {
+            uri.getQueryParameter("place_id")?.takeIf { it.isNotBlank() }?.let { app.pendingPlaceLink.value = it }
         }
     }
 }

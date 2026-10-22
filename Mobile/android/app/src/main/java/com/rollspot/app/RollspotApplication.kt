@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 class RollspotApplication : Application() {
@@ -19,6 +20,9 @@ class RollspotApplication : Application() {
 
     /** Fires when the email verification link (puspadi://auth/callback) opens the app. */
     val authCallbacks = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /** A shared place link (puspadifellas://place?place_id=…) waiting to be opened. */
+    val pendingPlaceLink = MutableStateFlow<String?>(null)
 
     override fun onCreate() {
         super.onCreate()

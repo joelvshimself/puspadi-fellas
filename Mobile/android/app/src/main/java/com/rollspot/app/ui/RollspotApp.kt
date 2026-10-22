@@ -1,6 +1,9 @@
 package com.rollspot.app.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -21,6 +24,14 @@ import com.rollspot.app.ui.screens.auth.AuthFlowScreen
 @Composable
 fun RollspotApp() {
     val navController = rememberNavController()
+    val app = androidx.compose.ui.platform.LocalContext.current.applicationContext as com.rollspot.app.RollspotApplication
+    val pendingPlace by app.pendingPlaceLink.collectAsState()
+    LaunchedEffect(pendingPlace) {
+        pendingPlace?.let {
+            navController.navigate("place/$it")
+            app.pendingPlaceLink.value = null
+        }
+    }
     
     NavHost(
         navController = navController,

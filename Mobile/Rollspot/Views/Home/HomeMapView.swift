@@ -368,7 +368,8 @@ struct HomeMapView: View {
                 .padding(.vertical, 1)
                 .background(.white.opacity(0.8), in: RoundedRectangle(cornerRadius: 3))
                 .padding(.leading, 8)
-                .padding(.bottom, 36)
+                // Above the collapsed search sheet, which covers the bottom ~100pt.
+                .padding(.bottom, 112)
                 .allowsHitTesting(false)
         }
         .onMapCameraChange { context in
