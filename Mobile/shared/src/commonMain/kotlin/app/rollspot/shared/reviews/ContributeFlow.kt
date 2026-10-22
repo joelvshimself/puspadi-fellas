@@ -621,6 +621,7 @@ class ContributeFlow(
             PhotoTarget.PathwaySection -> appendSupplementalPhoto(ContributeReviewCategory.OutdoorPathways, photo)
             PhotoTarget.SeatingSection -> state = state.copy(seatingPhotos = state.seatingPhotos + photo)
             PhotoTarget.ParkingSection -> state = state.copy(parkingPhotos = state.parkingPhotos + photo)
+            is PhotoTarget.Notes -> addNotesPhoto(target.category, photo)
         }
         return true
     }
@@ -689,7 +690,45 @@ class ContributeFlow(
         ContributeStep.PathwayPhotos -> PhotoTarget.PathwaySection
         ContributeStep.SeatingPhotos -> PhotoTarget.SeatingSection
         ContributeStep.ParkingPhotos -> PhotoTarget.ParkingSection
+        // Design: the notes step shows the section's photos (the ones taken at its start) and adds to them.
+        is ContributeStep.SupplementalNotes -> PhotoTarget.Notes(step.category)
         else -> null
+    }
+
+    /**
+     * The photos the "Anything else you want to share?" step shows for [category]: the last pass's
+     * section photos for entrance/elevator/toilet, the area photos otherwise.
+     */
+    fun notesPhotos(category: ContributeReviewCategory): List<LocalReviewPhoto> = when (category) {
+        ContributeReviewCategory.Entrance -> state.completedEntrancePasses.lastOrNull()?.photos ?: state.entrancePhotos
+        ContributeReviewCategory.Elevator -> state.completedElevatorPasses.lastOrNull()?.photos ?: state.elevatorPhotos
+        ContributeReviewCategory.Toilet -> state.completedToiletPasses.lastOrNull()?.photos ?: state.toiletPhotos
+        ContributeReviewCategory.OutdoorPathways -> supplementalNotesFor(category).photos
+        ContributeReviewCategory.Seating -> state.seatingPhotos
+        ContributeReviewCategory.Parking -> state.parkingPhotos
+    }
+
+    private fun addNotesPhoto(category: ContributeReviewCategory, photo: LocalReviewPhoto) {
+        state = when (category) {
+            ContributeReviewCategory.Entrance -> state.completedEntrancePasses.lastOrNull()?.let { last ->
+                state.copy(completedEntrancePasses = state.completedEntrancePasses.dropLast(1) + last.copy(photos = last.photos + photo))
+            } ?: state.copy(entrancePhotos = state.entrancePhotos + photo)
+            ContributeReviewCategory.Elevator -> state.completedElevatorPasses.lastOrNull()?.let { last ->
+                state.copy(completedElevatorPasses = state.completedElevatorPasses.dropLast(1) + last.copy(photos = last.photos + photo))
+            } ?: state.copy(elevatorPhotos = state.elevatorPhotos + photo)
+            ContributeReviewCategory.Toilet -> state.completedToiletPasses.lastOrNull()?.let { last ->
+                state.copy(completedToiletPasses = state.completedToiletPasses.dropLast(1) + last.copy(photos = last.photos + photo))
+            } ?: state.copy(toiletPhotos = state.toiletPhotos + photo)
+            ContributeReviewCategory.OutdoorPathways -> { appendSupplementalPhoto(category, photo); state }
+            ContributeReviewCategory.Seating -> state.copy(seatingPhotos = state.seatingPhotos + photo)
+            ContributeReviewCategory.Parking -> state.copy(parkingPhotos = state.parkingPhotos + photo)
+        }
+    }
+
+    /** Sets the caption of one photo, wherever it lives in the flow. */
+    fun setPhotoCaption(fileId: String, caption: String) {
+        val text = caption.trim()
+        state = mapPhotosIn(state) { if (it.fileId == fileId) it.copy(caption = text) else it }
     }
 
     private fun roomFor(target: PhotoTarget): Boolean = when (target) {
@@ -702,6 +741,7 @@ class ContributeFlow(
         PhotoTarget.PathwaySection -> supplementalNotesFor(ContributeReviewCategory.OutdoorPathways).photos.size < ContributePhotoLimits.SECTION
         PhotoTarget.SeatingSection -> state.seatingPhotos.size < ContributePhotoLimits.SECTION
         PhotoTarget.ParkingSection -> state.parkingPhotos.size < ContributePhotoLimits.SECTION
+        is PhotoTarget.Notes -> notesPhotos(target.category).size < ContributePhotoLimits.SECTION
     }
 
     private fun putEntranceEvidence(location: EntranceLocation, question: String, photo: LocalReviewPhoto) {
@@ -858,8 +898,32 @@ sealed class PhotoTarget {
     data object PathwaySection : PhotoTarget()
     data object SeatingSection : PhotoTarget()
     data object ParkingSection : PhotoTarget()
+    data class Notes(val category: ContributeReviewCategory) : PhotoTarget()
 }
 
 fun newPhotoFileId(): String = buildString {
     repeat(32) { append(Random.nextInt(16).toString(16)) }
+}
+
+/** Every photo in a flow state, transformed by [transform] (used to strip and restore bytes). */
+internal fun mapPhotosIn(state: ContributeFlowState, transform: (LocalReviewPhoto) -> LocalReviewPhoto): ContributeFlowState {
+    fun list(photos: List<LocalReviewPhoto>) = photos.map(transform)
+    fun evidence(map: Map<String, List<LocalReviewPhoto>>) = map.mapValues { (_, photos) -> list(photos) }
+    return state.copy(
+        supplementalNotes = state.supplementalNotes.mapValues { (_, notes) -> notes.copy(photos = list(notes.photos)) },
+        entrancePhotos = list(state.entrancePhotos),
+        completedEntrancePasses = state.completedEntrancePasses.map {
+            it.copy(photos = list(it.photos), lobbyEvidence = evidence(it.lobbyEvidence), basementEvidence = evidence(it.basementEvidence))
+        },
+        completedElevatorPasses = state.completedElevatorPasses.map { it.copy(photos = list(it.photos), evidence = evidence(it.evidence)) },
+        completedToiletPasses = state.completedToiletPasses.map { it.copy(photos = list(it.photos), evidence = evidence(it.evidence)) },
+        toiletPhotos = list(state.toiletPhotos),
+        toiletEvidence = evidence(state.toiletEvidence),
+        lobbyEvidence = evidence(state.lobbyEvidence),
+        basementEvidence = evidence(state.basementEvidence),
+        elevatorPhotos = list(state.elevatorPhotos),
+        elevatorEvidence = evidence(state.elevatorEvidence),
+        seatingPhotos = list(state.seatingPhotos),
+        parkingPhotos = list(state.parkingPhotos),
+    )
 }

@@ -14,8 +14,8 @@ struct ContributePathwayNoticeStepView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
-                PhotoFlowHeader(title: "Outdoor Pathways".localized, onBack: onBack)
                 ContributeStepProgressBar(currentStep: 4, subStepProgress: subStepProgress)
+                PhotoFlowHeader(title: "Outdoor Pathways".localized, onBack: onBack)
             }
             .background(Color(.systemBackground))
             .zIndex(1)
@@ -36,7 +36,7 @@ struct ContributePathwayNoticeStepView: View {
                                 .font(.subheadline.weight(.semibold))
                                 .underline()
                         }
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(ContributePalette.blue)
                     }
                     .buttonStyle(.plain)
 
@@ -66,14 +66,14 @@ struct ContributePathwayNoticeStepView: View {
         } label: {
             Text(option.localized)
                 .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(isSelected ? Color.accentColor : .primary)
+                .foregroundStyle(isSelected ? ContributePalette.blue : .primary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 18)
                 .padding(.vertical, 16)
                 .background(Color(.secondarySystemBackground), in: Capsule())
                 .overlay {
                     Capsule()
-                        .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
+                        .strokeBorder(isSelected ? ContributePalette.blue : Color.clear, lineWidth: 1.5)
                 }
         }
         .buttonStyle(.plain)
@@ -195,7 +195,7 @@ struct PathwayInfoSheet: View {
                 .foregroundStyle(selected ? Color.white : .primary)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(selected ? Color.accentColor : Color(.systemBackground), in: Capsule())
+                .background(selected ? ContributePalette.blue : Color(.systemBackground), in: Capsule())
         }
         .buttonStyle(.plain)
     }

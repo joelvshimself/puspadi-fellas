@@ -16,8 +16,8 @@ struct ContributeToiletLocationStepView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
-                PhotoFlowHeader(title: navTitle.localized, onBack: onBack)
                 ContributeStepProgressBar(currentStep: stepNumber, subStepProgress: subStepProgress)
+                PhotoFlowHeader(title: navTitle.localized, onBack: onBack)
             }
             .background(Color(.systemBackground))
             .zIndex(1)
@@ -52,7 +52,7 @@ struct ContributeToiletLocationStepView: View {
                             .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                             .overlay {
                                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .strokeBorder(isFocused ? Color.accentColor : Color.clear, lineWidth: 1.5)
+                                    .strokeBorder(isFocused ? ContributePalette.blue : Color.clear, lineWidth: 1.5)
                             }
 
                         if locationText.isEmpty {

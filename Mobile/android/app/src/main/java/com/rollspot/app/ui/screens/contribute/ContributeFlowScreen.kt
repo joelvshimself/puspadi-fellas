@@ -1,5 +1,8 @@
 package com.rollspot.app.ui.screens.contribute
 
+import app.rollspot.shared.reviews.ContributeCategoryLabels
+import com.rollspot.app.ui.screens.contribute.components.ContributeNotesScreen
+import com.rollspot.app.ui.screens.contribute.components.ContributeCategoryMenuScreen
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -57,6 +60,29 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
             else Toast.makeText(context, "That photo couldn't be read. Try another one.", Toast.LENGTH_SHORT).show()
         }
     }
+
+    // "Take New Photo": the camera app writes into a cache file we then compress like a picked photo.
+    var captureUri by remember { mutableStateOf<Uri?>(null) }
+    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+        val uri = captureUri ?: return@rememberLauncherForActivityResult
+        captureUri = null
+        if (!saved) return@rememberLauncherForActivityResult
+        scope.launch {
+            val jpeg = jpegForUpload(context, uri)
+            context.contentResolver.delete(uri, null, null)
+            if (jpeg != null) vm.addPhoto(jpeg, newPhotoFileId())
+        }
+    }
+    fun takePhoto() {
+        val dir = java.io.File(context.cacheDir, "captures").apply { mkdirs() }
+        val file = java.io.File(dir, "${newPhotoFileId()}.jpg")
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.photos", file)
+        captureUri = uri
+        runCatching { camera.launch(uri) }.onFailure {
+            Toast.makeText(context, "No camera app is available.", Toast.LENGTH_SHORT).show()
+        }
+    }
+    fun chooseExisting() = photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
 
     if (ui.loadingPlace) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -134,6 +160,40 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
         )
     }
 
+    val screenPadding = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
+    if (step is ContributeStep.CategoryPick) {
+        ContributeCategoryMenuScreen(
+            status = ui.flowSnapshot?.sectionStatus ?: emptyMap(),
+            submitting = ui.isSubmitting,
+            onBack = { vm.goBack(onFinished) },
+            onOpen = vm::openCategory,
+            onSubmit = vm::submit,
+            modifier = screenPadding,
+        )
+        return
+    }
+    if (step is ContributeStep.SupplementalNotes) {
+        ContributeNotesScreen(
+            title = ContributeCategoryLabels.menuTitle(step.category),
+            notes = ui.flowSnapshot?.supplementalNotes?.get(step.category)?.text.orEmpty(),
+            onNotesChange = { vm.setSupplementalNote(step.category, it) },
+            photos = vm.notesPhotos(step.category),
+            canAddPhoto = vm.canAddPhoto(),
+            onChooseExisting = ::chooseExisting,
+            onTakePhoto = ::takePhoto,
+            onRemovePhoto = vm::removePhoto,
+            onCaption = vm::setPhotoCaption,
+            progressStep = ui.progressStep,
+            progress = ui.subStepProgress,
+            continueTitle = "Continue",
+            submitting = ui.isSubmitting,
+            onBack = { vm.goBack(onFinished) },
+            onContinue = vm::goNext,
+            modifier = screenPadding,
+        )
+        return
+    }
+
     val hero = ContributeStepPresentation.heroAsset(step)
     val canContinue = vm.canContinueCurrentStep()
     val isCategoryPick = step is ContributeStep.CategoryPick
@@ -145,10 +205,7 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
-        ContributeFlowHeader(
-            title = if (isCategoryPick) "" else ui.navTitle,
-            onBack = { vm.goBack(onFinished) },
-        )
+        // Design: progress line on top, then the back button row.
         when {
             isCategoryPick -> ContributeCategoryPickProgress()
             step !is ContributeStep.Submitted &&
@@ -156,6 +213,10 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
                 ContributeStepProgressBar(currentStep = ui.progressStep, subStepProgress = ui.subStepProgress)
             }
         }
+        ContributeFlowHeader(
+            title = if (isCategoryPick) "" else ui.navTitle,
+            onBack = { vm.goBack(onFinished) },
+        )
 
         Column(
             Modifier

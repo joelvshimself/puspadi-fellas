@@ -45,7 +45,17 @@
                     android:host="place" />
             </intent-filter>
         </activity>
-        
+
+        <!-- "Take New Photo": the camera app writes the picture through this provider. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.photos"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/photo_paths" />
+        </provider>
     </application>
 
 </manifest>

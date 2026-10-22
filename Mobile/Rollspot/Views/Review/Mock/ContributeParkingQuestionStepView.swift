@@ -13,8 +13,8 @@ struct ContributeParkingQuestionStepView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
-                PhotoFlowHeader(title: "Accessible Parking".localized, onBack: onBack)
                 ContributeStepProgressBar(currentStep: 4, subStepProgress: subStepProgress)
+                PhotoFlowHeader(title: "Accessible Parking".localized, onBack: onBack)
             }
             .background(Color(.systemBackground))
             .zIndex(1)
@@ -41,7 +41,7 @@ struct ContributeParkingQuestionStepView: View {
                                 .font(.subheadline.weight(.semibold))
                                 .underline()
                         }
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(ContributePalette.blue)
                     }
                     .buttonStyle(.plain)
 
@@ -69,14 +69,14 @@ struct ContributeParkingQuestionStepView: View {
         } label: {
             Text(option.localized)
                 .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(isSelected ? Color.accentColor : .primary)
+                .foregroundStyle(isSelected ? ContributePalette.blue : .primary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 18)
                 .padding(.vertical, 16)
                 .background(Color(.secondarySystemBackground), in: Capsule())
                 .overlay {
                     Capsule()
-                        .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
+                        .strokeBorder(isSelected ? ContributePalette.blue : Color.clear, lineWidth: 1.5)
                 }
         }
         .buttonStyle(.plain)

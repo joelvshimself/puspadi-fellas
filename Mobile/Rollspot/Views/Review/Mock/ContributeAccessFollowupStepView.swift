@@ -45,8 +45,8 @@ struct ContributeAccessFollowupStepView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
-                PhotoFlowHeader(title: navTitle.localized, onBack: onBack)
                 ContributeStepProgressBar(currentStep: stepNumber, subStepProgress: subStepProgress)
+                PhotoFlowHeader(title: navTitle.localized, onBack: onBack)
             }
             .background(Color(.systemBackground))
             .zIndex(1)
@@ -210,15 +210,15 @@ struct ContributeAccessFollowupStepView: View {
         } label: {
             Text(option.localized)
                 .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(filled ? Color.white : (advancesOnSelect || isSelected ? Color.accentColor : .primary))
+                .foregroundStyle(filled ? Color.white : (advancesOnSelect || isSelected ? ContributePalette.blue : .primary))
                 .frame(maxWidth: .infinity, alignment: advancesOnSelect ? .center : .leading)
                 .padding(.horizontal, 18)
                 .padding(.vertical, 16)
-                .background(filled ? Color.accentColor : Color(.secondarySystemBackground), in: Capsule())
+                .background(filled ? ContributePalette.blue : Color(.secondarySystemBackground), in: Capsule())
                 .overlay {
                     if !advancesOnSelect {
                         Capsule()
-                            .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
+                            .strokeBorder(isSelected ? ContributePalette.blue : Color.clear, lineWidth: 1.5)
                     }
                 }
                 .animation(.easeInOut(duration: 0.32), value: filled)
@@ -253,10 +253,10 @@ struct ContributeAccessFollowupStepView: View {
             VStack(spacing: 8) {
                 Image(systemName: "photo.badge.plus")
                     .font(.system(size: 28))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(ContributePalette.blue)
                 Text("Add Photos".localized)
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(ContributePalette.blue)
                     .lineLimit(1)
                     .fixedSize()
                 Text("(Optional)".localized)
@@ -271,7 +271,7 @@ struct ContributeAccessFollowupStepView: View {
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color.accentColor.opacity(0.4), style: StrokeStyle(lineWidth: 1.5, dash: [6]))
+                    .strokeBorder(ContributePalette.blue.opacity(0.4), style: StrokeStyle(lineWidth: 1.5, dash: [6]))
             }
         }
         .buttonStyle(.plain)

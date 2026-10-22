@@ -432,10 +432,10 @@ struct ContributeReviewFlowView: View {
         case .supplementalNotes(let category):
             ContributePhotosNotesStepView(
                 facilityName: category.menuTitle,
-                navTitle: "Tell us about the \(category.menuTitle.lowercased())",
+                navTitle: category.menuTitle,
                 progress: progress(for: screen),
                 note: supplementalNoteBinding(for: category),
-                showsPhotos: false,
+                photoNote: notesPhotosBinding(for: category),
                 continueTitle: startingFacility == nil ? "Continue" : "Submit",
                 isSubmitting: isSubmitting,
                 onBack: goBackOneStep,
@@ -1203,6 +1203,53 @@ struct ContributeReviewFlowView: View {
         case .entrance: .constant([])
         case .elevator: $elevatorTags
         case .toilet: $toiletTags
+        }
+    }
+
+    /// The photos the notes step shows: the section's own (last pass for entrance/elevator/toilet),
+    /// so photos taken at the start of the section appear there and new ones join them.
+    /// Same rule as the shared ContributeFlow.notesPhotos on Android.
+    private func notesPhotosBinding(for category: ContributeReviewCategory) -> Binding<ReviewNoteDraft> {
+        switch category {
+        case .entrance:
+            Binding(
+                get: { ReviewNoteDraft(photos: completedEntrancePasses.last?.sectionPhotos ?? entranceSectionPhotos.photos) },
+                set: { updated in
+                    if completedEntrancePasses.isEmpty {
+                        entranceSectionPhotos.photos = updated.photos
+                    } else {
+                        completedEntrancePasses[completedEntrancePasses.count - 1].sectionPhotos = updated.photos
+                    }
+                }
+            )
+        case .elevator:
+            Binding(
+                get: { ReviewNoteDraft(photos: completedElevatorPasses.last?.photos ?? draft.elevator.review.photos) },
+                set: { updated in
+                    if completedElevatorPasses.isEmpty {
+                        draft.elevator.review.photos = updated.photos
+                    } else {
+                        completedElevatorPasses[completedElevatorPasses.count - 1].photos = updated.photos
+                    }
+                }
+            )
+        case .toilet:
+            Binding(
+                get: { ReviewNoteDraft(photos: completedToiletPasses.last?.photos ?? draft.toilet.review.photos) },
+                set: { updated in
+                    if completedToiletPasses.isEmpty {
+                        draft.toilet.review.photos = updated.photos
+                    } else {
+                        completedToiletPasses[completedToiletPasses.count - 1].photos = updated.photos
+                    }
+                }
+            )
+        case .outdoorPathways:
+            supplementalNoteBinding(for: .outdoorPathways)
+        case .seating:
+            $seatingNote
+        case .parking:
+            $parkingNote
         }
     }
 

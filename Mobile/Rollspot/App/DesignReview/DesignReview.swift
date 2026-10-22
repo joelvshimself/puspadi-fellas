@@ -19,6 +19,9 @@ enum DesignReview: String, CaseIterable {
     case editResponse, editResponseLeave
     /// Home with a waiting contribution (banner, then folded into the profile badge) and Profile's row.
     case homeContinueSurvey, homeContinueSurveyFolded, profileOngoing
+    /// Contribute flow (Figma "Contribute Review Category Menus" and "Question 3 - Filled").
+    case contributeMenu, contributeMenuProgress, contributeMenuComplete
+    case contributeNotes, contributeNotesFilled, contributeCaption, contributeSubmitted
 
     static let current: DesignReview? = {
         let args = ProcessInfo.processInfo.arguments
@@ -74,6 +77,19 @@ struct DesignReviewRoot: View {
             signedIn { DesignReviewWaiting { HomeMapView() } }
         case .profileOngoing:
             signedIn { DesignReviewWaiting { NavigationStack { ProfileView(initialTab: .reviews) } } }
+        case .contributeMenu, .contributeMenuProgress, .contributeMenuComplete:
+            ContributeReviewCategoryMenusView(
+                status: screen == .contributeMenuComplete ? [.entrance: .complete]
+                    : screen == .contributeMenuProgress ? [.entrance: .inProgress] : [:],
+                canContinue: screen == .contributeMenuComplete,
+                onBack: {}, onOpen: { _ in }, onContinue: {}
+            )
+        case .contributeNotes, .contributeNotesFilled:
+            DesignReviewNotes(filled: screen == .contributeNotesFilled)
+        case .contributeCaption:
+            PhotoCaptionEditorView(photo: DesignReviewNotes.samplePhoto(), onSave: { _ in }, onDismiss: {})
+        case .contributeSubmitted:
+            ContributeSubmittedView(onDone: {})
         case .editResponse, .editResponseLeave:
             signedIn { DesignReviewEditResponse() }
         }
@@ -108,6 +124,31 @@ private struct DesignReviewWaiting<Content: View>: View {
                 )
                 ready = true
             }
+    }
+}
+
+/// The notes step empty, or with text and two photos (one captioned).
+private struct DesignReviewNotes: View {
+    let filled: Bool
+    @State private var note = ReviewNoteDraft()
+
+    static func samplePhoto(caption: String = "") -> ReviewPhotoDraft {
+        let image = UIImage(named: "SamplePlacePhoto") ?? UIImage()
+        var photo = ReviewPhotoDraft(image: image, jpegData: image.jpegData(compressionQuality: 0.5) ?? Data())
+        photo.caption = caption
+        return photo
+    }
+
+    var body: some View {
+        ContributePhotosNotesStepView(
+            facilityName: "Entrance", navTitle: "Entrance", progress: (3, 4),
+            note: $note, onBack: {}, onContinue: {}
+        )
+        .onAppear {
+            guard filled else { return }
+            note.text = "The ramp is too steep for wheelchair user"
+            note.photos = [Self.samplePhoto(caption: "Main entrance"), Self.samplePhoto()]
+        }
     }
 }
 

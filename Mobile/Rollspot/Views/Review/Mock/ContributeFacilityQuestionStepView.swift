@@ -30,8 +30,8 @@ struct ContributeEntranceLocationStepView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PhotoFlowHeader(title: "Entrances".localized, onBack: onBack)
             ContributeStepProgressBar(currentStep: 1)
+            PhotoFlowHeader(title: "Entrances".localized, onBack: onBack)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
@@ -96,25 +96,25 @@ struct ContributeEntranceLocationStepView: View {
             HStack(spacing: 14) {
                 Image(systemName: "door.right.hand.open")
                     .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(isSelected ? Color.accentColor : .primary)
+                    .foregroundStyle(isSelected ? ContributePalette.blue : .primary)
                     .frame(width: 24)
 
                 Text(location.displayLabel)
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(isSelected ? Color.accentColor : .primary)
+                    .foregroundStyle(isSelected ? ContributePalette.blue : .primary)
 
                 Spacer()
 
                 Image(systemName: isSelected ? "checkmark.square.fill" : "square")
                     .font(.system(size: 20))
-                    .foregroundStyle(isSelected ? Color.accentColor : Color(.tertiaryLabel))
+                    .foregroundStyle(isSelected ? ContributePalette.blue : Color(.tertiaryLabel))
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 16)
             .background(Color(.secondarySystemBackground), in: Capsule())
             .overlay {
                 Capsule()
-                    .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
+                    .strokeBorder(isSelected ? ContributePalette.blue : Color.clear, lineWidth: 1.5)
             }
         }
         .buttonStyle(.plain)
@@ -192,8 +192,8 @@ struct ContributeFacilityQuestionStepView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
-                PhotoFlowHeader(title: navTitle.localized, onBack: onBack)
                 ContributeStepProgressBar(currentStep: stepNumber, subStepProgress: subStepProgress)
+                PhotoFlowHeader(title: navTitle.localized, onBack: onBack)
             }
             .background(Color(.systemBackground))
             .zIndex(1)
@@ -271,14 +271,14 @@ struct ContributeTagChip: View {
                 Text(option.label.localized.capitalized)
                     .font(.system(size: 14, weight: .medium))
             }
-            .foregroundStyle(isSelected ? Color.accentColor : .primary)
+            .foregroundStyle(isSelected ? ContributePalette.blue : .primary)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .background(
-                Capsule().fill(isSelected ? Color.accentColor.opacity(0.08) : Color(.secondarySystemBackground))
+                Capsule().fill(isSelected ? ContributePalette.blue.opacity(0.08) : Color(.secondarySystemBackground))
             )
             .overlay(
-                Capsule().strokeBorder(isSelected ? Color.accentColor : .clear, lineWidth: 1.5)
+                Capsule().strokeBorder(isSelected ? ContributePalette.blue : .clear, lineWidth: 1.5)
             )
             .contentShape(Capsule())
         }
@@ -348,18 +348,21 @@ struct ContributeContinueButton: View {
                 }
             }
             .font(.system(size: 17, weight: .semibold))
-            .foregroundStyle(.white)
+            .foregroundStyle(isInteractive || isLoading ? Color.white : ContributePalette.disabledText)
             .frame(maxWidth: .infinity)
-            .frame(height: 52)
+            .frame(height: 54)
             .background(
-                isInteractive ? Color.accentColor : Color(.systemGray4),
+                isInteractive || isLoading ? ContributePalette.blue : ContributePalette.disabledFill,
                 in: Capsule()
             )
+            .animation(.easeOut(duration: 0.2), value: isInteractive)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle())
         .disabled(!isInteractive)
         .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .padding(.top, 12)
+        // The design sits the button down into the home-indicator area.
+        .padding(.bottom, -14)
         .background(Color(.systemBackground))
     }
 }

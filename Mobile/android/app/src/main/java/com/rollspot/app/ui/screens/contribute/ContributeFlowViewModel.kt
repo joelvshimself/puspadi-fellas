@@ -207,6 +207,13 @@ class ContributeFlowViewModel(
 
     fun canAddPhoto(): Boolean = flow.canAddPhoto()
 
+    /** The section photos the notes step shows (shared ContributeFlow.notesPhotos). */
+    fun notesPhotos(category: ContributeReviewCategory): List<LocalReviewPhoto> = flow.notesPhotos(category)
+
+    fun setPhotoCaption(fileId: String, caption: String) {
+        mutate { flow.setPhotoCaption(fileId, caption) }
+    }
+
     fun canContinueCurrentStep(): Boolean {
         val step = flow.currentStep() ?: return false
         return flow.canContinue(step)

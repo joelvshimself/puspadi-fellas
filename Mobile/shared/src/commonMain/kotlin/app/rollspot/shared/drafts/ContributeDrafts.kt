@@ -2,6 +2,7 @@ package app.rollspot.shared.drafts
 
 import app.rollspot.shared.reviews.ContributeFlowState
 import app.rollspot.shared.reviews.LocalReviewPhoto
+import app.rollspot.shared.reviews.mapPhotosIn
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -72,7 +73,7 @@ class ContributeDrafts(
         if (!hasProgress) return
         val dir = folder(user, state.placeId)
         val photos = mutableListOf<LocalReviewPhoto>()
-        mapPhotos(state) { photo -> photos += photo; photo }
+        mapPhotosIn(state) { photo -> photos += photo; photo }
         val names = photos.map { it.fileId }.toSet()
         val written = knownPhotos[dir].orEmpty()
         // Photo files never change once written (an edit is a new file id), so only new ones are written.
@@ -93,7 +94,7 @@ class ContributeDrafts(
         val text = storage.read("$dir/$STATE_FILE")?.decodeToString() ?: return null
         val saved = runCatching { json.decodeFromString(ContributeFlowState.serializer(), text) }.getOrNull() ?: return null
         val names = mutableSetOf<String>()
-        val restored = mapPhotos(saved) { photo ->
+        val restored = mapPhotosIn(saved) { photo ->
             names += photo.fileId
             photo.copy(jpeg = storage.read("$dir/${photo.fileId}.jpg") ?: ByteArray(0))
         }
@@ -128,27 +129,4 @@ class ContributeDrafts(
         /** Older drafts stop showing on Home (they still resume from the place page). */
         const val MAX_AGE_MILLIS = 30L * 24 * 60 * 60 * 1000
     }
-}
-
-/** Every photo in a flow state, transformed by [transform] (used to strip and restore bytes). */
-internal fun mapPhotos(state: ContributeFlowState, transform: (LocalReviewPhoto) -> LocalReviewPhoto): ContributeFlowState {
-    fun list(photos: List<LocalReviewPhoto>) = photos.map(transform)
-    fun evidence(map: Map<String, List<LocalReviewPhoto>>) = map.mapValues { (_, photos) -> list(photos) }
-    return state.copy(
-        supplementalNotes = state.supplementalNotes.mapValues { (_, notes) -> notes.copy(photos = list(notes.photos)) },
-        entrancePhotos = list(state.entrancePhotos),
-        completedEntrancePasses = state.completedEntrancePasses.map {
-            it.copy(photos = list(it.photos), lobbyEvidence = evidence(it.lobbyEvidence), basementEvidence = evidence(it.basementEvidence))
-        },
-        completedElevatorPasses = state.completedElevatorPasses.map { it.copy(photos = list(it.photos), evidence = evidence(it.evidence)) },
-        completedToiletPasses = state.completedToiletPasses.map { it.copy(photos = list(it.photos), evidence = evidence(it.evidence)) },
-        toiletPhotos = list(state.toiletPhotos),
-        toiletEvidence = evidence(state.toiletEvidence),
-        lobbyEvidence = evidence(state.lobbyEvidence),
-        basementEvidence = evidence(state.basementEvidence),
-        elevatorPhotos = list(state.elevatorPhotos),
-        elevatorEvidence = evidence(state.elevatorEvidence),
-        seatingPhotos = list(state.seatingPhotos),
-        parkingPhotos = list(state.parkingPhotos),
-    )
 }

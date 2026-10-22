@@ -1,5 +1,22 @@
 package com.rollspot.app.ui.screens.contribute.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.rollspot.app.ui.theme.ContributeColors
+import com.rollspot.app.ui.theme.Rollspot
+import com.rollspot.app.ui.theme.pressScale
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -74,49 +91,70 @@ import com.rollspot.app.ui.screens.contribute.rememberHeroPainter
 import com.rollspot.app.ui.screens.contribute.tagChipDrawable
 import com.rollspot.app.ui.theme.RollspotBlue
 
+/** Back circle and centred title, under the progress bar (Figma contribute frames). */
 @Composable
-fun ContributeFlowHeader(title: String, onBack: () -> Unit) {
+fun ContributeFlowHeader(title: String, onBack: () -> Unit, trailing: @Composable (() -> Unit)? = null) {
     Box(
         Modifier
             .fillMaxWidth()
-            .height(52.dp)
-            .padding(horizontal = 12.dp),
+            .height(54.dp)
+            .padding(horizontal = 20.dp),
     ) {
         Text(
             title,
             modifier = Modifier.align(Alignment.Center),
-            style = MaterialTheme.typography.titleMedium,
+            fontSize = 17.sp,
             fontWeight = FontWeight.SemiBold,
+            color = ContributeColors.Text,
         )
-        IconButton(
-            onClick = onBack,
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .size(44.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
-        ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+        ContributeCircleButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterStart), description = "Back") {
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, null, Modifier.size(26.dp), tint = ContributeColors.BackChevron)
         }
+        trailing?.let { Box(Modifier.align(Alignment.CenterEnd)) { it() } }
     }
 }
 
+/** 44dp light circle with a soft shadow: back, and the caption screen's check. */
+@Composable
+fun ContributeCircleButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    description: String,
+    fill: Color = ContributeColors.CircleButton,
+    content: @Composable () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        modifier
+            .size(44.dp)
+            .pressScale(interaction)
+            .shadow(3.dp, CircleShape, ambientColor = Color(0x14000000), spotColor = Color(0x14000000))
+            .background(fill, CircleShape)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center,
+    ) { content() }
+}
+
+/** Top progress line: 20dp side insets, above the back button (Figma). */
 @Composable
 fun ContributeStepProgressBar(currentStep: Int, subStepProgress: Float) {
     val fraction = ((currentStep - 1) + subStepProgress.coerceIn(0f, 1f)) / 4f
-    val clamped = fraction.coerceIn(0.05f, 1f)
+    val clamped by animateFloatAsState(fraction.coerceIn(0.05f, 1f), tween(250, easing = Rollspot.EaseOut), label = "progress")
     Box(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 8.dp)
+            .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 4.dp)
             .height(4.dp)
-            .clip(RoundedCornerShape(2.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant),
+            .clip(CircleShape)
+            .background(ContributeColors.ProgressTrack),
     ) {
         Box(
             Modifier
                 .fillMaxWidth(clamped)
                 .fillMaxHeight()
-                .background(RollspotBlue),
+                .clip(CircleShape)
+                .background(ContributeColors.ProgressFill),
         )
     }
 }
@@ -336,6 +374,7 @@ private fun RampInfoBlock(title: String, body: String, headingMuted: Boolean = f
     }
 }
 
+/** The flow's bottom button: #0099FE pill, grey #E8E8E8 while disabled (Figma). */
 @Composable
 fun ContributeContinueButton(
     title: String,
@@ -344,23 +383,29 @@ fun ContributeContinueButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Button(
-        onClick = onClick,
-        enabled = enabled && !loading,
-        modifier = modifier
+    val active = enabled && !loading
+    val interaction = remember { MutableInteractionSource() }
+    val fill by animateColorAsState(if (active || loading) ContributeColors.Blue else ContributeColors.DisabledFill, tween(200), label = "cta")
+    Box(
+        modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 12.dp)
-            .height(52.dp),
-        shape = RoundedCornerShape(26.dp),
-        colors = ButtonDefaults.buttonColors(
-            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        ),
+            .padding(start = 20.dp, end = 20.dp, top = 12.dp)
+            .height(54.dp)
+            .pressScale(interaction)
+            .clip(CircleShape)
+            .background(fill)
+            .clickable(interactionSource = interaction, indication = null, enabled = active, onClick = onClick),
+        contentAlignment = Alignment.Center,
     ) {
         if (loading) {
             CircularProgressIndicator(Modifier.size(22.dp), color = Color.White, strokeWidth = 2.dp)
         } else {
-            Text(title, fontWeight = FontWeight.SemiBold)
+            Text(
+                title,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (active) Color.White else ContributeColors.DisabledText,
+            )
         }
     }
 }
@@ -686,41 +731,56 @@ fun ContributePhotosSection(
     }
 }
 
+/** "Contribution Submitted" (Figma): illustration, "Review Submitted!", "Back to Home", on white. */
 @Composable
 fun ContributeSubmittedScreen(onDone: () -> Unit, modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxSize()) {
+    val animationsOn = remember { android.animation.ValueAnimator.areAnimatorsEnabled() }
+    var appeared by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { appeared = true }
+    val enter by animateFloatAsState(if (appeared) 1f else 0f, tween(350, easing = Rollspot.EaseOut), label = "enter")
+    val float = if (animationsOn) {
+        rememberInfiniteTransition(label = "float").animateFloat(
+            initialValue = 4f, targetValue = -6f,
+            animationSpec = infiniteRepeatable(tween(2200, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "y",
+        ).value
+    } else 0f
+    Column(
+        modifier.fillMaxSize().background(Color.White),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        // Design: the block sits a little above centre (3 : 2 space above vs below).
+        Spacer(Modifier.weight(3f))
+        Image(
+            painter = painterResource(R.drawable.contribute_thank_you),
+            contentDescription = null,
+            modifier = Modifier
+                .fillMaxWidth(0.97f)
+                .aspectRatio(680f / 630f)
+                .graphicsLayer {
+                    translationY = float.dp.toPx()
+                    alpha = enter
+                    scaleX = 0.94f + 0.06f * enter
+                    scaleY = 0.94f + 0.06f * enter
+                },
+            contentScale = ContentScale.Fit,
+        )
+        // The illustration's glow has a soft margin; the design's title tucks into it.
+        Text("Review Submitted!", Modifier.offset(y = (-10).dp), fontSize = 28.sp, fontWeight = FontWeight.Bold, color = ContributeColors.Text)
+        Text("Thank you for helping out!", Modifier.offset(y = (-2).dp), fontSize = 16.sp, color = ContributeColors.SecondaryText, textAlign = TextAlign.Center)
+        Spacer(Modifier.weight(2f))
+        val interaction = remember { MutableInteractionSource() }
         Box(
             Modifier
+                .padding(horizontal = 22.dp)
                 .fillMaxWidth()
-                .height(260.dp)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(Color(0xFF94CAF7), MaterialTheme.colorScheme.background),
-                    ),
-                ),
-        )
-        Column(
-            Modifier.fillMaxSize().padding(horizontal = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Spacer(Modifier.height(48.dp))
-            Image(
-                painter = painterResource(R.drawable.contribute_thank_you),
-                contentDescription = null,
-                modifier = Modifier.fillMaxWidth().height(220.dp),
-                contentScale = ContentScale.Fit,
-            )
-            Text("Review Submitted!", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            Text(
-                "Thank you for helping out!",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(Modifier.weight(1f))
-            ContributeContinueButton(title = "Okey", enabled = true, onClick = onDone)
-            Spacer(Modifier.height(24.dp))
-        }
+                .height(50.dp)
+                .pressScale(interaction)
+                .clip(CircleShape)
+                .background(ContributeColors.Blue)
+                .clickable(interactionSource = interaction, indication = null, onClick = onDone),
+            contentAlignment = Alignment.Center,
+        ) { Text("Back to Home", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Color.White) }
+        Spacer(Modifier.height(8.dp))
     }
 }
 

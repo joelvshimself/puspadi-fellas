@@ -1,5 +1,16 @@
 package com.rollspot.app.ui
 
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.Modifier
+import app.rollspot.shared.reviews.CategorySectionStatus
+import app.rollspot.shared.reviews.ContributeReviewCategory
+import app.rollspot.shared.reviews.LocalReviewPhoto
+import com.rollspot.app.ui.screens.contribute.components.ContributeCategoryMenuScreen
+import com.rollspot.app.ui.screens.contribute.components.ContributeNotesScreen
+import com.rollspot.app.ui.screens.contribute.components.ContributeSubmittedScreen
+import com.rollspot.app.ui.screens.contribute.components.PhotoCaptionScreen
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -63,6 +74,17 @@ fun DesignReviewRoot(screen: String, email: String? = null, password: String? = 
             }
             ProfileScreen({}, {}, {}, {}, {}, initialTab = tab, review = screen)
         }
+        "contributeMenu", "contributeMenuProgress", "contributeMenuComplete" -> ContributeCategoryMenuScreen(
+            status = when (screen) {
+                "contributeMenuComplete" -> mapOf(ContributeReviewCategory.Entrance to CategorySectionStatus.Complete)
+                "contributeMenuProgress" -> mapOf(ContributeReviewCategory.Entrance to CategorySectionStatus.InProgress)
+                else -> emptyMap()
+            },
+            submitting = false, onBack = {}, onOpen = {}, onSubmit = {},
+            modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
+        )
+        "contributeNotes", "contributeNotesFilled", "contributeCaption" -> ReviewNotes(screen)
+        "contributeSubmitted" -> ContributeSubmittedScreen(onDone = {}, modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding())
         "editResponse", "editResponseLeave" -> SignedIn(email, password) {
             val mine = rollspotSdk().myReviews
             var reviewId by remember { mutableStateOf<String?>(null) }
@@ -103,4 +125,27 @@ private fun Waiting(content: @Composable () -> Unit) {
         ready = true
     }
     if (ready) content()
+}
+
+/** The notes step empty, filled (text + two photos, one captioned), or a photo open for its caption. */
+@Composable
+private fun ReviewNotes(screen: String) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val sample = remember { context.resources.openRawResource(com.rollspot.app.R.drawable.all_set_mall).use { it.readBytes() } }
+    val filled = screen != "contributeNotes"
+    var notes by remember { mutableStateOf(if (filled) "The ramp is too steep for wheelchair user" else "") }
+    var photos by remember {
+        mutableStateOf(if (filled) listOf(LocalReviewPhoto("a", sample, "Main entrance"), LocalReviewPhoto("b", sample)) else emptyList())
+    }
+    ContributeNotesScreen(
+        title = "Entrance", notes = notes, onNotesChange = { notes = it },
+        photos = photos, canAddPhoto = photos.size < 5, onChooseExisting = {}, onTakePhoto = {},
+        onRemovePhoto = { id -> photos = photos.filterNot { it.fileId == id } },
+        onCaption = { id, caption -> photos = photos.map { if (it.fileId == id) it.copy(caption = caption) else it } },
+        progressStep = 4, progress = 0.35f, continueTitle = "Continue", submitting = false, onBack = {}, onContinue = {},
+        modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
+    )
+    if (screen == "contributeCaption") {
+        PhotoCaptionScreen(LocalReviewPhoto("c", sample), progressStep = 4, progress = 0.35f, onSave = {}, onDismiss = {})
+    }
 }

@@ -27,7 +27,7 @@ struct RampLoopVideoCard: View {
                 Spacer()
                 HStack {
                     Spacer()
-                    overlayButton(systemName: "info", tint: .white, fill: Color.accentColor) {
+                    overlayButton(systemName: "info", tint: .white, fill: ContributePalette.blue) {
                         showInfo = true
                     }
                 }
@@ -94,7 +94,7 @@ struct FollowUpStillCard: View {
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(.white)
                             .frame(width: 32, height: 32)
-                            .background(Color.accentColor, in: Circle())
+                            .background(ContributePalette.blue, in: Circle())
                     }
                     .buttonStyle(.plain)
                 }

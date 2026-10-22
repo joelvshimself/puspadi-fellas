@@ -19,8 +19,8 @@ struct ContributeEntrancePhotosStepView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-                PhotoFlowHeader(title: navTitle.localized, onBack: onBack)
                 ContributeStepProgressBar(currentStep: stepNumber, subStepProgress: subStepProgress)
+                PhotoFlowHeader(title: navTitle.localized, onBack: onBack)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
@@ -96,10 +96,10 @@ struct ContributeEntrancePhotosStepView: View {
             VStack(spacing: 8) {
                 Image(systemName: "photo.badge.plus")
                     .font(.system(size: 28))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(ContributePalette.blue)
                 Text("Add Photos".localized)
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(ContributePalette.blue)
             }
             .frame(width: isWide ? nil : 120, height: 120)
             .frame(maxWidth: isWide ? .infinity : nil)
@@ -109,7 +109,7 @@ struct ContributeEntrancePhotosStepView: View {
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color.accentColor.opacity(0.4), style: StrokeStyle(lineWidth: 1.5, dash: [6]))
+                    .strokeBorder(ContributePalette.blue.opacity(0.4), style: StrokeStyle(lineWidth: 1.5, dash: [6]))
             }
         }
         .buttonStyle(.plain)

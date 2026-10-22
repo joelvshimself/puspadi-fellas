@@ -540,3 +540,38 @@ class ContributeFlowTest {
         assertTrue(flow.state.elevatorEvidence.isEmpty())
     }
 }
+
+class ContributeNotesPhotosTest {
+    private fun photo(id: String) = LocalReviewPhoto(id, byteArrayOf(1))
+
+    @Test
+    fun notesStepShowsAndAddsToTheLastPassPhotos() {
+        val flow = ContributeFlow("p1", "Park 23")
+        flow.openCategory(ContributeReviewCategory.Elevator)
+        flow.addPhoto(photo("a")) // ElevatorPhotos step
+        flow.setElevatorAnswer(ElevatorQuestion.WideEntrance, "No")
+        flow.chooseAnotherElevator("No") // lands on the notes step
+        assertEquals(ContributeStep.SupplementalNotes(ContributeReviewCategory.Elevator), flow.currentStep())
+        assertEquals(listOf("a"), flow.notesPhotos(ContributeReviewCategory.Elevator).map { it.fileId })
+
+        assertTrue(flow.addPhoto(photo("b")))
+        flow.setPhotoCaption("b", "  Lift door  ")
+        val pass = flow.state.completedElevatorPasses.single()
+        assertEquals(listOf("a", "b"), pass.photos.map { it.fileId })
+        assertEquals("Lift door", pass.photos[1].caption)
+        flow.finishActiveSection()
+        val sent = flow.toSubmission().elevator!!.passes.single().photos
+        assertEquals(listOf("local:a", "local:b"), sent.map { it.url })
+        assertEquals("Lift door", sent[1].caption)
+    }
+
+    @Test
+    fun notesPhotosStopAtTheSectionLimit() {
+        val flow = ContributeFlow("p1", "Park 23")
+        flow.openCategory(ContributeReviewCategory.Seating)
+        repeat(5) { flow.addPhoto(photo("s$it")) }
+        flow.state = flow.state.copy(seatingAnswer = "Yes", stepIndex = flow.steps().indexOf(ContributeStep.SupplementalNotes(ContributeReviewCategory.Seating)))
+        assertFalse(flow.canAddPhoto())
+        assertFalse(flow.addPhoto(photo("extra")))
+    }
+}
