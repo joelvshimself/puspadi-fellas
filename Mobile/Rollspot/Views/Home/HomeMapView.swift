@@ -63,9 +63,6 @@ struct HomeMapView: View {
     @State private var hasCenteredOnUser = false
     /// Lets the user tap a place/POI on the map (Google-Maps-style) to open
     /// its accessibility detail — without this the map is view-only.
-    /// MapFeature (not MapSelection, which is iOS 18+) so this works on the
-    /// project's iOS 17 deployment target.
-    @State private var mapSelection: MapFeature?
     /// The place whose accessibility detail is shown inside the bottom sheet
     /// (same-sheet method — no separate pushed page).
     /// The sheet detent in effect just before a place detail was opened, so
@@ -376,7 +373,9 @@ struct HomeMapView: View {
     private var displayedMalls: [Place] { mapStore.visiblePlaces }
 
     private var mapLayer: some View {
-        Map(position: $cameraPosition, selection: $mapSelection) {
+        // No `selection:`: Apple's own map labels stay visible but aren't tappable. Places come
+        // only from the Rollspot directory (our pins and search), like Android.
+        Map(position: $cameraPosition) {
             UserAnnotation()
 
             ForEach(displayedMalls) { place in
@@ -409,9 +408,6 @@ struct HomeMapView: View {
             visibleRegion = context.region
             // The model ignores camera changes while the filter is widening.
             scheduleNearbyPlacesLoad()
-        }
-        .onChange(of: mapSelection) { _, selection in
-            handleMapSelection(selection)
         }
         .mapStyle(.standard(elevation: .realistic))
     }
@@ -623,21 +619,6 @@ struct HomeMapView: View {
         }
         
         
-        /// A tapped MapKit POI carries a name and coordinate — exactly what the
-        /// accessibility lookup needs — so route it through the same openPlace()
-        /// path a search result or a mall pin uses.
-        private func handleMapSelection(_ feature: MapFeature?) {
-            guard let feature else { return }
-            mapSelection = nil
-        openPlace(
-            Place.fromSearchResult(
-                name: feature.title ?? "Selected place",
-                category: "Place",
-                coordinate: feature.coordinate
-            )
-        )
-    }
-
     /// Routes a shared-link place onto the navigation stack, popping whatever
     /// was open first so the link always lands on its own detail page.
     private func openDeepLinkedPlace(_ place: Place?) {

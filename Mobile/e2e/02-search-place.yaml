@@ -1,0 +1,27 @@
+appId: ${APP_ID}
+---
+- setLocation:
+    latitude: -8.7180
+    longitude: 115.1700
+- launchApp:
+    arguments:
+      ROLLSPOT_API_BASE_URL: ${API}
+- extendedWaitUntil:
+    visible: "Search a place"
+    timeout: 20000
+- tapOn: "Search a place"
+- extendedWaitUntil:
+    visible: "Nearby Malls"
+    timeout: 10000
+- takeScreenshot: 02a-search-open
+- inputText: "beachwalk"
+- extendedWaitUntil:
+    visible: "Beachwalk Bali"
+    timeout: 10000
+- takeScreenshot: 02b-results
+- tapOn: "Beachwalk Bali"
+- extendedWaitUntil:
+    visible: "CONTRIBUTE|Contribute"
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: 02c-place

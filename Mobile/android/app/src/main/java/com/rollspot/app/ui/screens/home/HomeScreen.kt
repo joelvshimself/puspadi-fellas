@@ -100,6 +100,13 @@ fun HomeScreen(navController: NavController, review: String? = null) {
     var centeredOnUser by rememberSaveable { mutableStateOf(false) }
     var handledFocusNonce by rememberSaveable { mutableStateOf(0) }
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    var showIntro by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (review == null && !OnboardingIntroPrefs.hasSeen(context)) {
+            kotlinx.coroutines.delay(700)
+            showIntro = true
+        }
+    }
     // Home "Continue Survey": the banner shows once per draft, then folds into the profile button.
     val waiting by sdk.drafts.waiting.collectAsStateWithLifecycle()
     var bannerVisible by remember { mutableStateOf(false) }
@@ -301,6 +308,12 @@ fun HomeScreen(navController: NavController, review: String? = null) {
                 onSearchNearby = { focusManager.clearFocus() },
             )
         }
+
+        // One-time intro over the map (iOS OnboardingIntroSheet), shortly after the first launch.
+        OnboardingIntroSheet(visible = showIntro, onExplore = {
+            OnboardingIntroPrefs.markSeen(context)
+            showIntro = false
+        })
     }
     }
 }

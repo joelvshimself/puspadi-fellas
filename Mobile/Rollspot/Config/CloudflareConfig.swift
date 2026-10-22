@@ -10,6 +10,11 @@ enum CloudflareConfig {
         if let value = ProcessInfo.processInfo.environment["ROLLSPOT_API_BASE_URL"], let url = URL(string: value) {
             return url
         }
+        // UI tests (Maestro) can't set the environment; a launch argument
+        // `-ROLLSPOT_API_BASE_URL <url>` lands in UserDefaults instead.
+        if let value = UserDefaults.standard.string(forKey: "ROLLSPOT_API_BASE_URL"), let url = URL(string: value) {
+            return url
+        }
         #endif
         if let value = Bundle.main.object(forInfoDictionaryKey: "ROLLSPOT_API_BASE_URL") as? String,
            let url = URL(string: value), !value.isEmpty {

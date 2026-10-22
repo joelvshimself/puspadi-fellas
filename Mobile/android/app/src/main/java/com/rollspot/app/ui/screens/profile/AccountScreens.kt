@@ -1,5 +1,7 @@
 package com.rollspot.app.ui.screens.profile
 
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import android.app.LocaleManager
 import android.os.Build
 import android.os.LocaleList
@@ -358,7 +360,7 @@ private fun PasswordField(placeholder: String, value: String, onChange: (String)
     FieldBox(focused = false, error = false) {
         Box(Modifier.weight(1f)) {
             if (value.isEmpty()) Text(placeholder, style = Rollspot.Body, color = Rollspot.Tertiary)
-            BasicTextField(value, onChange, singleLine = true, textStyle = Rollspot.Body, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+            BasicTextField(value, onChange, singleLine = true, textStyle = Rollspot.Body, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().semantics { contentDescription = placeholder })
         }
     }
 }
@@ -393,7 +395,7 @@ private fun AccountDeletedScreen(onDone: () -> Unit) {
         val shape = RoundedCornerShape(16.dp)
         Box(Modifier.padding(horizontal = 24.dp).fillMaxWidth().heightIn(min = 110.dp).clip(shape).background(Color.White).border(1.dp, Color(0x33808080), shape).padding(14.dp)) {
             if (feedback.isEmpty()) Text("Your feedbacks here (Optional)", style = Rollspot.Body, color = Rollspot.Tertiary)
-            BasicTextField(feedback, { feedback = it }, textStyle = Rollspot.Body, modifier = Modifier.fillMaxWidth())
+            BasicTextField(feedback, { feedback = it }, textStyle = Rollspot.Body, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Your feedbacks here (Optional)" })
         }
         Spacer(Modifier.weight(1f))
         ContinueButton("Back to Home", Modifier.padding(horizontal = 24.dp).padding(bottom = 32.dp), onClick = onDone)

@@ -1,5 +1,7 @@
 package com.rollspot.app.ui.screens.review
 
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -178,7 +180,8 @@ private fun SectionBlock(section: EditSection, model: ReviewEditModel) {
                     if (section.notes.isEmpty()) Text("None", style = Rollspot.Subheadline, color = Rollspot.Tertiary)
                     BasicTextField(
                         section.notes, { model.setNotes(key, it) },
-                        textStyle = Rollspot.Subheadline.copy(color = Rollspot.Secondary), modifier = Modifier.fillMaxWidth(),
+                        textStyle = Rollspot.Subheadline.copy(color = Rollspot.Secondary),
+                        modifier = Modifier.fillMaxWidth().semantics { contentDescription = "${section.title} notes" },
                     )
                 }
             }
@@ -203,7 +206,7 @@ private fun AnswerRow(row: EditRow, model: ReviewEditModel) {
                 BasicTextField(
                     row.text, { model.setText(row.id, it) }, singleLine = true,
                     textStyle = Rollspot.Caption.copy(fontSize = 13.sp, color = Rollspot.Secondary, textAlign = TextAlign.End),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = row.label },
                 )
             }
         } else {

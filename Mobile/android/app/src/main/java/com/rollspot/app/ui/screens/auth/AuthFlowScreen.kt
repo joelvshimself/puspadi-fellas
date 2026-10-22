@@ -1,5 +1,7 @@
 package com.rollspot.app.ui.screens.auth
 
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -155,7 +157,9 @@ private fun InputField(
                 cursorBrush = SolidColor(Rollspot.BrandBlue),
                 visualTransformation = if (secret && !reveal) PasswordVisualTransformation('●') else VisualTransformation.None,
                 keyboardOptions = KeyboardOptions(keyboardType = if (secret) KeyboardType.Password else keyboardType),
-                modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused },
+                // The hint is drawn separately; this names the field for TalkBack.
+                modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused }
+                    .semantics { contentDescription = placeholder },
             )
         }
         if (secret) {

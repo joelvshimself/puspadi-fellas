@@ -279,18 +279,6 @@ class ContributeFlowViewModel(
         }
     }
 
-    fun signInAndSubmit(email: String, password: String) {
-        viewModelScope.launch {
-            try {
-                sdk.api.signInWithEmail(email.trim(), password)
-                _ui.update { it.copy(needsLogin = false) }
-                doSubmit()
-            } catch (e: Exception) {
-                _ui.update { it.copy(submitError = e.message ?: "Sign in failed") }
-            }
-        }
-    }
-
     fun dismissLogin() {
         _ui.update { it.copy(needsLogin = false) }
     }
@@ -313,7 +301,7 @@ class ContributeFlowViewModel(
                 it.copy(
                     isSubmitting = false,
                     submitError = if (auth) {
-                        "You need to be signed in to post a review. Sign in and submit again — your answers are saved."
+                        "Your session ended. Sign in and tap Submit again: your answers are saved."
                     } else {
                         "Check your connection and try again."
                     },

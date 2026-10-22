@@ -177,7 +177,9 @@ private fun NotesField(value: String, onChange: (String) -> Unit) {
         BasicTextField(
             value, onChange,
             textStyle = TextStyle(fontSize = 15.sp, color = ContributeColors.Text, lineHeight = 20.sp),
-            modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused },
+            // The hint is drawn separately; this names the field for TalkBack (and UI tests).
+            modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused }
+                .semantics { contentDescription = "Tell us more about your experience ..." },
         )
     }
 }
@@ -311,7 +313,8 @@ fun PhotoCaptionScreen(
                 caption, { caption = it.take(500) },
                 textStyle = TextStyle(fontSize = 15.sp, color = ContributeColors.Text),
                 maxLines = 4,
-                modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused },
+                modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused }
+                    .semantics { contentDescription = "Add a caption ..." },
             )
         }
     }

@@ -1,5 +1,7 @@
 package com.rollspot.app.ui.screens.home
 
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import com.rollspot.app.ui.theme.glass
 import com.rollspot.app.ui.theme.pressScale
@@ -145,7 +147,8 @@ fun SearchSheet(
                             textStyle = TextStyle(fontSize = 17.sp, color = Color.Black),
                             cursorBrush = SolidColor(RollspotBlue),
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                            modifier = Modifier.fillMaxWidth().focusRequester(focus),
+                            modifier = Modifier.fillMaxWidth().focusRequester(focus)
+                                .semantics { contentDescription = "Search a place" },
                         )
                     }
                 }

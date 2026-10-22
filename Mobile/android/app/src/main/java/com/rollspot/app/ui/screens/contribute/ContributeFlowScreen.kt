@@ -13,6 +13,8 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.sp
 import com.rollspot.app.ui.theme.ContributeColors
 import app.rollspot.shared.reviews.ContributeCategoryLabels
@@ -58,6 +60,7 @@ import kotlinx.coroutines.launch
 fun ContributeFlowScreen(
     placeId: String,
     onFinished: () -> Unit,
+    onNeedsSignIn: () -> Unit = {},
     /** Debug design review: open on this exact state, offline. */
     preview: app.rollspot.shared.reviews.ContributeFlowState? = null,
 ) {
@@ -161,23 +164,12 @@ fun ContributeFlowScreen(
         )
     }
 
-    if (ui.needsLogin) {
-        var email by remember { mutableStateOf("") }
-        var password by remember { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = vm::dismissLogin,
-            title = { Text("Sign in to submit") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(email, { email = it }, label = { Text("Email") }, singleLine = true)
-                    OutlinedTextField(password, { password = it }, label = { Text("Password") }, singleLine = true)
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { vm.signInAndSubmit(email, password) }) { Text("Sign in & submit") }
-            },
-            dismissButton = { TextButton(onClick = vm::dismissLogin) { Text("Cancel") } },
-        )
+    // Session gone at Submit: the real sign-in screen, then back here with the answers kept.
+    LaunchedEffect(ui.needsLogin) {
+        if (ui.needsLogin) {
+            vm.dismissLogin()
+            onNeedsSignIn()
+        }
     }
 
     val screenPadding = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
@@ -492,7 +484,8 @@ private fun ContributeTextArea(value: String, onChange: (String) -> Unit) {
         androidx.compose.foundation.text.BasicTextField(
             value, onChange,
             textStyle = androidx.compose.ui.text.TextStyle(fontSize = 15.sp, color = ContributeColors.Text),
-            modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused },
+            modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused }
+                .semantics { contentDescription = "Describe what's around ..." },
         )
     }
 }
