@@ -1,4 +1,5 @@
 import AuthenticationServices
+import Shared
 import SwiftUI
 import UIKit
 
@@ -11,14 +12,31 @@ enum AuthPalette {
     static let errorFill = Color(red: 1.0, green: 0.94, blue: 0.94)
 }
 
+/// One screen per shared `AuthStep`. What the user typed so far is held by the
+/// shared AuthModel, so routes only carry what the screen displays.
 enum AuthRoute: Hashable {
     case emailFound(String)
     case createPassword(String)
-    /// Carries signup fields in the route so NavigationStack doesn't drop parent `@State`.
-    case verifyEmail(email: String, password: String, displayName: String, mobilityAids: [String])
-    case name(email: String, password: String)
-    case mobility(email: String, password: String, displayName: String)
+    case verifyEmail(String)
+    case name
+    case mobility
     case allSet
+}
+
+/// Moves the flow to the screen for `step`, or finishes sign-in when there is none.
+@MainActor
+func advanceAuth(
+    to step: AuthStep,
+    path: Binding<[AuthRoute]>,
+    displayName: Binding<String>,
+    onDone: () -> Void
+) {
+    if let suggested = step.suggestedName { displayName.wrappedValue = suggested }
+    if let route = AuthRoute(step) {
+        path.wrappedValue.append(route)
+    } else {
+        onDone()
+    }
 }
 
 struct AuthGradientBackground: View {
@@ -103,9 +121,8 @@ struct AuthFieldBox<Content: View>: View {
 }
 
 struct AuthSocialButtons: View {
-    var onSuccess: () -> Void
-    var onNeedsOnboarding: (_ suggestedName: String?) -> Void
-    var onDeferAppleSignIn: (_ pending: PendingAppleSignIn, _ suggestedName: String?) -> Void
+    /// The shared flow's next step after Apple/Google sign-in.
+    var onStep: (AuthStep) -> Void
     var showsOrLabel: Bool = true
 
     @EnvironmentObject private var auth: AuthSessionStore
@@ -184,27 +201,7 @@ struct AuthSocialButtons: View {
             isBusy = true
             defer { isBusy = false }
             do {
-                if AuthSessionStore.isFirstAppleAuthorization(authorization) {
-                    let (pending, suggestedName) = try AuthSessionStore.pendingAppleSignIn(
-                        from: authorization,
-                        rawNonce: currentNonce
-                    )
-                    AuthDebug.log("Apple first-time defer signup name=\(suggestedName ?? "nil")")
-                    onDeferAppleSignIn(pending, suggestedName)
-                } else {
-                    AuthDebug.log("Apple returning user sign-in")
-                    try await auth.signInWithAppleReturningUser(
-                        authorization: authorization,
-                        rawNonce: currentNonce
-                    )
-                    let needsOnboarding = await auth.profileNeedsOnboarding()
-                    AuthDebug.log("Apple returning user isSignedIn=\(auth.isSignedIn) needsOnboarding=\(needsOnboarding)")
-                    if needsOnboarding {
-                        onNeedsOnboarding(nil)
-                    } else {
-                        onSuccess()
-                    }
-                }
+                onStep(try await auth.signInWithApple(authorization: authorization, rawNonce: currentNonce))
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -217,12 +214,7 @@ struct AuthSocialButtons: View {
         errorMessage = nil
         defer { isBusy = false }
         do {
-            let suggestedName = try await auth.signInWithGoogle()
-            if await auth.profileNeedsOnboarding() {
-                onNeedsOnboarding(suggestedName)
-            } else {
-                onSuccess()
-            }
+            onStep(try await auth.signInWithGoogle())
         } catch {
             errorMessage = error.localizedDescription
         }

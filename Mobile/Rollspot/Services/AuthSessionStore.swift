@@ -2,71 +2,25 @@ import AuthenticationServices
 import CryptoKit
 import Foundation
 import GoogleSignIn
+import Shared
 import SwiftUI
 import UIKit
-
-struct PendingAppleSignIn: Equatable {
-    let idToken: String
-    let rawNonce: String
-    let appleEmail: String?
-    let fullName: String
-    let givenName: String?
-    let familyName: String?
-}
 
 struct AppSession: Equatable {
     let userId: String
     let email: String
 }
 
-private struct AuthUser: Decodable {
-    let id: String
-    let email: String
-}
-
-private struct AuthResponse: Decodable { let user: AuthUser? }
-private struct SessionResponse: Decodable { let user: AuthUser? }
-private struct EmailRegisteredResponse: Decodable { let registered: Bool }
-private struct ProvidersResponse: Decodable { let providers: [String] }
-private struct EmailBody: Encodable { let email: String }
-private struct EmailPasswordBody: Encodable { let email: String; let password: String }
-
-private struct EmailSignupBody: Encodable {
-    let name: String
-    let email: String
-    let password: String
-    let callbackURL: String
-}
-
-private struct VerificationEmailBody: Encodable {
-    let email: String
-    let callbackURL: String
-}
-
-private struct SocialSignInBody: Encodable {
-    struct IdentityToken: Encodable {
-        let token: String
-        let nonce: String?
-    }
-    let provider: String
-    let idToken: IdentityToken
-}
-
-private struct ChangePasswordBody: Encodable {
-    let currentPassword: String
-    let newPassword: String
-    let revokeOtherSessions: Bool
-}
-
-/// App authentication backed by Better Auth on the Cloudflare Worker.
+/// SwiftUI's handle on authentication. The flow itself (which step comes next,
+/// validation, sessions, error wording) lives in the shared `AuthModel`, the same
+/// one Android uses. This class only publishes its state to SwiftUI and runs the
+/// native Apple / Google sign-in sheets that produce ID tokens.
 @MainActor
 final class AuthSessionStore: ObservableObject {
     @Published private(set) var session: AppSession?
-    @Published var lastError: String?
     @Published private(set) var providers: Set<String> = []
 
-    private let client = CloudflareAPIClient.shared
-    private var authActionInFlight = false
+    private let model = RollspotServices.sdk.auth
 
     var isSignedIn: Bool { session != nil }
     var userId: UUID? { session.flatMap { UUID(uuidString: $0.userId) } }
@@ -74,97 +28,66 @@ final class AuthSessionStore: ObservableObject {
     var canChangePassword: Bool { providers.contains("credential") }
 
     init() {
-        Task { await restoreSession() }
+        Task { await observeSession() }
+        Task { try? await model.restore() }
     }
 
-    func emailRegistered(_ email: String) async throws -> Bool {
-        let response: EmailRegisteredResponse = try await client.post(
-            ["v1", "auth", "email-registered"],
-            body: EmailBody(email: normalizedEmail(email))
-        )
-        return response.registered
+    private func observeSession() async {
+        for await state in model.session {
+            let previous = session
+            switch onEnum(of: state) {
+            case .signedIn(let signedIn):
+                session = AppSession(userId: signedIn.user.id, email: signedIn.user.email)
+                providers = signedIn.providers
+            case .signedOut, .unknown:
+                session = nil
+                providers = []
+            }
+            if previous != session {
+                NotificationCenter.default.post(name: .rollspotAuthStateDidChange, object: nil)
+            }
+        }
     }
 
-    func signInWithEmail(email: String, password: String) async throws {
-        try beginAuthAction()
-        defer { authActionInFlight = false }
-        lastError = nil
-        let response: AuthResponse = try await client.post(
-            ["api", "auth", "sign-in", "email"],
-            body: EmailPasswordBody(email: normalizedEmail(email), password: password),
-            capturesSession: true
-        )
-        try await accept(response.user)
-        providers.insert("credential")
+    // MARK: Flow steps (each returns the next screen)
+
+    func continueWithEmail(_ email: String) async throws -> AuthStep {
+        try await model.continueWithEmail(email: email)
     }
 
-    func signUpWithEmail(email: String, password: String) async throws -> Bool {
-        _ = try await signUp(email: email, password: password, displayName: "You")
-        return true
+    func signIn(email: String, password: String) async throws -> AuthStep {
+        try await model.signIn(email: email, password: password)
     }
 
-    func registerEmailAccount(
-        email: String,
-        password: String,
-        displayName: String,
-        mobilityAids: [String]
-    ) async throws -> EmailSignupResult {
-        try beginAuthAction()
-        defer { authActionInFlight = false }
-        lastError = nil
-        _ = try await signUp(email: email, password: password, displayName: displayName)
-        return .needsEmailConfirmation
+    func choosePassword(_ password: String) throws -> AuthStep {
+        try model.choosePassword(password: password)
     }
 
-    private func signUp(email: String, password: String, displayName: String) async throws -> AuthResponse {
-        try await client.post(
-            ["api", "auth", "sign-up", "email"],
-            body: EmailSignupBody(
-                name: displayName,
-                email: normalizedEmail(email),
-                password: password,
-                callbackURL: CloudflareConfig.authCallbackURL.absoluteString
-            )
-        )
+    func chooseName(_ name: String) throws -> AuthStep {
+        try model.chooseName(name: name)
     }
 
-    func finishEmailOnboardingAfterConfirm(displayName: String, mobilityAids: [String]) async throws {
-        try await updateOnboardingProfile(displayName: displayName, mobilityAids: mobilityAids)
+    func finishMobility(_ aids: [String]) async throws -> AuthStep {
+        try await model.finishMobility(aids: aids)
     }
 
-    func resendConfirmationEmail(email: String) async throws {
-        let _: AuthResponse = try await client.post(
-            ["api", "auth", "send-verification-email"],
-            body: VerificationEmailBody(
-                email: normalizedEmail(email),
-                callbackURL: CloudflareConfig.authCallbackURL.absoluteString
-            )
-        )
+    func completeVerifiedSignUp() async throws -> AuthStep {
+        try await model.completeVerifiedSignUp()
     }
 
+    func resendVerificationEmail() async throws {
+        try await model.resendVerificationEmail()
+    }
+
+    /// The verification email opens `puspadi://auth/callback`.
     func handleAuthCallback(_ url: URL) async {
         guard url.scheme == CloudflareConfig.authCallbackURL.scheme else { return }
-        await restoreSession()
+        try? await model.restore()
     }
 
-    func signInAfterEmailConfirmed(email: String, password: String) async throws {
-        try await signInWithEmail(email: email, password: password)
-    }
+    // MARK: Apple / Google (native sheets → shared token exchange)
 
-    func updateOnboardingProfile(displayName: String, mobilityAids: [String]) async throws {
-        try await ProfileService.shared.updateOnboarding(displayName: displayName, mobilityAids: mobilityAids)
-    }
-
-    func profileNeedsOnboarding() async -> Bool {
-        guard isSignedIn else { return true }
-        guard let profile = try? await ProfileService.shared.fetchCurrent() else { return true }
-        return profile.needsOnboarding
-    }
-
-    static func pendingAppleSignIn(
-        from authorization: ASAuthorization,
-        rawNonce: String
-    ) throws -> (PendingAppleSignIn, String?) {
+    func signInWithApple(authorization: ASAuthorization, rawNonce: String) async throws -> AuthStep {
         guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
               let tokenData = credential.identityToken,
               let idToken = String(data: tokenData, encoding: .utf8) else {
@@ -174,93 +97,36 @@ final class AuthSessionStore: ObservableObject {
             PersonNameComponentsFormatter.localizedString(from: $0, style: .default)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         } ?? ""
-        let pending = PendingAppleSignIn(
+        // Apple shares the email and name only on the very first authorization.
+        let hasEmail = !(credential.email?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        return try await model.signInWithIdToken(
+            provider: "apple",
             idToken: idToken,
-            rawNonce: rawNonce,
-            appleEmail: credential.email?.trimmingCharacters(in: .whitespacesAndNewlines),
-            fullName: fullName,
-            givenName: credential.fullName?.givenName,
-            familyName: credential.fullName?.familyName
+            nonce: rawNonce,
+            suggestedName: fullName.isEmpty ? nil : fullName,
+            isNewAccount: hasEmail || !fullName.isEmpty
         )
-        return (pending, fullName.isEmpty ? nil : fullName)
     }
 
-    func completeAppleSignup(
-        pending: PendingAppleSignIn,
-        displayName: String,
-        mobilityAids: [String]
-    ) async throws {
-        try beginAuthAction()
-        defer { authActionInFlight = false }
-        let user = try await socialSignIn(provider: "apple", token: pending.idToken, nonce: pending.rawNonce)
-        try await accept(user)
-        providers.insert("apple")
-        let name = displayName.isEmpty ? (pending.fullName.isEmpty ? "You" : pending.fullName) : displayName
-        try await updateOnboardingProfile(displayName: name, mobilityAids: mobilityAids)
-    }
-
-    @discardableResult
-    func signInWithAppleReturningUser(
-        authorization: ASAuthorization,
-        rawNonce: String
-    ) async throws -> String? {
-        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
-              let tokenData = credential.identityToken,
-              let idToken = String(data: tokenData, encoding: .utf8) else {
-            throw AuthFlowError.appleSignInFailed
-        }
-        try beginAuthAction()
-        defer { authActionInFlight = false }
-        let user = try await socialSignIn(provider: "apple", token: idToken, nonce: rawNonce)
-        try await accept(user)
-        providers.insert("apple")
-        return nil
-    }
-
-    /// Returns Google's display name so a new account can prefill onboarding.
-    func signInWithGoogle() async throws -> String? {
-        try beginAuthAction()
-        defer { authActionInFlight = false }
+    func signInWithGoogle() async throws -> AuthStep {
         guard !CloudflareConfig.googleClientID.isEmpty else { throw AuthFlowError.googleNotConfigured }
         guard let presenter = Self.presentingViewController() else { throw AuthFlowError.googleSignInFailed }
         GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: CloudflareConfig.googleClientID)
         let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: presenter)
         guard let idToken = result.user.idToken?.tokenString else { throw AuthFlowError.googleSignInFailed }
-        let user = try await socialSignIn(provider: "google", token: idToken, nonce: nil)
-        try await accept(user)
-        providers.insert("google")
-        return result.user.profile?.name
-    }
-
-    private func socialSignIn(provider: String, token: String, nonce: String?) async throws -> AuthUser? {
-        let response: AuthResponse = try await client.post(
-            ["api", "auth", "sign-in", "social"],
-            body: SocialSignInBody(provider: provider, idToken: .init(token: token, nonce: nonce)),
-            capturesSession: true
+        return try await model.signInWithIdToken(
+            provider: "google",
+            idToken: idToken,
+            nonce: nil,
+            suggestedName: result.user.profile?.name,
+            isNewAccount: false
         )
-        return response.user
     }
 
-    static func isFirstAppleAuthorization(_ authorization: ASAuthorization) -> Bool {
-        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else { return false }
-        let hasEmail = !(credential.email?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
-        let name = credential.fullName.map {
-            PersonNameComponentsFormatter.localizedString(from: $0, style: .default)
-        } ?? ""
-        return hasEmail || !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
+    // MARK: Account
 
     func updatePassword(currentPassword: String, newPassword: String) async throws {
-        guard AuthPasswordRules.isValid(newPassword) else { throw AuthFlowError.invalidPassword }
-        let _: AuthResponse = try await client.post(
-            ["api", "auth", "change-password"],
-            body: ChangePasswordBody(
-                currentPassword: currentPassword,
-                newPassword: newPassword,
-                revokeOtherSessions: true
-            ),
-            authenticated: true
-        )
+        try await model.changePassword(currentPassword: currentPassword, newPassword: newPassword)
     }
 
     func updateMobilityProfile(_ profile: MobilityProfile) async throws {
@@ -268,48 +134,8 @@ final class AuthSessionStore: ObservableObject {
     }
 
     func signOut() async {
-        lastError = nil
-        try? await client.send(["api", "auth", "sign-out"], method: "POST", authenticated: true)
-        AuthTokenStore.clear()
+        try? await model.signOut()
         GIDSignIn.sharedInstance.signOut()
-        session = nil
-        providers = []
-        NotificationCenter.default.post(name: .rollspotAuthStateDidChange, object: nil)
-    }
-
-    private func restoreSession() async {
-        guard AuthTokenStore.load() != nil else { return }
-        do {
-            let response: SessionResponse = try await client.get(
-                ["api", "auth", "get-session"],
-                authenticated: true
-            )
-            try await accept(response.user)
-        } catch {
-            AuthTokenStore.clear()
-            session = nil
-        }
-    }
-
-    private func accept(_ user: AuthUser?) async throws {
-        guard let user else { throw APIClientError.missingSessionToken }
-        session = AppSession(userId: user.id, email: user.email)
-        if let response: ProvidersResponse = try? await client.get(
-            ["v1", "auth", "providers"],
-            authenticated: true
-        ) {
-            providers = Set(response.providers)
-        }
-        NotificationCenter.default.post(name: .rollspotAuthStateDidChange, object: nil)
-    }
-
-    private func beginAuthAction() throws {
-        if authActionInFlight { throw AuthFlowError.actionInProgress }
-        authActionInFlight = true
-    }
-
-    private func normalizedEmail(_ value: String) -> String {
-        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
     private static func presentingViewController() -> UIViewController? {
@@ -320,34 +146,21 @@ final class AuthSessionStore: ObservableObject {
     }
 }
 
-enum AuthDebug {
-    static func log(_ message: String, file: String = #file, line: Int = #line) {
-        #if DEBUG
-        print("[Auth] \((file as NSString).lastPathComponent):\(line) \(message)")
-        #endif
-    }
-}
-
-enum EmailSignupResult { case ready, needsEmailConfirmation }
-
 enum AuthFlowError: LocalizedError {
     case appleSignInFailed
     case googleSignInFailed
     case googleNotConfigured
-    case invalidPassword
-    case actionInProgress
 
     var errorDescription: String? {
         switch self {
         case .appleSignInFailed: "Sign in with Apple failed. Try again.".localized
         case .googleSignInFailed: "Sign in with Google failed. Try again.".localized
         case .googleNotConfigured: "Google Sign-In has not been configured yet.".localized
-        case .invalidPassword: "Use at least 8 characters, including a number and a special character.".localized
-        case .actionInProgress: "Please wait for the current sign-in to finish.".localized
         }
     }
 }
 
+/// Apple requires the SHA-256 of a random nonce in the request and the raw nonce at the server.
 enum AppleSignInNonce {
     static func random(length: Int = 32) -> String {
         var bytes = [UInt8](repeating: 0, count: length)
@@ -363,16 +176,24 @@ enum AppleSignInNonce {
     }
 }
 
-enum AuthPasswordRules {
-    static func isValid(_ password: String) -> Bool {
-        password.count >= 8
-            && password.contains(where: \.isNumber)
-            && password.contains { !$0.isLetter && !$0.isNumber }
+extension AuthRoute {
+    /// The screen for a shared `AuthStep`; nil means the flow is finished.
+    init?(_ step: AuthStep) {
+        switch onEnum(of: step) {
+        case .welcome, .done: return nil
+        case .emailFound(let found): self = .emailFound(found.email)
+        case .createPassword(let create): self = .createPassword(create.email)
+        case .name: self = .name
+        case .mobility: self = .mobility
+        case .verifyEmail(let verify): self = .verifyEmail(verify.email)
+        }
     }
+}
 
-    static func looksLikeEmail(_ value: String) -> Bool {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let at = trimmed.firstIndex(of: "@") else { return false }
-        return trimmed.count >= 5 && trimmed[trimmed.index(after: at)...].contains(".")
+extension AuthStep {
+    /// Name prefill carried by the step (e.g. the name Apple or Google shared).
+    var suggestedName: String? {
+        if case .name(let name) = onEnum(of: self) { return name.suggestedName }
+        return nil
     }
 }

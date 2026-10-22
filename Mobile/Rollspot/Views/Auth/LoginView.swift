@@ -1,3 +1,4 @@
+import Shared
 import SwiftUI
 
 struct LoginView: View {
@@ -6,8 +7,6 @@ struct LoginView: View {
     var onExploreMalls: () -> Void
 
     @State private var path: [AuthRoute] = []
-    @State private var signupPassword = ""
-    @State private var pendingAppleSignIn: PendingAppleSignIn?
     @State private var displayName: String = ""
     @State private var mobilityAids: Set<String> = []
 
@@ -17,55 +16,22 @@ struct LoginView: View {
                 onCancel: onCancel,
                 onSuccess: onSuccess,
                 path: $path,
-                pendingAppleSignIn: $pendingAppleSignIn,
-                displayName: $displayName,
-                mobilityAids: $mobilityAids
+                displayName: $displayName
             )
             .toolbar(.hidden, for: .navigationBar)
             .navigationBarBackButtonHidden(true)
             .navigationDestination(for: AuthRoute.self) { route in
                 switch route {
                 case .emailFound(let email):
-                    AuthEmailFoundView(
-                        email: email,
-                        onSuccess: onSuccess,
-                        path: $path,
-                        pendingAppleSignIn: $pendingAppleSignIn,
-                        displayName: $displayName,
-                        mobilityAids: $mobilityAids
-                    )
+                    AuthEmailFoundView(email: email, onSuccess: onSuccess, path: $path, displayName: $displayName)
                 case .createPassword(let email):
-                    AuthCreatePasswordView(
-                        email: email,
-                        signupPassword: $signupPassword,
-                        path: $path
-                    )
-                case .verifyEmail(let email, let password, let displayName, let mobilityAids):
-                    AuthVerifyEmailView(
-                        email: email,
-                        password: password,
-                        displayName: displayName,
-                        mobilityAids: mobilityAids,
-                        path: $path,
-                        onSuccess: onSuccess
-                    )
-                case .name(let email, let password):
-                    AuthNameView(
-                        email: email,
-                        password: password,
-                        displayName: $displayName,
-                        path: $path
-                    )
-                case .mobility(let email, let password, let displayName):
-                    AuthMobilityView(
-                        email: email,
-                        password: password,
-                        pendingAppleSignIn: $pendingAppleSignIn,
-                        mobilityAids: $mobilityAids,
-                        displayName: displayName,
-                        path: $path,
-                        onSuccess: onSuccess
-                    )
+                    AuthCreatePasswordView(email: email, path: $path, displayName: $displayName)
+                case .verifyEmail(let email):
+                    AuthVerifyEmailView(email: email, onSuccess: onSuccess)
+                case .name:
+                    AuthNameView(displayName: $displayName, path: $path)
+                case .mobility:
+                    AuthMobilityView(mobilityAids: $mobilityAids, path: $path, onSuccess: onSuccess)
                 case .allSet:
                     AuthAllSetView(onExplore: onExploreMalls)
                 }
@@ -84,9 +50,7 @@ struct AuthWelcomeView: View {
     var onCancel: () -> Void
     var onSuccess: () -> Void
     @Binding var path: [AuthRoute]
-    @Binding var pendingAppleSignIn: PendingAppleSignIn?
     @Binding var displayName: String
-    @Binding var mobilityAids: Set<String>
     @EnvironmentObject private var auth: AuthSessionStore
     @State private var email = ""
     @State private var isCheckingEmail = false
@@ -137,16 +101,14 @@ struct AuthWelcomeView: View {
 
                 AuthContinueButton(
                     title: "Continue with Email".localized,
-                    enabled: AuthPasswordRules.looksLikeEmail(email),
+                    enabled: AuthRules.shared.looksLikeEmail(value: email),
                     isLoading: isCheckingEmail
                 ) {
                     Task { await continueWithEmail() }
                 }
 
                 AuthSocialButtons(
-                    onSuccess: onSuccess,
-                    onNeedsOnboarding: beginSocialOnboarding,
-                    onDeferAppleSignIn: deferAppleSignIn,
+                    onStep: { advanceAuth(to: $0, path: $path, displayName: $displayName, onDone: onSuccess) },
                     showsOrLabel: true
                 )
 
@@ -157,29 +119,15 @@ struct AuthWelcomeView: View {
     }
 
     private func continueWithEmail() async {
-        guard !isCheckingEmail, AuthPasswordRules.looksLikeEmail(email) else { return }
+        guard !isCheckingEmail, AuthRules.shared.looksLikeEmail(value: email) else { return }
         isCheckingEmail = true
         errorMessage = nil
         defer { isCheckingEmail = false }
-        let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         do {
-            path.append(try await auth.emailRegistered(normalized) ? .emailFound(normalized) : .createPassword(normalized))
+            let step = try await auth.continueWithEmail(email)
+            advanceAuth(to: step, path: $path, displayName: $displayName, onDone: onSuccess)
         } catch {
             errorMessage = error.localizedDescription
         }
-    }
-
-    private func beginSocialOnboarding(suggestedName: String?) {
-        displayName = suggestedName ?? ""
-        mobilityAids = []
-        AuthDebug.log(
-            "beginAppleOnboarding name=\(displayName) pendingApple=\(pendingAppleSignIn != nil)"
-        )
-        path.append(.name(email: "", password: ""))
-    }
-
-    private func deferAppleSignIn(_ pending: PendingAppleSignIn, suggestedName: String?) {
-        pendingAppleSignIn = pending
-        beginSocialOnboarding(suggestedName: suggestedName)
     }
 }

@@ -72,6 +72,11 @@ dependencies {
     implementation(libs.compose.material.icons)
     debugImplementation(libs.compose.ui.tooling)
 
+    // Google Sign-In through Credential Manager (ID token → shared AuthModel)
+    implementation(libs.credentials)
+    implementation(libs.credentials.play.services)
+    implementation(libs.googleid)
+
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
 }

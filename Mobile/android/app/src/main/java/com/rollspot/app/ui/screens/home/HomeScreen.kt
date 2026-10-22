@@ -59,7 +59,7 @@ fun HomeScreen(navController: NavController) {
             Text("Rollspot", style = MaterialTheme.typography.headlineSmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 GlassButton(onClick = { navController.navigate("saved") }, icon = Icons.Default.Bookmark)
-                GlassButton(onClick = { navController.navigate("contribute") }, icon = Icons.Default.Person)
+                GlassButton(onClick = { navController.navigate("profile") }, icon = Icons.Default.Person)
             }
         }
         OutlinedTextField(

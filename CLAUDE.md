@@ -84,6 +84,8 @@ xcodebuild -project Mobile/Rollspot.xcodeproj -scheme Rollspot \
 - iOS (debug builds): Xcode scheme → Run → Environment Variables → `ROLLSPOT_API_BASE_URL=http://localhost:8787`
 - Android: add `rollspot.apiBaseUrl=http://10.0.2.2:8787` to `Mobile/local.properties`
 - Auth emails aren't sent locally; the verification link is printed in the `wrangler dev` output.
+- Copy `backend/.dev.vars.example` to `backend/.dev.vars` (keep `API_BASE_URL=http://localhost:8787` so links point at your machine).
+- Shared code against a running backend: `ROLLSPOT_LIVE_URL=http://localhost:8787 ./gradlew :shared:testDebugUnitTest --tests '*LiveBackendTest*' --rerun`
 
 A feature is done only when the backend typechecks, the shared tests pass, **both** apps build, and the
 acceptance criteria in its task file have been checked on a simulator/emulator.
