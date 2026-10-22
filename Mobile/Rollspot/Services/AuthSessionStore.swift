@@ -130,7 +130,13 @@ final class AuthSessionStore: ObservableObject {
     }
 
     func updateMobilityProfile(_ profile: MobilityProfile) async throws {
-        try await ProfileService.shared.updateMobilityAids(profile.storageAids)
+        try await ProfileService.shared.updateMobilityProfile(profile)
+    }
+
+    /// Permanently deletes the account on the server, then signs out.
+    func deleteAccount() async throws {
+        try await model.deleteAccount()
+        GIDSignIn.sharedInstance.signOut()
     }
 
     func signOut() async {

@@ -1,30 +1,28 @@
 import Foundation
+import Shared
 
-/// High-level mobility profile shown in My Account (maps to `profiles.mobility_aids`).
+/// The two roles shown in My Account. What each one stores, and how stored answers map
+/// back to a role, is the shared `MobilityRole` (same on Android).
 enum MobilityProfile: String, CaseIterable, Identifiable, Hashable {
     case wheelchairUser
     case communityContributor
 
     var id: String { rawValue }
 
-    var titleKey: String {
-        switch self {
-        case .wheelchairUser: return "Wheelchair User"
-        case .communityContributor: return "Community Contributor"
-        }
-    }
+    var titleKey: String { shared.label }
 
-    /// Stored `mobility_aids` values for this profile.
-    var storageAids: [String] {
+    var shared: MobilityRole {
         switch self {
-        case .wheelchairUser: return ["Wheelchair"]
-        case .communityContributor: return ["No mobility aid"]
+        case .wheelchairUser: .wheelchairUser
+        case .communityContributor: .communityContributor
         }
     }
 
     static func from(aids: [String]?) -> MobilityProfile? {
-        guard let aids, !aids.isEmpty else { return nil }
-        if aids.contains("Wheelchair") { return .wheelchairUser }
-        return .communityContributor
+        switch MobilityRole.companion.fromAids(aids: aids ?? []) {
+        case .wheelchairUser: .wheelchairUser
+        case .communityContributor: .communityContributor
+        default: nil
+        }
     }
 }

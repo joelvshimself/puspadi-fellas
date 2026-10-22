@@ -52,6 +52,7 @@ private class FakeServer {
                 respond("""{"id":"u1","pseudonym":"rollspot-u1","mobility_aids":[${profileAids.joinToString(",") { "\"$it\"" }}]}""", headers = json)
             }
             "/api/auth/sign-out" -> respond("""{"success":true}""", headers = json)
+            "/v1/me" -> respond("", HttpStatusCode.NoContent)
             else -> respond("""{"error":"not_found"}""", HttpStatusCode.NotFound, json)
         }
     }
@@ -135,6 +136,15 @@ class AuthModelTest {
     fun signOutForgetsTheSession() = runTest {
         model.signIn("known@rollspot.app", "Passw0rd!")
         model.signOut()
+        assertIs<AuthSession.SignedOut>(model.session.value)
+        assertEquals(null, tokens.load())
+    }
+
+    @Test
+    fun deleteAccountCallsTheServerAndSignsOut() = runTest {
+        model.signIn("known@rollspot.app", "Passw0rd!")
+        model.deleteAccount()
+        assertTrue("DELETE /v1/me" in server.calls)
         assertIs<AuthSession.SignedOut>(model.session.value)
         assertEquals(null, tokens.load())
     }

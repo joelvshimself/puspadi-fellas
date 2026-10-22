@@ -32,3 +32,20 @@ object MobilityAids {
         else -> "Community Contributor"
     }
 }
+
+/**
+ * The two profile roles shown in My Account. Picking one stores a canonical answer
+ * in `mobility_aids`; any stored answers map back to one role.
+ */
+enum class MobilityRole(val label: String, val storageAids: List<String>) {
+    WHEELCHAIR_USER("Wheelchair User", listOf(MobilityAids.WHEELCHAIR)),
+    COMMUNITY_CONTRIBUTOR("Community Contributor", listOf(MobilityAids.NONE));
+
+    companion object {
+        fun fromAids(aids: List<String>): MobilityRole? = when {
+            aids.isEmpty() -> null
+            MobilityAids.WHEELCHAIR in aids -> WHEELCHAIR_USER
+            else -> COMMUNITY_CONTRIBUTOR
+        }
+    }
+}

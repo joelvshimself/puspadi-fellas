@@ -3,8 +3,9 @@ import SwiftUI
 struct SavedView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var savedPlacesService = SavedPlacesService.shared
-    @State private var savedPlaces: [Place] = []
-    @State private var isLoading = true
+    /// A–Z from the shared model; unsaving anywhere removes the row here too.
+    private var savedPlaces: [Place] { savedPlacesService.savedPlaces }
+    private var isLoading: Bool { !savedPlacesService.hasLoaded && savedPlaces.isEmpty }
 
     var body: some View {
         Group {
@@ -75,17 +76,6 @@ struct SavedView: View {
         }
         .task {
             await savedPlacesService.fetchSavedPlaceIds()
-            let ids = savedPlacesService.savedPlaceIds
-            var resolved: [Place] = []
-            for placeId in ids {
-                if let place = await SavedPlaceSnapshotStore.resolve(placeId: placeId) {
-                    resolved.append(place)
-                }
-            }
-            savedPlaces = resolved.sorted {
-                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-            }
-            isLoading = false
         }
     }
 }

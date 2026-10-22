@@ -778,7 +778,7 @@ struct MockPlaceDetailView: View {
                     userName: resolvedName,
                     avatarURL: resolvedAvatar,
                     userRole: resolvedRole,
-                    dateLabel: ReviewService.profileDateLabel(row.createdAt),
+                    dateLabel: row.dateLabel,
                     notes: row.reviewText,
                     providedTags: row.providedFeatures,
                     photoURLs: row.photoURLs

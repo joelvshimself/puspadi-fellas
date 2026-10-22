@@ -199,6 +199,14 @@ class AuthModel(private val api: RollspotApi) {
         api.changePassword(currentPassword, newPassword)
     }
 
+    /** Deletes the account for good (App Store requirement), then behaves like sign-out. */
+    @Throws(Exception::class)
+    suspend fun deleteAccount() = guarded {
+        api.deleteAccount()
+        resetDraft()
+        _session.value = AuthSession.SignedOut
+    }
+
     @Throws(Exception::class)
     suspend fun signOut() {
         api.signOut()
