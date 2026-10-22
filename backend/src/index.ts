@@ -3,6 +3,7 @@ import type { Env } from "./env";
 import { HttpError, json, methodNotAllowed, readJson } from "./http";
 import { handleMediaRead, handleMediaUpload } from "./media";
 import { handleNearby, handlePlace, handleSavedPlaces, handleSearch } from "./places";
+import { handleDeleteAccount } from "./account";
 import { handleProfile } from "./profile";
 import { handleAdminSync, syncAllRegions } from "./sync";
 import {
@@ -75,6 +76,9 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
   if (url.pathname === "/v1/reviews") {
     return handleReviewsRoot(request, env, auth);
+  }
+  if (url.pathname === "/v1/me") {
+    return handleDeleteAccount(request, env, auth);
   }
   if (url.pathname === "/v1/me/reviews") {
     return handleMyReviews(request, env, auth);

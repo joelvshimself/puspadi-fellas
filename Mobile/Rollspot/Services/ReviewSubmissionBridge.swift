@@ -99,13 +99,13 @@ extension ReviewSubmitted {
     }
 }
 
-extension MyReviews {
+extension MyReviewsState {
     func asMyReviewsResponse() -> ReviewService.MyReviewsResponse {
         ReviewService.MyReviewsResponse(
             status: "ok",
             userName: userName,
             userRole: userRole,
-            profileImageUrl: profileImageUrl,
+            profileImageUrl: avatarUrl,
             reviews: reviews.compactMap { row in
                 guard let id = UUID(uuidString: row.id) else { return nil }
                 return ReviewService.MyReviewItem(
@@ -113,10 +113,11 @@ extension MyReviews {
                     placeId: row.placeId,
                     placeName: row.placeName,
                     createdAt: row.createdAt,
-                    reviewText: row.reviewText,
+                    dateLabel: row.dateLabel,
+                    reviewText: row.text,
                     providedFeatures: row.providedFeatures,
-                    photoUrls: row.photoUrls,
-                    photoCaptions: row.photoCaptions
+                    photoUrls: row.photos.map(\.url),
+                    photoCaptions: row.photos.map(\.caption)
                 )
             }
         )

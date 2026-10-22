@@ -1,5 +1,11 @@
 package com.rollspot.app.ui.screens.place
 
+import android.widget.Toast
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.outlined.BookmarkBorder
+import app.rollspot.shared.api.Place
+import app.rollspot.shared.saved.SaveOutcome
+import kotlinx.coroutines.launch
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -46,6 +52,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -93,7 +100,7 @@ private enum class DetailSection(val title: String) { OVERVIEW("Overview"), REVI
  * Everything shown comes from the shared `PlaceDetailModel`; this file only draws it.
  */
 @Composable
-fun PlaceDetailScreen(placeId: String, onNavigateBack: () -> Unit, onContribute: () -> Unit) {
+fun PlaceDetailScreen(placeId: String, onNavigateBack: () -> Unit, onContribute: () -> Unit, onNeedsSignIn: () -> Unit) {
     val sdk = rollspotSdk()
     val viewModel: PlaceDetailViewModel = viewModel(key = placeId) { PlaceDetailViewModel(sdk, placeId) }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -107,6 +114,12 @@ fun PlaceDetailScreen(placeId: String, onNavigateBack: () -> Unit, onContribute:
         }
 
         BackButton(onNavigateBack, Modifier.align(Alignment.TopStart))
+        val loadedPlace = when (val current = state) {
+            is PlaceDetailState.Loaded -> current.detail.place
+            is PlaceDetailState.Empty -> current.detail.place
+            else -> null
+        }
+        if (loadedPlace != null) SaveButton(loadedPlace, onNeedsSignIn, Modifier.align(Alignment.TopEnd))
 
         // First-visit "Share what you know" hint (Figma "Intro to contribute"), shown once per
         // install and never over the empty state, which already asks for a contribution.
@@ -220,6 +233,41 @@ private fun Hero(url: String?) {
                 Icon(Icons.Default.PhotoLibrary, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(48.dp))
                 Text("No Photos Available", color = Color.Gray, fontSize = 15.sp, modifier = Modifier.padding(top = 8.dp))
             }
+        }
+    }
+}
+
+/** Bookmark: flips at once, flips back if the server refuses (shared SavedPlacesModel). */
+@Composable
+private fun SaveButton(place: Place, onNeedsSignIn: () -> Unit, modifier: Modifier = Modifier) {
+    val saved = rollspotSdk().saved
+    val state by saved.state.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val isSaved = state.isSaved(place.id)
+    Surface(
+        shape = CircleShape,
+        color = Color.White,
+        shadowElevation = 4.dp,
+        modifier = modifier.statusBarsPadding().padding(16.dp).size(44.dp),
+    ) {
+        IconButton(
+            onClick = {
+                scope.launch {
+                    when (val outcome = saved.toggle(place)) {
+                        SaveOutcome.NeedsSignIn -> onNeedsSignIn()
+                        is SaveOutcome.Failed -> Toast.makeText(context, outcome.message, Toast.LENGTH_SHORT).show()
+                        else -> Unit
+                    }
+                }
+            },
+            enabled = place.id !in state.pending,
+        ) {
+            Icon(
+                if (isSaved) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                contentDescription = if (isSaved) "Remove from saved" else "Save place",
+                tint = if (isSaved) Color(0xFF007AFF) else Color.Black,
+            )
         }
     }
 }

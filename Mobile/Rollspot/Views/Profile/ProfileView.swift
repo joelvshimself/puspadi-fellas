@@ -208,6 +208,20 @@ struct ProfileView: View {
         }
     }
 
+    /// Avatars show at most ~100pt; 1024px keeps them sharp and far under the 5 MB upload limit.
+    private static func avatarJPEG(from image: UIImage) -> Data? {
+        let longest = max(image.size.width, image.size.height)
+        guard longest > 1024 else { return image.jpegData(compressionQuality: 0.85) }
+        let scale = 1024 / longest
+        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        let resized = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+        return resized.jpegData(compressionQuality: 0.85)
+    }
+
     private func uploadAvatar(from item: PhotosPickerItem) async {
         isUploadingAvatar = true
         defer {
@@ -216,7 +230,7 @@ struct ProfileView: View {
         }
         guard let data = try? await item.loadTransferable(type: Data.self),
               let image = UIImage(data: data),
-              let jpeg = image.jpegData(compressionQuality: 0.85)
+              let jpeg = Self.avatarJPEG(from: image)
         else { return }
         do {
             let urlString = try await ProfileService.shared.uploadAvatar(jpegData: jpeg)

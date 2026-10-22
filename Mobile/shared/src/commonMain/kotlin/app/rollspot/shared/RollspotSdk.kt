@@ -2,13 +2,22 @@ package app.rollspot.shared
 
 import app.rollspot.shared.api.RollspotApi
 import app.rollspot.shared.auth.AuthModel
+import app.rollspot.shared.auth.AuthSession
 import app.rollspot.shared.auth.TokenStore
 import app.rollspot.shared.map.PlaceSearchProvider
 import app.rollspot.shared.map.RepositoryPlaceSearchProvider
 import app.rollspot.shared.place.PlaceDetailModel
 import app.rollspot.shared.places.PlaceRepository
+import app.rollspot.shared.profile.MyReviewsModel
+import app.rollspot.shared.profile.ProfileModel
 import app.rollspot.shared.reviews.ReviewModel
+import app.rollspot.shared.saved.SavedPlacesModel
 import io.ktor.client.engine.HttpClientEngine
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.launch
 
 /**
  * The one object each app creates at launch (manual DI). Feature models take
@@ -32,6 +41,29 @@ class RollspotSdk(
     /** One per place page; call `close()` when the page goes away. */
     fun placeDetailModel(placeKey: String) = PlaceDetailModel(api, placeKey)
     val reviews = ReviewModel(api)
+
+    val profile = ProfileModel(api)
+    val myReviews = MyReviewsModel(api)
+    val saved = SavedPlacesModel(api) { auth.isSignedIn }
+
+    /** Lives as long as the app: keeps per-user models in step with the session. */
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    init {
+        appScope.launch {
+            auth.session.distinctUntilChangedBy { (it as? AuthSession.SignedIn)?.user?.id }.collect { session ->
+                when (session) {
+                    // Saved state drives the bookmark on every place page, so load it right away.
+                    is AuthSession.SignedIn -> runCatching { saved.load() }
+                    else -> {
+                        saved.clear()
+                        profile.clear()
+                        myReviews.clear()
+                    }
+                }
+            }
+        }
+    }
 
     companion object {
         const val PRODUCTION_URL = "https://api.rollspot.app"

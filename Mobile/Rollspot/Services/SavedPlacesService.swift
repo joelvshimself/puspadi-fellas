@@ -1,5 +1,8 @@
 import Foundation
+import Shared
 
+/// SwiftUI face of the shared `SavedPlacesModel`. Optimistic saving, rollback, the
+/// one-request-per-place guard and clearing on sign-out all happen in shared code.
 @MainActor
 final class SavedPlacesService: ObservableObject {
     static let shared = SavedPlacesService()
@@ -11,80 +14,56 @@ final class SavedPlacesService: ObservableObject {
         case failed(String)
     }
 
-    private struct SavedPlacesResponse: Decodable { let placeIds: [String] }
-
     @Published private(set) var savedPlaceIds: Set<String> = []
-    private var mutationsInFlight: Set<String> = []
-    private var stateVersion = 0
-    private var fetchVersion = 0
-    private let client = CloudflareAPIClient.shared
-    private var authObserver: NSObjectProtocol?
+    /// Saved places A–Z, with the data the directory returned.
+    @Published private(set) var savedPlaces: [Place] = []
+    @Published private(set) var hasLoaded = false
+
+    private var model: SavedPlacesModel { RollspotServices.sdk.saved }
 
     private init() {
-        authObserver = NotificationCenter.default.addObserver(
-            forName: .rollspotAuthStateDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in await self?.refreshForAuthChange() }
+        Task { [weak self] in
+            guard let states = self?.model.state else { return }
+            for await state in states {
+                self?.apply(state)
+            }
         }
     }
 
     func fetchSavedPlaceIds() async {
-        fetchVersion += 1
-        let thisFetch = fetchVersion
-        let startingStateVersion = stateVersion
-        guard AuthTokenStore.load() != nil else {
-            savedPlaceIds = []
-            return
-        }
-        do {
-            let response: SavedPlacesResponse = try await client.get(
-                ["v1", "saved-places"],
-                authenticated: true
-            )
-            guard thisFetch == fetchVersion, startingStateVersion == stateVersion else { return }
-            savedPlaceIds = Set(response.placeIds)
-        } catch {
-            print("[SavedPlacesService] Fetch failed: \(error)")
-        }
+        try? await model.load()
     }
 
     func isSaved(placeId: String) -> Bool { savedPlaceIds.contains(placeId) }
 
     @discardableResult
     func toggleSave(placeId: String, place: Place? = nil) async -> SaveOutcome {
-        guard AuthTokenStore.load() != nil else { return .needsSignIn }
-        guard mutationsInFlight.insert(placeId).inserted else {
-            return .failed("This place is already being updated.")
-        }
-        defer { mutationsInFlight.remove(placeId) }
-        stateVersion += 1
-
-        let removing = savedPlaceIds.contains(placeId)
-        do {
-            if removing {
-                try await client.delete(["v1", "saved-places", placeId])
-                savedPlaceIds.remove(placeId)
-                SavedPlaceSnapshotStore.remove(placeId: placeId)
-                return .removed
+        // The shared model needs the directory row; saved places already have it.
+        let shared: Shared.Place
+        if let known = model.state.value.places.first(where: { $0.id == placeId }) {
+            shared = known
+        } else if RollspotServices.sdk.auth.isSignedIn {
+            do {
+                shared = try await RollspotServices.sdk.places.place(key: placeId)
+            } catch {
+                return .failed(error.localizedDescription)
             }
-            try await client.send(["v1", "saved-places", placeId], method: "PUT", authenticated: true)
-            savedPlaceIds.insert(placeId)
-            if let place { SavedPlaceSnapshotStore.save(place, placeId: placeId) }
-            return .saved
-        } catch {
-            return .failed(error.localizedDescription)
+        } else {
+            return .needsSignIn
+        }
+        // Only throws if cancelled; the model reports real failures as an outcome.
+        guard let outcome = try? await model.toggle(place: shared) else { return .failed("Cancelled") }
+        switch onEnum(of: outcome) {
+        case .saved: return .saved
+        case .removed: return .removed
+        case .needsSignIn: return .needsSignIn
+        case .failed(let failure): return .failed(failure.message)
         }
     }
 
-    private func refreshForAuthChange() async {
-        stateVersion += 1
-        fetchVersion += 1
-        if AuthTokenStore.load() == nil {
-            savedPlaceIds = []
-        } else {
-            await fetchSavedPlaceIds()
-        }
+    private func apply(_ state: SavedPlacesState) {
+        savedPlaceIds = state.placeIds
+        savedPlaces = state.places.map { NearbyPlacesService.makePlace(from: $0, distanceFrom: nil) }
+        hasLoaded = state.hasLoaded
     }
 }

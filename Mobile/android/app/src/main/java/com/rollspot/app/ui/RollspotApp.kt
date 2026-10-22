@@ -8,11 +8,14 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.rollspot.app.ui.screens.home.HomeScreen
 import com.rollspot.app.ui.screens.place.PlaceDetailScreen
-import com.rollspot.app.ui.screens.saved.SavedScreen
 import com.rollspot.app.ui.screens.contribute.ContributeFlowScreen
 import com.rollspot.app.ui.screens.contribute.ContributePlaceSearchScreen
 import com.rollspot.app.ui.screens.contribute.ContributeScreen
-import com.rollspot.app.ui.screens.account.AccountScreen
+import com.rollspot.app.ui.screens.profile.AboutScreen
+import com.rollspot.app.ui.screens.profile.MyAccountScreen
+import com.rollspot.app.ui.screens.profile.ProfileScreen
+import com.rollspot.app.ui.screens.profile.ProfileSettingsScreen
+import com.rollspot.app.ui.screens.profile.SavedPlacesScreen
 import com.rollspot.app.ui.screens.auth.AuthFlowScreen
 
 @Composable
@@ -38,33 +41,55 @@ fun RollspotApp() {
                 placeId = placeId,
                 onNavigateBack = { navController.popBackStack() },
                 onContribute = { navController.navigate("contribute/flow/$placeId") },
+                onNeedsSignIn = { navController.navigate("auth") },
             )
         }
 
         composable("saved") {
-            SavedScreen(onNavigateBack = { navController.popBackStack() })
+            SavedPlacesScreen(
+                onBack = { navController.popBackStack() },
+                onOpenPlace = { navController.navigate("place/$it") },
+            )
         }
         
         // Profile button: the account when signed in, otherwise the sign-in flow.
         composable("profile") {
             val auth = rollspotSdk().auth
             androidx.compose.runtime.LaunchedEffect(Unit) {
-                navController.navigate(if (auth.isSignedIn) "account" else "auth") { popUpTo("profile") { inclusive = true } }
+                navController.navigate(if (auth.isSignedIn) "me" else "auth") { popUpTo("profile") { inclusive = true } }
             }
         }
 
         composable("auth") {
             AuthFlowScreen(
-                onDone = { navController.navigate("account") { popUpTo("auth") { inclusive = true } } },
+                onDone = { navController.navigate("me") { popUpTo("auth") { inclusive = true } } },
                 onCancel = { navController.popBackStack() },
             )
         }
 
-        composable("account") {
-            AccountScreen(
-                onSignedOut = { navController.popBackStack() },
-                onNavigateBack = { navController.popBackStack() },
+        // Profile (F5): signed-in user's page, settings and account.
+        composable("me") {
+            ProfileScreen(
+                onBack = { navController.popBackStack() },
+                onOpenSettings = { navController.navigate("settings") },
+                onOpenPlace = { navController.navigate("place/$it") },
             )
+        }
+        composable("settings") {
+            ProfileSettingsScreen(
+                onBack = { navController.popBackStack() },
+                onNavigate = { navController.navigate(it) },
+                onSignedOut = { navController.popBackStack("home", inclusive = false) },
+            )
+        }
+        composable("my-account") {
+            MyAccountScreen(
+                onBack = { navController.popBackStack() },
+                onAccountDeleted = { navController.popBackStack("home", inclusive = false) },
+            )
+        }
+        composable("about") {
+            AboutScreen(onBack = { navController.popBackStack() })
         }
 
         composable("contribute") {

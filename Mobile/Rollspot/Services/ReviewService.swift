@@ -45,6 +45,8 @@ final class ReviewService {
         let placeId: String
         let placeName: String
         let createdAt: String
+        /// Same date format as Android (shared).
+        let dateLabel: String
         let reviewText: String
         let providedFeatures: [String]
         let photoUrls: [String]
@@ -152,16 +154,15 @@ final class ReviewService {
 
     /// Fetches reviews authored by the signed-in user.
     func fetchMyReviews() async throws -> MyReviewsResponse {
-        try await reviews.loadMine().asMyReviewsResponse()
+        let model = RollspotServices.sdk.myReviews
+        try await model.load()
+        return model.state.value.asMyReviewsResponse()
     }
 
     /// Deletes the signed-in user's review and its photos.
     func deleteMyReview(id: UUID) async throws {
-        try await reviews.delete(reviewId: id.uuidString)
-    }
-
-    static func profileDateLabel(_ createdAt: String) -> String {
-        listDateLabel(from: createdAt)
+        // Removed at once and restored if the server refuses (shared MyReviewsModel).
+        try await RollspotServices.sdk.myReviews.delete(reviewId: id.uuidString.lowercased())
     }
 
     static func listDateLabel(from date: Date) -> String {

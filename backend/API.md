@@ -125,6 +125,7 @@ Each photo is
 | GET | `/v1/profile` | → `Profile` (created on first call) |
 | PATCH | `/v1/profile` | `{ displayName?, mobilityAids?: string[], showRealName? }` → `Profile` |
 | PUT | `/v1/profile/avatar` | Raw `image/jpeg` ≤ 5 MB → `{ url }` |
+| DELETE | `/v1/me` | **Deletes the account** with its reviews, saved places, profile and uploaded photos; ends all sessions. 204 |
 
 `Profile`: `{ id, display_name, avatar_url, mobility_aids: string[], pseudonym, show_real_name }`
 

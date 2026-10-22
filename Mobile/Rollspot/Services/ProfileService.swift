@@ -1,61 +1,50 @@
 import Foundation
+import Shared
 
-struct UserProfileRow: Decodable {
-    let id: UUID
+/// The profile fields Swift screens read. Built from the shared `ProfileModel` state.
+struct UserProfileRow {
+    let id: String
     let displayName: String?
     let avatarUrl: String?
     let mobilityAids: [String]?
-    let pseudonym: String?
-    let showRealName: Bool?
 
     var needsOnboarding: Bool { mobilityAids?.isEmpty ?? true }
 }
 
-private struct ProfileUpdate: Encodable {
-    var displayName: String?
-    var mobilityAids: [String]?
-}
-
-private struct AvatarResponse: Decodable { let url: String }
-
+/// Thin Swift entry point to the shared `ProfileModel` (Mobile/shared/.../profile).
+/// Validation, saving and the avatar cache-busting all live there, same as Android.
 final class ProfileService {
     static let shared = ProfileService()
-    private let client = CloudflareAPIClient.shared
+    private var model: ProfileModel { RollspotServices.sdk.profile }
 
     private init() {}
 
     func fetchCurrent() async throws -> UserProfileRow? {
-        let row: UserProfileRow = try await client.get(["v1", "profile"], authenticated: true)
-        return row
+        try await model.load()
+        return current
     }
 
-    func updateOnboarding(displayName: String, mobilityAids: [String]) async throws {
-        let _: UserProfileRow = try await client.patch(
-            ["v1", "profile"],
-            body: ProfileUpdate(displayName: displayName, mobilityAids: mobilityAids)
-        )
+    /// What the shared model last loaded, without a request.
+    var current: UserProfileRow? {
+        model.state.value.profile.map {
+            UserProfileRow(id: $0.id, displayName: $0.displayName, avatarUrl: $0.avatarUrl, mobilityAids: $0.mobilityAids)
+        }
     }
 
     func updateDisplayName(_ name: String) async throws {
-        let _: UserProfileRow = try await client.patch(
-            ["v1", "profile"],
-            body: ProfileUpdate(displayName: name, mobilityAids: nil)
-        )
+        try await model.updateDisplayName(name: name)
     }
 
     func updateMobilityAids(_ mobilityAids: [String]) async throws {
-        let _: UserProfileRow = try await client.patch(
-            ["v1", "profile"],
-            body: ProfileUpdate(displayName: nil, mobilityAids: mobilityAids)
-        )
+        try await model.updateMobilityAids(aids: mobilityAids)
     }
 
+    func updateMobilityProfile(_ profile: MobilityProfile) async throws {
+        try await model.updateMobilityRole(role: profile.shared)
+    }
+
+    /// Returns the new avatar URL (already cache-busted by the shared model).
     func uploadAvatar(jpegData: Data) async throws -> String {
-        let response: AvatarResponse = try await client.putData(
-            ["v1", "profile", "avatar"],
-            data: jpegData,
-            contentType: "image/jpeg"
-        )
-        return response.url
+        try await model.uploadAvatar(jpeg: jpegData.asKotlinByteArray())
     }
 }

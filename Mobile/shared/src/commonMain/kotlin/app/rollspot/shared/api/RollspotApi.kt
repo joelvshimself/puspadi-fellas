@@ -200,6 +200,13 @@ class RollspotApi(
     suspend fun linkedProviders(): List<String> =
         call<Providers>(HttpMethod.Get, listOf("v1", "auth", "providers"), auth = true).providers
 
+    /** Permanently deletes the account, its reviews, saved places and photos. Forgets the session. */
+    @Throws(Exception::class)
+    suspend fun deleteAccount() {
+        send(HttpMethod.Delete, listOf("v1", "me"), auth = true)
+        tokens.clear()
+    }
+
     @Throws(Exception::class)
     suspend fun changePassword(currentPassword: String, newPassword: String) {
         send(HttpMethod.Post, listOf("api", "auth", "change-password"), auth = true) {

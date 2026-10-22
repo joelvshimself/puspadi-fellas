@@ -138,10 +138,10 @@ struct ProfileReviewsView: View {
             let resolvedRole = response.userRole?.localized ?? mobilityLabel
             var places: [String: Place] = [:]
             for placeId in Set(response.reviews.map(\.placeId)) {
-                places[placeId] = await SavedPlaceSnapshotStore.resolve(placeId: placeId)
+                places[placeId] = await NearbyPlacesService.place(key: placeId)
             }
+            // Already newest first from the shared MyReviewsModel.
             let items = response.reviews
-                .sorted { $0.createdAt > $1.createdAt }
                 .map { row in
                 let resolved = places[row.placeId]
                 return ProfileReviewItem(
@@ -149,7 +149,7 @@ struct ProfileReviewsView: View {
                     userName: resolvedName,
                     userAvatarURL: resolvedAvatar,
                     userRole: resolvedRole,
-                    dateLabel: ReviewService.profileDateLabel(row.createdAt),
+                    dateLabel: row.dateLabel,
                     placeId: row.placeId,
                     placeName: resolved?.name ?? row.placeName,
                     notes: row.reviewText,

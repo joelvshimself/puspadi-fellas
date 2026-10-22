@@ -172,9 +172,17 @@ struct MyAccountView: View {
                 }
 
                 Button {
-                    showDeleteAccountSheet = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        isAccountDeleted = true
+                    Task {
+                        do {
+                            // Really deletes the account, reviews and photos on the server (shared AuthModel).
+                            try await auth.deleteAccount()
+                            showDeleteAccountSheet = false
+                            try? await Task.sleep(for: .milliseconds(300))
+                            isAccountDeleted = true
+                        } catch {
+                            showDeleteAccountSheet = false
+                            errorMessage = error.localizedDescription
+                        }
                     }
                 } label: {
                     Text("Delete".localized)
