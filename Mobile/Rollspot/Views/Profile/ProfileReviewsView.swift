@@ -28,6 +28,8 @@ struct ProfileReviewsView: View {
     @State private var reviewToDelete: ProfileReviewItem? = nil
     @State private var reviewToOpen: ProfileReviewItem? = nil
     @State private var reviewToEdit: ProfileReviewItem? = nil
+    @ObservedObject private var drafts = ContributeDraftsStore.shared
+    @State private var resumePlace: Place?
     @State private var showDeleteConfirmation = false
     @State private var isDeleting = false
     @State private var showSuccessToast = false
@@ -46,6 +48,19 @@ struct ProfileReviewsView: View {
                         .foregroundStyle(.primary)
                         .padding(.horizontal, 20)
                         .padding(.top, 16)
+
+                    // Design "Ongoing Review": the folded Home banner lives here too.
+                    if let waiting = drafts.waiting {
+                        ContinueSurveyBanner(contribution: waiting) {
+                            resumePlace = drafts.place(for: waiting)
+                        }
+                        .background(
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .fill(Color(uiColor: .systemBackground))
+                                .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
+                        )
+                        .padding(.horizontal, 20)
+                    }
 
                     if reviews.isEmpty {
                         VStack(spacing: 12) {
@@ -83,6 +98,16 @@ struct ProfileReviewsView: View {
                 .presentationDetents([.height(240)])
                 .presentationCornerRadius(28)
                 .presentationDragIndicator(.visible)
+        }
+        .fullScreenCover(item: $resumePlace) { place in
+            ContributeReviewFlowView(
+                place: place,
+                initialScreenIndex: UnfinishedReviewStore.snapshot(for: place)?.screenIndex ?? 0
+            ) {
+                resumePlace = nil
+                Task { await loadReviews() }
+            }
+            .environmentObject(auth)
         }
         .navigationDestination(item: $reviewToEdit) { review in
             EditResponseView(reviewId: review.id.uuidString.lowercased()) {

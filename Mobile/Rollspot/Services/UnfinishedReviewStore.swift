@@ -1,3 +1,4 @@
+import CoreLocation
 import Foundation
 
 /// Local persistence for in-progress contribute review flows.
@@ -166,6 +167,8 @@ enum UnfinishedReviewStore {
             categoryNotes: categoryNotes
         )
         persist(all)
+        // The Home "Continue Survey" banner reads the shared list.
+        RollspotServices.sdk.drafts.remember(placeId: placeId, placeName: place.name)
     }
 
     static func snapshot(for place: Place) -> Snapshot? {
@@ -177,9 +180,25 @@ enum UnfinishedReviewStore {
     }
 
     static func clear(for place: Place) {
+        clear(placeId: place.reviewPlaceId)
+    }
+
+    static func clear(placeId: String) {
         var all = loadAll()
-        all.removeValue(forKey: place.reviewPlaceId)
+        all.removeValue(forKey: placeId)
         persist(all)
+        RollspotServices.sdk.drafts.forget(placeId: placeId)
+    }
+
+    /// The place to resume a waiting contribution at, rebuilt from its snapshot.
+    static func place(forPlaceId placeId: String) -> Place? {
+        guard let snap = loadAll()[placeId] else { return nil }
+        return Place.fromSearchResult(
+            name: snap.placeName,
+            category: "Place",
+            coordinate: CLLocationCoordinate2D(latitude: snap.lat, longitude: snap.lng),
+            placeId: snap.placeId
+        )
     }
 
     static func restoreTags(_ labels: [String], for kind: FacilityKind) -> Set<ContributeTagOption> {

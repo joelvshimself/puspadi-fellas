@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 data class ContributeUiState(
@@ -45,7 +46,10 @@ class ContributeFlowViewModel(
     placeId: String,
 ) : ViewModel() {
     private val reviewModel: ReviewModel = sdk.reviews
-    private val flow = ContributeFlow(placeId = placeId, placeName = "")
+    // Picks up where the user left off on this device (shared ContributeDrafts).
+    private val flow = ContributeFlow(placeId = placeId, placeName = "", initial = sdk.drafts.restoreFlow(placeId))
+    /** Draft saves run one at a time, off the main thread. */
+    private val draftWriter = Dispatchers.IO.limitedParallelism(1)
 
     private val _ui = MutableStateFlow(ContributeUiState(placeId = placeId))
     val ui: StateFlow<ContributeUiState> = _ui.asStateFlow()
@@ -78,6 +82,11 @@ class ContributeFlowViewModel(
     }
 
     private fun publishFlow() {
+        if (!_ui.value.submitted) {
+            val snapshot = flow.state
+            val hasProgress = flow.hasProgress()
+            viewModelScope.launch(draftWriter) { sdk.drafts.saveFlow(snapshot, hasProgress) }
+        }
         val step = flow.currentStep()
         _ui.update {
             it.copy(
@@ -227,8 +236,15 @@ class ContributeFlowViewModel(
         publishFlow()
     }
 
+    /** "Discard & Leave": the draft goes too. */
     fun confirmExit(onExit: () -> Unit) {
+        forgetDraft()
         onExit()
+    }
+
+    private fun forgetDraft() {
+        val placeId = flow.state.placeId
+        viewModelScope.launch(draftWriter) { sdk.drafts.forget(placeId) }
     }
 
     fun submit() {
@@ -266,6 +282,7 @@ class ContributeFlowViewModel(
         try {
             reviewModel.submitContribution(flow.toSubmission(), flow.pendingPhotos())
             flow.markSubmitted()
+            forgetDraft()
             _ui.update { it.copy(isSubmitting = false, submitted = true) }
             publishFlow()
         } catch (e: Exception) {

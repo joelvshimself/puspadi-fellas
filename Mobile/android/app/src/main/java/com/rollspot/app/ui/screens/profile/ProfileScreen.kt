@@ -53,11 +53,13 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.rollspot.shared.drafts.WaitingContribution
 import app.rollspot.shared.profile.MyPhoto
 import app.rollspot.shared.profile.MyReviewItem
 import app.rollspot.shared.profile.ReviewNotes
 import coil3.compose.AsyncImage
 import com.rollspot.app.R
+import com.rollspot.app.ui.components.ContinueSurveyBanner
 import com.rollspot.app.ui.rollspotSdk
 import com.rollspot.app.ui.screens.contribute.jpegForUpload
 import com.rollspot.app.ui.theme.BackCircleButton
@@ -85,6 +87,7 @@ fun ProfileScreen(
     onOpenAbout: () -> Unit,
     onSignedOut: () -> Unit,
     onEditReview: (String) -> Unit = {},
+    onResumeContribution: (String) -> Unit = {},
     initialTab: ProfileTab = ProfileTab.Reviews,
     review: String? = null,
     reviewUpdated: Boolean = false,
@@ -93,6 +96,7 @@ fun ProfileScreen(
     val sdk = rollspotSdk()
     val profile by sdk.profile.state.collectAsStateWithLifecycle()
     val mine by sdk.myReviews.state.collectAsStateWithLifecycle()
+    val waiting by sdk.drafts.waiting.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val haze = remember { HazeState() }
@@ -145,6 +149,8 @@ fun ProfileScreen(
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     when (tab) {
                         ProfileTab.Reviews -> ReviewsTab(
+                            waiting = waiting,
+                            onResume = onResumeContribution,
                             reviews = mine.reviews,
                             loading = mine.isLoading && !mine.hasLoaded,
                             userName = mine.userName.takeIf { it != "You" } ?: profile.displayName,
@@ -285,6 +291,8 @@ private fun SectionTitle(text: String) {
 
 @Composable
 private fun ReviewsTab(
+    waiting: WaitingContribution?,
+    onResume: (String) -> Unit,
     reviews: List<MyReviewItem>,
     loading: Boolean,
     userName: String,
@@ -295,6 +303,17 @@ private fun ReviewsTab(
 ) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(bottom = 40.dp)) {
         item { SectionTitle("All reviews (${reviews.size})") }
+        // Design "Ongoing Review": the folded Home banner lives here too.
+        waiting?.let { contribution ->
+            item(key = "waiting") {
+                val shape = RoundedCornerShape(20.dp)
+                ContinueSurveyBanner(
+                    contribution, onOpen = { onResume(contribution.placeId) },
+                    modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth()
+                        .shadow(10.dp, shape, ambientColor = Color(0x0F000000), spotColor = Color(0x0F000000)).clip(shape).background(Color.White),
+                )
+            }
+        }
         when {
             loading -> item { Loading() }
             reviews.isEmpty() -> item { EmptyState(Icons.Outlined.EditNote, "No reviews yet") }

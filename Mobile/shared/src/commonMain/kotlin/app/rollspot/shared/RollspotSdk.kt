@@ -4,6 +4,9 @@ import app.rollspot.shared.api.RollspotApi
 import app.rollspot.shared.auth.AuthModel
 import app.rollspot.shared.auth.AuthSession
 import app.rollspot.shared.auth.TokenStore
+import app.rollspot.shared.drafts.ContributeDrafts
+import app.rollspot.shared.drafts.DraftStorage
+import app.rollspot.shared.drafts.InMemoryDraftStorage
 import app.rollspot.shared.map.PlaceSearchProvider
 import app.rollspot.shared.map.RepositoryPlaceSearchProvider
 import app.rollspot.shared.place.PlaceDetailModel
@@ -31,6 +34,8 @@ class RollspotSdk(
     val baseUrl: String,
     val tokenStore: TokenStore,
     engine: HttpClientEngine? = null,
+    /** Where unfinished contributions are kept: `FileDraftStorage(<app files dir>)` in the apps. */
+    draftStorage: DraftStorage = InMemoryDraftStorage(),
 ) {
     val api = RollspotApi(baseUrl, tokenStore, engine)
     val places = PlaceRepository(api)
@@ -48,6 +53,8 @@ class RollspotSdk(
     val profile = ProfileModel(api)
     val myReviews = MyReviewsModel(api)
     val saved = SavedPlacesModel(api) { auth.isSignedIn }
+    /** Unfinished contributions and the Home "Continue Survey" banner. */
+    val drafts = ContributeDrafts(draftStorage)
 
     /** Lives as long as the app: keeps per-user models in step with the session. */
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -57,8 +64,12 @@ class RollspotSdk(
             auth.session.distinctUntilChangedBy { (it as? AuthSession.SignedIn)?.user?.id }.collect { session ->
                 when (session) {
                     // Saved state drives the bookmark on every place page, so load it right away.
-                    is AuthSession.SignedIn -> runCatching { saved.load() }
+                    is AuthSession.SignedIn -> {
+                        drafts.setUser(session.user.id)
+                        runCatching { saved.load() }
+                    }
                     else -> {
+                        drafts.setUser(null)
                         saved.clear()
                         profile.clear()
                         myReviews.clear()

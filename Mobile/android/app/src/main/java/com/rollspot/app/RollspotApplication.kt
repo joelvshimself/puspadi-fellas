@@ -2,6 +2,7 @@ package com.rollspot.app
 
 import android.app.Application
 import app.rollspot.shared.RollspotSdk
+import app.rollspot.shared.drafts.FileDraftStorage
 import app.rollspot.shared.auth.AndroidTokenStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,7 +27,11 @@ class RollspotApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        sdk = RollspotSdk(BuildConfig.API_BASE_URL, AndroidTokenStore(this))
+        sdk = RollspotSdk(
+            BuildConfig.API_BASE_URL,
+            AndroidTokenStore(this),
+            draftStorage = FileDraftStorage(java.io.File(filesDir, "drafts").path),
+        )
         appScope.launch { runCatching { sdk.auth.restore() } }
     }
 }

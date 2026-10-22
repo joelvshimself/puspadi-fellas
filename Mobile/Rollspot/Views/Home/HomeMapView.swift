@@ -34,6 +34,12 @@ struct HomeMapView: View {
     /// place; this screen owns the navigation stack, so it does the routing.
     @ObservedObject private var deepLinks = DeepLinkRouter.shared
     @State private var homeCover: HomeFullScreenCover?
+    /// Home "Continue Survey": the banner shows once per draft, then folds into the profile button.
+    @ObservedObject private var drafts = ContributeDraftsStore.shared
+    @State private var showContinueBanner = false
+    @State private var foldedDraftId: String?
+    @State private var resumePlace: Place?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Park23 search result always opens the contribute category menu.
     @State private var showPark23Contribute = false
     /// One-time intro sheet after signup. The flag persists so it is shown
@@ -138,9 +144,21 @@ struct HomeMapView: View {
                         }
                     }
                     .overlay(alignment: .top) {
-                        topBar
-                            .padding(.horizontal, 16)
-                            .safeAreaPadding(.top)
+                        VStack(spacing: 12) {
+                            topBar
+                            if showContinueBanner, let waiting = drafts.waiting, !isSearching, !showFilter {
+                                ContinueSurveyBanner(contribution: waiting) { resume(waiting) }
+                                    .homeGlass(in: RoundedRectangle(cornerRadius: 20, style: .continuous), tint: .white.opacity(0.55))
+                                    .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+                                    // Folds up into the profile button, which then carries the badge.
+                                    .transition(.asymmetric(
+                                        insertion: .move(edge: .top).combined(with: .opacity),
+                                        removal: reduceMotion ? .opacity : .scale(scale: 0.15, anchor: .topTrailing).combined(with: .opacity)
+                                    ))
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .safeAreaPadding(.top)
                     }
                     .overlay(alignment: .topLeading) {
                         if showFilter {
@@ -234,6 +252,15 @@ struct HomeMapView: View {
                         // ignored, the peek pill floating mid-screen. From up
                         // here the sheet never moves: the cover slides over it
                         // and dismissing the cover simply reveals it again.
+                        .fullScreenCover(item: $resumePlace) { place in
+                            ContributeReviewFlowView(
+                                place: place,
+                                initialScreenIndex: UnfinishedReviewStore.snapshot(for: place)?.screenIndex ?? 0
+                            ) {
+                                resumePlace = nil
+                            }
+                            .environmentObject(auth)
+                        }
                         .fullScreenCover(isPresented: $showPark23Contribute) {
                             ContributeReviewFlowView(
                                 place: .park23Demo,
@@ -307,6 +334,9 @@ struct HomeMapView: View {
                     }
                     .onChange(of: deepLinks.pendingPlace) { _, place in
                         openDeepLinkedPlace(place)
+                    }
+                    .onChange(of: drafts.waiting?.placeId, initial: true) { _, placeId in
+                        presentContinueBanner(for: placeId)
                     }
                     .task {
                         // A link that launched the app may have landed before
@@ -450,6 +480,19 @@ struct HomeMapView: View {
                     openProfile()
                 } label: {
                     pillIcon("person.fill")
+                        .overlay(alignment: .topTrailing) {
+                            if drafts.waiting != nil && !showContinueBanner {
+                                // The folded "Continue Survey" banner: one contribution waiting.
+                                Text("1")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 18, height: 18)
+                                    .background(Circle().fill(AuthPalette.brandBlue))
+                                    .overlay(Circle().stroke(.white, lineWidth: 2))
+                                    .offset(x: 12, y: 2)
+                                    .transition(.scale(scale: 0.6).combined(with: .opacity))
+                            }
+                        }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Profile")
@@ -605,6 +648,31 @@ struct HomeMapView: View {
             path = NavigationPath()
         }
         openPlace(place)
+    }
+
+    /// Shows the banner for a draft the user hasn't seen yet this launch, then folds it away.
+    private func presentContinueBanner(for placeId: String?) {
+        guard let placeId, placeId != foldedDraftId else {
+            if placeId == nil { showContinueBanner = false }
+            return
+        }
+        withAnimation(.easeOut(duration: 0.25)) { showContinueBanner = true }
+        Task {
+            try? await Task.sleep(for: .seconds(4))
+            guard drafts.waiting?.placeId == placeId else { return }
+            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.45, dampingFraction: 0.85)) {
+                showContinueBanner = false
+                foldedDraftId = placeId
+            }
+        }
+    }
+
+    private func resume(_ contribution: WaitingContribution) {
+        withAnimation(.easeOut(duration: 0.2)) {
+            showContinueBanner = false
+            foldedDraftId = contribution.placeId
+        }
+        resumePlace = drafts.place(for: contribution)
     }
 
     private func openProfile(tab: ProfileTab = .reviews) {

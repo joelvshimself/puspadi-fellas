@@ -1,6 +1,6 @@
 import type { Auth } from "./auth";
 import { requireUserId } from "./auth";
-import { assertPhotoOwnership, parseContributionV2, SECTION_NAMES, type NormalizedContribution, type Persona, type SectionName } from "./contribution";
+import { answer, assertPhotoOwnership, parseContributionV2, SECTION_NAMES, type NormalizedContribution, type Persona, type SectionName } from "./contribution";
 import type { Env } from "./env";
 import { HttpError, json, methodNotAllowed, readJson, requiredString, uuid } from "./http";
 import { findPlaceId, loadGrade, requirePlaceId } from "./places";
@@ -474,8 +474,8 @@ async function personaFor(env: Env, userId: string): Promise<Persona> {
 
 function entranceSummary(point: NormalizedContribution["entrancePasses"][number]["points"][number]): string | null {
   const lines = [
-    point.ramp ? `Ramp: ${point.ramp}` : null,
-    point.handrail ? `Handrail: ${point.handrail}` : null,
+    point.ramp ? `Ramp: ${answer(point.ramp)}` : null,
+    point.handrail ? `Handrail: ${answer(point.handrail)}` : null,
   ].filter((line): line is string => line != null);
   return lines.length ? lines.join("\n") : null;
 }

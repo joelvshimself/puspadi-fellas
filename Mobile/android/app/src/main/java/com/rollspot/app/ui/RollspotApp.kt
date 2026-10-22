@@ -89,6 +89,7 @@ fun RollspotApp(review: String? = null) {
                 onOpenAbout = { navController.navigate("about") },
                 onSignedOut = { navController.popBackStack("home", inclusive = false) },
                 onEditReview = { navController.navigate("review/$it/edit") },
+                onResumeContribution = { navController.navigate("contribute/flow/$it") },
                 reviewUpdated = updated,
                 onUpdatedShown = { entry.savedStateHandle[REVIEW_UPDATED] = false },
             )

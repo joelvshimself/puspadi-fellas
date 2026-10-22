@@ -1,5 +1,17 @@
 package com.rollspot.app.ui.screens.home
 
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.TransformOrigin
+import com.rollspot.app.ui.components.ContinueSurveyBanner
+import com.rollspot.app.ui.theme.Rollspot
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.draw.shadow
@@ -88,6 +100,24 @@ fun HomeScreen(navController: NavController, review: String? = null) {
     var centeredOnUser by rememberSaveable { mutableStateOf(false) }
     var handledFocusNonce by rememberSaveable { mutableStateOf(0) }
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    // Home "Continue Survey": the banner shows once per draft, then folds into the profile button.
+    val waiting by sdk.drafts.waiting.collectAsStateWithLifecycle()
+    var bannerVisible by remember { mutableStateOf(false) }
+    var foldedDraftId by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(waiting?.placeId) {
+        val id = waiting?.placeId
+        if (id == null) { bannerVisible = false; return@LaunchedEffect }
+        if (id == foldedDraftId) return@LaunchedEffect
+        bannerVisible = true
+        kotlinx.coroutines.delay(4_000)
+        bannerVisible = false
+        foldedDraftId = id
+    }
+    fun resume(placeId: String) {
+        bannerVisible = false
+        foldedDraftId = placeId
+        navController.navigate("contribute/flow/$placeId")
+    }
 
     fun flyTo(lat: Double, lng: Double, radiusMeters: Int? = null) {
         cameraTarget = CameraTarget(lat, lng, (cameraTarget?.nonce ?: 0) + 1, radiusMeters)
@@ -186,7 +216,41 @@ fun HomeScreen(navController: NavController, review: String? = null) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(Icons.Default.Bookmark, stringResource(R.string.saved_places), Modifier.size(22.dp).clickable { navController.navigate("saved") })
-                Icon(Icons.Default.Person, stringResource(R.string.profile), Modifier.size(22.dp).clickable { navController.navigate("profile") })
+                Box {
+                    Icon(Icons.Default.Person, stringResource(R.string.profile), Modifier.size(22.dp).clickable { navController.navigate("profile") })
+                    // The folded banner: one contribution waiting.
+                    androidx.compose.animation.AnimatedVisibility(
+                        waiting != null && !bannerVisible,
+                        Modifier.align(Alignment.TopEnd).offset(x = 10.dp, y = (-10).dp),
+                        enter = scaleIn(initialScale = 0.6f) + fadeIn(),
+                        exit = scaleOut(targetScale = 0.6f) + fadeOut(),
+                    ) {
+                        Box(
+                            Modifier.size(18.dp).background(RollspotBlue, CircleShape).border(2.dp, Color.White, CircleShape),
+                            contentAlignment = Alignment.Center,
+                        ) { Text("1", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                    }
+                }
+            }
+        }
+
+        // "Continue Survey" banner under the top bar; it folds up into the profile button.
+        val reduceMotion = remember { !android.animation.ValueAnimator.areAnimatorsEnabled() }
+        androidx.compose.animation.AnimatedVisibility(
+            visible = bannerVisible && waiting != null && !searchOpen && !filterOpen,
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(start = 16.dp, end = 16.dp, top = 72.dp),
+            enter = slideInVertically(tween(250, easing = Rollspot.EaseOut)) { -it / 2 } + fadeIn(tween(250)),
+            exit = if (reduceMotion) fadeOut(tween(200)) else scaleOut(
+                spring(dampingRatio = 0.85f, stiffness = 300f), targetScale = 0.15f, transformOrigin = TransformOrigin(1f, 0f),
+            ) + fadeOut(tween(300)),
+        ) {
+            val shape = RoundedCornerShape(20.dp)
+            waiting?.let { contribution ->
+                ContinueSurveyBanner(
+                    contribution,
+                    onOpen = { resume(contribution.placeId) },
+                    modifier = Modifier.fillMaxWidth().shadow(12.dp, shape, ambientColor = Color(0x1F000000), spotColor = Color(0x1F000000)).glass(shape, tint = 0.7f),
+                )
             }
         }
 

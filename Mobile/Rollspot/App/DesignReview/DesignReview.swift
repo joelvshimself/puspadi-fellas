@@ -17,6 +17,8 @@ enum DesignReview: String, CaseIterable {
     case profile, profileDeleteReview, profilePhotos, profileSettings, profileLanguage
     case myAccount, mobilityProfile, deleteAccount, accountDeleted
     case editResponse, editResponseLeave
+    /// Home with a waiting contribution (banner, then folded into the profile badge) and Profile's row.
+    case homeContinueSurvey, homeContinueSurveyFolded, profileOngoing
 
     static let current: DesignReview? = {
         let args = ProcessInfo.processInfo.arguments
@@ -68,6 +70,10 @@ struct DesignReviewRoot: View {
             signedIn { NavigationStack { ProfileView(initialTab: .settings) } }
         case .myAccount, .mobilityProfile, .deleteAccount, .accountDeleted:
             signedIn { NavigationStack { MyAccountView() } }
+        case .homeContinueSurvey, .homeContinueSurveyFolded:
+            signedIn { DesignReviewWaiting { HomeMapView() } }
+        case .profileOngoing:
+            signedIn { DesignReviewWaiting { NavigationStack { ProfileView(initialTab: .reviews) } } }
         case .editResponse, .editResponseLeave:
             signedIn { DesignReviewEditResponse() }
         }
@@ -81,6 +87,30 @@ struct DesignReviewRoot: View {
         LoginView(onSuccess: {}, onCancel: {}, onExploreMalls: {}, initialPath: path, initialMobilityAids: aids)
     }
 }
+/// Leaves a part-done contribution for "Park 23" so the Continue Survey states have something to show.
+private struct DesignReviewWaiting<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+    @State private var ready = false
+
+    var body: some View {
+        Group { if ready { content() } else { ProgressView() } }
+            .task {
+                let place = Place.fromSearchResult(
+                    name: "Park 23", category: "Mall",
+                    coordinate: .init(latitude: -8.7180, longitude: 115.1700), placeId: "design-review-park23"
+                )
+                let draft = ReviewDraft(placeId: place.reviewPlaceId, coordinate: place.coordinate, name: place.name)
+                draft.elevator.review.text = "Lift next to the food court"
+                UnfinishedReviewStore.save(
+                    place: place, startingFacility: nil, screenIndex: 2, selectedFacilities: [],
+                    entranceLocations: [], lobbyEntranceTags: [], basementEntranceTags: [],
+                    elevatorTags: [], toiletTags: [], draft: draft
+                )
+                ready = true
+            }
+    }
+}
+
 /// Edit Response for the account's newest editable review.
 private struct DesignReviewEditResponse: View {
     @State private var reviewId: String?

@@ -1,6 +1,8 @@
 package app.rollspot.shared.reviews
 
 import app.rollspot.shared.api.ContributionSubmission
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlin.random.Random
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -50,18 +52,22 @@ sealed class ContributeStep {
     data object Submitted : ContributeStep()
 }
 
+/** A picked photo. [jpeg] isn't serialized: saved drafts keep the bytes in their own files (ContributeDrafts). */
+@Serializable
 data class LocalReviewPhoto(
     val fileId: String,
-    val jpeg: ByteArray,
+    @Transient val jpeg: ByteArray = ByteArray(0),
     val caption: String = "",
 )
 
+@Serializable
 data class FacilityNotes(
     val text: String = "",
     val photos: List<LocalReviewPhoto> = emptyList(),
 )
 
 /** One entrance walk: the locations picked in that pass, plus their tags and evidence photos. */
+@Serializable
 data class EntrancePass(
     val photos: List<LocalReviewPhoto> = emptyList(),
     val locations: Set<EntranceLocation> = emptySet(),
@@ -76,6 +82,7 @@ data class EntrancePass(
 )
 
 /** One elevator the contributor has finished, or the one still being answered. */
+@Serializable
 data class ElevatorPass(
     val answers: Map<ElevatorQuestion, String> = emptyMap(),
     val photos: List<LocalReviewPhoto> = emptyList(),
@@ -84,6 +91,7 @@ data class ElevatorPass(
 )
 
 /** One accessible toilet the contributor has finished, or the one still being answered. */
+@Serializable
 data class ToiletPass(
     val answers: Map<ToiletSurveyQuestion, String> = emptyMap(),
     val location: String = "",
@@ -91,6 +99,7 @@ data class ToiletPass(
     val evidence: Map<String, List<LocalReviewPhoto>> = emptyMap(),
 )
 
+@Serializable
 data class ContributeFlowState(
     val placeId: String,
     val placeName: String,

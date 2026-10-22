@@ -1,3 +1,4 @@
+import UserNotifications
 import SwiftUI
 
 struct ProfileSettingsView: View {
@@ -7,6 +8,9 @@ struct ProfileSettingsView: View {
     @EnvironmentObject private var auth: AuthSessionStore
 
     @State private var showLanguageSheet = false
+    /// Whether iOS lets Rollspot show notifications (Settings → Notifications → Rollspot).
+    @State private var notificationsOn: Bool?
+    @Environment(\.scenePhase) private var scenePhase
 
     private static let testFlightURL = URL(string: "https://testflight.apple.com/join/BkzVVnrt")!
 
@@ -50,6 +54,18 @@ struct ProfileSettingsView: View {
                         value: languageManager.currentLanguage.rawValue.localized
                     ) {
                         showLanguageSheet = true
+                    }
+                    Divider().padding(.leading, 52)
+
+                    settingsRow(
+                        icon: "bell.fill",
+                        title: "Notifications".localized,
+                        value: notificationsOn.map { ($0 ? "On" : "Off").localized }
+                    ) {
+                        // The system page is where notifications are switched on or off.
+                        if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
+                            openURL(url)
+                        }
                     }
                     Divider().padding(.leading, 52)
 
@@ -104,12 +120,18 @@ struct ProfileSettingsView: View {
             }
         }
         #endif
+        .task(id: scenePhase) { await refreshNotificationStatus() }
         .sheet(isPresented: $showLanguageSheet) {
             languageSheet
                 .presentationDetents([.height(240)])
                 .presentationCornerRadius(28)
                 .presentationDragIndicator(.visible)
         }
+    }
+
+    private func refreshNotificationStatus() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        notificationsOn = [.authorized, .provisional, .ephemeral].contains(settings.authorizationStatus)
     }
 
     private func settingsCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {

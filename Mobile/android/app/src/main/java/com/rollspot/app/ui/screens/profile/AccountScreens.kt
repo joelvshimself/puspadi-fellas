@@ -23,6 +23,11 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Notifications
+import android.content.Intent
+import android.provider.Settings
+import androidx.core.app.NotificationManagerCompat
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material3.HorizontalDivider
@@ -79,6 +84,8 @@ internal fun SettingsTab(onOpenMyAccount: () -> Unit, onOpenLanguage: () -> Unit
                     SettingsRow(Icons.Default.Language, "Language", value = currentLanguage().label, onClick = onOpenLanguage)
                     HorizontalDivider(Modifier.padding(start = 52.dp), color = Color(0x1F3C3C43))
                 }
+                NotificationsRow()
+                HorizontalDivider(Modifier.padding(start = 52.dp), color = Color(0x1F3C3C43))
                 SettingsRow(Icons.Default.Info, "About App", onClick = onOpenAbout)
             }
         }
@@ -89,6 +96,23 @@ internal fun SettingsTab(onOpenMyAccount: () -> Unit, onOpenLanguage: () -> Unit
                 .clickable(interactionSource = interaction, indication = null, onClick = onSignOut),
             contentAlignment = Alignment.Center,
         ) { Text("Sign Out", style = Rollspot.Body.copy(fontWeight = FontWeight.Bold), color = Rollspot.Danger) }
+    }
+}
+
+/** Whether Android lets Rollspot notify; tapping opens the app's system notification settings. */
+@Composable
+private fun NotificationsRow() {
+    val context = LocalContext.current
+    var enabled by remember { mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled()) }
+    // Re-read when the user comes back from system settings.
+    LifecycleResumeEffect(Unit) {
+        enabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
+        onPauseOrDispose {}
+    }
+    SettingsRow(Icons.Default.Notifications, "Notifications", value = if (enabled) "On" else "Off") {
+        context.startActivity(
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
+        )
     }
 }
 

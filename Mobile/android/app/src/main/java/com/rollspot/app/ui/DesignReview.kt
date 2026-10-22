@@ -53,6 +53,8 @@ fun DesignReviewRoot(screen: String, email: String? = null, password: String? = 
     when (screen) {
         "splash" -> SplashScreen()
         "home", "homeFilter", "homeFilterChosen", "homeSearch", "homeSearchQuery" -> RollspotApp(review = screen)
+        "homeContinueSurvey", "homeContinueSurveyFolded" -> SignedIn(email, password) { Waiting { RollspotApp(review = screen) } }
+        "profileOngoing" -> SignedIn(email, password) { Waiting { ProfileScreen({}, {}, {}, {}, {}, review = screen) } }
         "profile", "profileDeleteReview", "profilePhotos", "profileSettings", "profileLanguage" -> SignedIn(email, password) {
             val tab = when (screen) {
                 "profilePhotos" -> ProfileTab.Photos
@@ -84,6 +86,20 @@ private fun SignedIn(email: String?, password: String?, content: @Composable () 
     var ready by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         if (!auth.isSignedIn && email != null && password != null) runCatching { auth.signIn(email, password) }
+        ready = true
+    }
+    if (ready) content()
+}
+
+/** Leaves a part-done contribution for "Park 23" so the Continue Survey states have something to show. */
+@Composable
+private fun Waiting(content: @Composable () -> Unit) {
+    val drafts = rollspotSdk().drafts
+    var ready by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        // The session collector hands the user to the drafts store just after sign-in.
+        kotlinx.coroutines.delay(500)
+        drafts.remember("design-review-park23", "Park 23")
         ready = true
     }
     if (ready) content()
