@@ -28,14 +28,27 @@ enum AuthRoute: Hashable {
 func advanceAuth(
     to step: AuthStep,
     path: Binding<[AuthRoute]>,
-    displayName: Binding<String>,
+    displayName: Binding<String>? = nil,
     onDone: () -> Void
 ) {
-    if let suggested = step.suggestedName { displayName.wrappedValue = suggested }
+    if let suggested = step.suggestedName { displayName?.wrappedValue = suggested }
     if let route = AuthRoute(step) {
         path.wrappedValue.append(route)
     } else {
         onDone()
+    }
+}
+
+/// Press feedback the moment a finger lands (not on release): 0.97 scale, 120ms ease-out.
+/// Same values as Android's `pressScale()`. Skipped under Reduce Motion.
+struct PressableButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .opacity(configuration.isPressed ? 0.9 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
@@ -93,7 +106,7 @@ struct AuthContinueButton: View {
             )
         }
         .disabled(!enabled || isLoading)
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle())
     }
 }
 
@@ -136,6 +149,7 @@ struct AuthSocialButtons: View {
                 Text("or Sign in with".localized)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             CenteredSignInWithAppleButton(
@@ -158,22 +172,24 @@ struct AuthSocialButtons: View {
                 Task { await completeGoogleSignIn() }
             } label: {
                 HStack(spacing: 10) {
-                    Text("G")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(Color(red: 0.26, green: 0.52, blue: 0.96))
+                    // Official four-colour G (design), same artwork as Android's ic_google_g.
+                    Image("Google G")
+                        .resizable()
+                        .frame(width: 18, height: 18)
                     Text("Continue with Google".localized)
                         .font(.body.weight(.semibold))
                         .foregroundStyle(.primary)
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 52)
+                // Light row like the design; outlined to sit with Apple's approved white-outline button.
                 .background(Color.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .strokeBorder(Color.black.opacity(0.18), lineWidth: 1)
                 )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PressableButtonStyle())
             .disabled(isBusy)
             .opacity(isBusy ? 0.6 : 1)
 
@@ -232,7 +248,9 @@ private struct CenteredSignInWithAppleButton: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> ASAuthorizationAppleIDButton {
-        let button = ASAuthorizationAppleIDButton(type: .continue, style: .black)
+        // The design shows light social rows. Apple only allows black, white or white-outline
+        // Sign in with Apple buttons, so this uses the closest approved style.
+        let button = ASAuthorizationAppleIDButton(type: .continue, style: .whiteOutline)
         button.cornerRadius = 16
         button.addTarget(context.coordinator, action: #selector(Coordinator.handleTap), for: .touchUpInside)
         return button

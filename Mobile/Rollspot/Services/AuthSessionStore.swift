@@ -192,6 +192,7 @@ extension AuthRoute {
         case .name: self = .name
         case .mobility: self = .mobility
         case .verifyEmail(let verify): self = .verifyEmail(verify.email)
+        case .allSet: self = .allSet
         }
     }
 }

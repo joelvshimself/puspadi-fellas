@@ -75,7 +75,7 @@ class LiveBackendTest {
                 sdk.auth.chooseName("Live Journey")
                 step = sdk.auth.finishMobility(listOf("Wheelchair"))
             }
-            assertEquals(AuthStep.Done, step)
+            assertTrue(step == AuthStep.Done || step == AuthStep.AllSet, "signed in: $step")
             assertIs<AuthSession.SignedIn>(sdk.auth.session.value)
 
             // F2: the map's nearby places come from the directory, nearest first.

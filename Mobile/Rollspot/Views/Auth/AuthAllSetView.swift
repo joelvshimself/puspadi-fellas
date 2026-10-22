@@ -37,19 +37,23 @@ struct AuthAllSetView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 12)
 
+                // The design's button is narrower than the card, centred.
                 AuthContinueButton(title: "Explore Malls".localized) {
                     onExplore()
                 }
-                .padding(.bottom, 28)
+                .frame(maxWidth: 200)
+                .padding(.bottom, 24)
             }
             .padding(.horizontal, 24)
             .frame(maxWidth: .infinity)
+            // A floating card inset from the edges with every corner rounded (design "Welcome Screen").
             .background(
-                UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28)
+                RoundedRectangle(cornerRadius: 32, style: .continuous)
                     .fill(Color.white)
-                    .shadow(color: .black.opacity(0.12), radius: 16, y: -4)
-                    .ignoresSafeArea(edges: .bottom)
+                    .shadow(color: .black.opacity(0.12), radius: 16, y: 4)
             )
+            .padding(.horizontal, 8)
+            .padding(.bottom, 8)
         }
         .navigationBarBackButtonHidden(true)
     }

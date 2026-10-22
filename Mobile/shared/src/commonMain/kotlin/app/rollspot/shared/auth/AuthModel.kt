@@ -25,9 +25,9 @@ sealed interface AuthSession {
  * The screen the sign-in flow shows next. Both apps render the same steps in the
  * same order; only how each step looks differs.
  *
- * Email sign-up: Welcome → CreatePassword → Name → Mobility → VerifyEmail → Done
- * Email sign-in: Welcome → EmailFound → Done (or Name → Mobility → Done if onboarding was never finished)
- * Apple/Google:  Welcome → Done (or Name → Mobility → Done for new accounts)
+ * Email sign-up: Welcome → CreatePassword → Name → Mobility → VerifyEmail → AllSet → Done
+ * Email sign-in: Welcome → EmailFound → Done (or Name → Mobility → AllSet if onboarding was never finished)
+ * Apple/Google:  Welcome → Done (or Name → Mobility → AllSet for new accounts)
  */
 sealed interface AuthStep {
     data object Welcome : AuthStep
@@ -37,6 +37,8 @@ sealed interface AuthStep {
     data class Name(val suggestedName: String) : AuthStep
     data object Mobility : AuthStep
     data class VerifyEmail(val email: String) : AuthStep
+    /** "You're all set!" after onboarding; its button ("Explore Malls") finishes the flow. */
+    data object AllSet : AuthStep
     data object Done : AuthStep
 }
 
@@ -98,6 +100,7 @@ class AuthModel(private val api: RollspotApi) {
 
     @Throws(Exception::class)
     suspend fun signIn(email: String, password: String): AuthStep = guarded {
+        if (password.isEmpty()) throw AuthException("Enter your password.")
         val normalized = AuthRules.normalizeEmail(email)
         val user = api.signInWithEmail(normalized, password)
         accept(user)
@@ -134,11 +137,11 @@ class AuthModel(private val api: RollspotApi) {
             deferred != null -> {
                 accept(api.signInWithIdToken(deferred.provider, deferred.idToken, deferred.nonce))
                 saveOnboarding()
-                AuthStep.Done
+                AuthStep.AllSet
             }
             isSignedIn -> {
                 saveOnboarding()
-                AuthStep.Done
+                AuthStep.AllSet
             }
             email.isNotEmpty() && password.isNotEmpty() -> {
                 api.signUpWithEmail(displayName.ifEmpty { "You" }, email, password, RollspotSdk.AUTH_CALLBACK_URL)
@@ -156,7 +159,7 @@ class AuthModel(private val api: RollspotApi) {
             accept(api.signInWithEmail(email, password))
         }
         saveOnboarding()
-        AuthStep.Done
+        AuthStep.AllSet
     }
 
     @Throws(Exception::class)
@@ -264,7 +267,7 @@ class AuthModel(private val api: RollspotApi) {
         /** Better Auth error codes → what the user reads. Same words on both apps. */
         fun messageFor(error: ApiException): String = when (error.code) {
             "EMAIL_NOT_VERIFIED" -> "Please tap the link in your email first, then try again."
-            "INVALID_EMAIL_OR_PASSWORD", "INVALID_PASSWORD" -> "That email and password don't match."
+            "INVALID_EMAIL_OR_PASSWORD", "INVALID_PASSWORD" -> "Incorrect password. Try again."
             "PASSWORD_TOO_SHORT", "PASSWORD_TOO_LONG" -> AuthRules.PASSWORD_HINT
             "USER_ALREADY_EXISTS" -> "An account with this email already exists. Sign in instead."
             "INVALID_TOKEN", "ID_TOKEN_NOT_SUPPORTED", "PROVIDER_NOT_FOUND" ->

@@ -23,8 +23,12 @@ struct AuthEmailFoundView: View {
         email: String,
         onSuccess: @escaping () -> Void,
         path: Binding<[AuthRoute]>,
-        displayName: Binding<String>
+        displayName: Binding<String>,
+        initialPassword: String = "",
+        initialError: String? = nil
     ) {
+        _password = State(initialValue: initialPassword)
+        _passwordError = State(initialValue: initialError)
         self.email = email
         self.onSuccess = onSuccess
         _path = path
@@ -84,6 +88,7 @@ struct AuthEmailFoundView: View {
                                 Image(systemName: showPassword ? "eye.slash" : "eye")
                                     .foregroundStyle(.secondary)
                             }
+                            .buttonStyle(.plain)
                         }
                     }
                     if let passwordError {
@@ -95,7 +100,6 @@ struct AuthEmailFoundView: View {
 
                 AuthContinueButton(
                     title: "Continue".localized,
-                    enabled: !password.isEmpty && AuthRules.shared.looksLikeEmail(value: emailText),
                     isLoading: isLoading
                 ) {
                     Task { await submit() }
