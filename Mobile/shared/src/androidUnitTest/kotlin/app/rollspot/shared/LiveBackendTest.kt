@@ -12,6 +12,7 @@ import app.rollspot.shared.auth.MobilityRole
 import app.rollspot.shared.place.PlaceDetailState
 import app.rollspot.shared.places.OverallAccessibility
 import app.rollspot.shared.reviews.PendingContributionPhoto
+import app.rollspot.shared.reviews.ReviewEditState
 import app.rollspot.shared.saved.SaveOutcome
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -122,6 +123,18 @@ class LiveBackendTest {
             assertTrue(after.detail.reviews.any { it.reviewId == submitted.reviewId }, "review on the place page")
             assertTrue(after.detail.gallery.any { it.url.endsWith("/lift.jpg") }, "photo in the gallery")
             assertTrue(after.detail.overall != OverallAccessibility.NO_DATA)
+
+            // Edit Response: change an answer and the notes, add a photo, and the place page follows.
+            val edit = sdk.reviewEditModel(submitted.reviewId)
+            edit.load()
+            edit.choose("elevator/0/wideEntrance", "no")
+            edit.setNotes("elevator", "Lift is too narrow")
+            assertTrue(edit.addPhoto("elevator/0", jpeg))
+            edit.save()
+            assertIs<ReviewEditState.Saved>(edit.state.value)
+            val edited = detail.reload()
+            assertIs<PlaceDetailState.Loaded>(edited)
+            assertEquals(2, edited.detail.gallery.count { it.url.contains(submission.submissionId) }, "kept + added photo")
 
             // F5: profile edits and my reviews.
             sdk.profile.updateDisplayName("Live Journey")

@@ -344,8 +344,21 @@ async function insertContribution(
       legacy.hasDisabledToilet === null ? null : Number(legacy.hasDisabledToilet),
       legacy.toiletText,
     ),
+    ...contributionRows(env, reviewId, placeId, userId, contribution),
   ];
+  await env.DB.batch(statements);
+  return json({ status: "ok", reviewId, placeId, grade: await loadGrade(env, placeId) }, 201);
+}
 
+/** Every child row of a v2 review: passes, areas, notes, photos and the place's accessibility signals. */
+function contributionRows(
+  env: Env,
+  reviewId: string,
+  placeId: string,
+  userId: string,
+  contribution: NormalizedContribution,
+): D1PreparedStatement[] {
+  const statements: D1PreparedStatement[] = [];
   contribution.entrancePasses.forEach((pass, passIndex) => {
     pass.points.forEach((point, pointIndex) => {
       const doorType = point.tags.includes("automatic_doors")
@@ -438,8 +451,7 @@ async function insertContribution(
     ).bind(placeId, userId, feature, value, reviewId));
   }
 
-  await env.DB.batch(statements);
-  return json({ status: "ok", reviewId, placeId, grade: await loadGrade(env, placeId) }, 201);
+  return statements;
 }
 
 async function assertOwnedPhotos(env: Env, contribution: NormalizedContribution, userId: string, submissionId: string) {
@@ -771,6 +783,7 @@ export async function handleMyReviews(request: Request, env: Env, auth: Auth): P
       id: row.id,
       placeId: row.place_id,
       placeName: row.place_name ?? "Place",
+      editable: row.schema_version === 2,
       createdAt: row.created_at,
       reviewText: row.final_text?.trim() || row.notes?.trim() || "No review notes written.",
       providedFeatures: [...features],
@@ -813,7 +826,8 @@ export async function handleReviewById(
       ),
     });
   }
-  if (request.method !== "DELETE") return methodNotAllowed("GET", "DELETE");
+  if (request.method === "PUT") return updateContribution(request, env, auth, reviewId);
+  if (request.method !== "DELETE") return methodNotAllowed("GET", "PUT", "DELETE");
   const userId = await requireUserId(auth, request);
   const review = await env.DB.prepare(
     `SELECT id FROM reviews WHERE id = ? AND user_id = ?`,
@@ -832,4 +846,180 @@ export async function handleReviewById(
   await env.DB.batch(deletes);
   await Promise.all(media.results.map((item) => env.MEDIA.delete(item.object_key)));
   return new Response(null, { status: 204 });
+}
+
+interface OwnedReview {
+  id: string;
+  place_id: string;
+  submission_id: string;
+  schema_version: number;
+  persona: Persona | null;
+  final_text: string | null;
+  place_name: string | null;
+}
+
+async function ownedReview(env: Env, userId: string, reviewId: string): Promise<OwnedReview> {
+  const review = await env.DB.prepare(
+    `SELECT r.id, r.place_id, r.submission_id, r.schema_version, r.persona, r.final_text, pl.name AS place_name
+     FROM reviews r LEFT JOIN places pl ON pl.id = r.place_id
+     WHERE r.id = ? AND r.user_id = ?`,
+  ).bind(reviewId, userId).first<OwnedReview>();
+  if (!review) throw new HttpError(404, "Review not found.");
+  if (review.schema_version !== 2) {
+    throw new HttpError(409, "This review was written in an older version of the app and can't be edited.", "not_editable");
+  }
+  return review;
+}
+
+/**
+ * GET /v1/reviews/:id/edit: the owner's review as the same v2 body POST /v1/reviews takes, so the app
+ * can change answers and PUT it back. Photos keep their media URLs; new ones upload under `submissionId`.
+ */
+export async function handleReviewForEdit(request: Request, env: Env, auth: Auth, reviewId: string): Promise<Response> {
+  if (request.method !== "GET") return methodNotAllowed("GET");
+  const userId = await requireUserId(auth, request);
+  const review = await ownedReview(env, userId, reviewId);
+  const related = await relatedRows(env, [reviewId]);
+  return json({
+    status: "ok",
+    reviewId,
+    placeId: review.place_id,
+    placeName: review.place_name ?? "Place",
+    submission: submissionBody(env, review, related),
+  });
+}
+
+function submissionBody(env: Env, review: OwnedReview, related: Awaited<ReturnType<typeof relatedRows>>) {
+  const ref = (photo: PhotoRow) => ({ url: `${env.API_BASE_URL}/v1/media/${photo.object_key}`, caption: photo.caption });
+  const photos = (section: string, passIndex: number | null, kind: string, question?: string, location?: string) =>
+    related.photos
+      .filter((photo) => photo.section === section
+        && (passIndex == null || photo.pass_index === passIndex)
+        && photo.kind === kind
+        && (question == null || photo.question === question)
+        && (location == null || photo.entrance_location === location))
+      .map(ref);
+  const evidence = (groups: Record<string, ReturnType<typeof photos>>) =>
+    Object.fromEntries(Object.entries(groups).filter(([, group]) => group.length));
+  const notes = (section: SectionName) => related.sectionNotes.find((note) => note.section === section)?.text ?? null;
+  const area = (name: string) => related.areas.find((row) => row.area === name) ?? null;
+
+  const entranceIndexes = [...new Set(related.entrances.map((row) => row.pass_index))].sort((a, b) => a - b);
+  const pathways = area("pathways");
+  const seating = area("seating");
+  const parking = area("parking");
+  const finalPhotos = related.photos.filter((photo) => photo.kind === "final").map(ref);
+  return {
+    version: 2,
+    submissionId: review.submission_id,
+    placeId: review.place_id,
+    persona: review.persona ?? "wheelchair",
+    entrance: entranceIndexes.length ? {
+      notes: notes("entrance"),
+      passes: entranceIndexes.map((passIndex) => ({
+        photos: photos("entrance", passIndex, "section"),
+        points: related.entrances.filter((row) => row.pass_index === passIndex).map((row) => ({
+          location: row.location,
+          tags: JSON.parse(row.tags || "[]") as string[],
+          ramp: row.ramp_answer,
+          handrail: row.handrail_answer,
+          evidence: evidence({
+            ramp: photos("entrance", passIndex, "evidence", "ramp", row.location),
+            handrail: photos("entrance", passIndex, "evidence", "handrail", row.location),
+          }),
+        })),
+      })),
+    } : null,
+    elevator: related.elevators.length ? {
+      notes: notes("elevator"),
+      passes: related.elevators.map((pass) => ({
+        photos: photos("elevator", pass.pass_index, "section"),
+        wideEntrance: pass.wide_entrance,
+        spaceToManeuver: pass.space_to_maneuver,
+        reachableButtons: pass.reachable_buttons,
+        location: pass.location_text,
+        evidence: evidence({
+          wideEntrance: photos("elevator", pass.pass_index, "evidence", "wideEntrance"),
+          spaceToManeuver: photos("elevator", pass.pass_index, "evidence", "spaceToManeuver"),
+          reachableButtons: photos("elevator", pass.pass_index, "evidence", "reachableButtons"),
+        }),
+      })),
+    } : null,
+    toilet: related.toilets.length ? {
+      notes: notes("toilet"),
+      passes: related.toilets.map((pass) => ({
+        photos: photos("toilet", pass.pass_index, "section"),
+        door: pass.door,
+        seat: pass.seat,
+        grabBars: pass.grab_bars,
+        space: pass.space,
+        sink: pass.sink,
+        emergency: pass.emergency,
+        location: pass.location_text,
+        evidence: evidence(Object.fromEntries(
+          ["seat", "grabBars", "space", "sink", "emergency"].map((question) => [question, photos("toilet", pass.pass_index, "evidence", question)]),
+        )),
+      })),
+    } : null,
+    pathways: pathways ? {
+      notes: notes("pathways"),
+      notices: JSON.parse(pathways.notices || "[]") as string[],
+      photos: photos("pathways", null, "section"),
+    } : null,
+    seating: seating?.answer ? { notes: notes("seating"), answer: seating.answer, photos: photos("seating", null, "section") } : null,
+    parking: parking?.answer ? { notes: notes("parking"), answer: parking.answer, photos: photos("parking", null, "section") } : null,
+    final: review.final_text || finalPhotos.length ? { text: review.final_text, photos: finalPhotos } : null,
+  };
+}
+
+/**
+ * PUT /v1/reviews/:id: replaces the owner's answers, notes and photos with a v2 body, keeping the
+ * review's id and date. Photos dropped from the body are deleted from storage.
+ */
+async function updateContribution(request: Request, env: Env, auth: Auth, reviewId: string): Promise<Response> {
+  const userId = await requireUserId(auth, request);
+  const review = await ownedReview(env, userId, reviewId);
+  const body = await readJson<ReviewPayload>(request);
+  const contribution = parseContributionV2(body, `${env.API_BASE_URL}/v1/media/`);
+  // New photos upload under the review's original submission, so ownership is checked against it.
+  await assertOwnedPhotos(env, contribution, userId, review.submission_id);
+  const persona = contribution.persona ?? review.persona ?? await personaFor(env, userId);
+  const legacy = contribution.legacy;
+  const kept = new Set(contribution.photos.map((photo) => photo.objectKey));
+  const previous = await env.DB.prepare(
+    `SELECT object_key FROM review_photos WHERE review_id = ?`,
+  ).bind(reviewId).all<{ object_key: string }>();
+  const removed = previous.results.map((row) => row.object_key).filter((key) => !kept.has(key));
+
+  const statements: D1PreparedStatement[] = [
+    env.DB.prepare(`DELETE FROM accessibility_signals WHERE review_id = ?`).bind(reviewId),
+    env.DB.prepare(`DELETE FROM review_entrances WHERE review_id = ?`).bind(reviewId),
+    env.DB.prepare(`DELETE FROM review_elevators WHERE review_id = ?`).bind(reviewId),
+    env.DB.prepare(`DELETE FROM review_toilets WHERE review_id = ?`).bind(reviewId),
+    env.DB.prepare(`DELETE FROM review_areas WHERE review_id = ?`).bind(reviewId),
+    env.DB.prepare(`DELETE FROM review_section_notes WHERE review_id = ?`).bind(reviewId),
+    env.DB.prepare(`DELETE FROM review_photos WHERE review_id = ?`).bind(reviewId),
+    env.DB.prepare(
+      `UPDATE reviews SET
+        notes = ?, persona = ?, final_text = ?,
+        elevator_exists = ?, elevator_wheelchair_accessible = ?, elevator_blockers = ?,
+        elevator_review_text = ?, has_disabled_toilet = ?, toilet_review_text = ?,
+        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+       WHERE id = ? AND user_id = ?`,
+    ).bind(
+      legacy.notes, persona, contribution.finalText,
+      legacy.elevatorExists === null ? null : Number(legacy.elevatorExists),
+      legacy.elevatorAccessible === null ? null : Number(legacy.elevatorAccessible),
+      JSON.stringify(legacy.elevatorBlockers),
+      legacy.elevatorText,
+      legacy.hasDisabledToilet === null ? null : Number(legacy.hasDisabledToilet),
+      legacy.toiletText,
+      reviewId, userId,
+    ),
+    ...contributionRows(env, reviewId, review.place_id, userId, contribution),
+    ...removed.map((key) => env.DB.prepare(`DELETE FROM media_uploads WHERE object_key = ?`).bind(key)),
+  ];
+  await env.DB.batch(statements);
+  await Promise.all(removed.map((key) => env.MEDIA.delete(key)));
+  return json({ status: "ok", reviewId, placeId: review.place_id, grade: await loadGrade(env, review.place_id) });
 }

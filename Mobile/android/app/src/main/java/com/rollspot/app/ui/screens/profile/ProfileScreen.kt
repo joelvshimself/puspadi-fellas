@@ -84,8 +84,11 @@ fun ProfileScreen(
     onOpenMyAccount: () -> Unit,
     onOpenAbout: () -> Unit,
     onSignedOut: () -> Unit,
+    onEditReview: (String) -> Unit = {},
     initialTab: ProfileTab = ProfileTab.Reviews,
     review: String? = null,
+    reviewUpdated: Boolean = false,
+    onUpdatedShown: () -> Unit = {},
 ) {
     val sdk = rollspotSdk()
     val profile by sdk.profile.state.collectAsStateWithLifecycle()
@@ -98,6 +101,13 @@ fun ProfileScreen(
     var deleting by remember { mutableStateOf(false) }
     var deleteError by remember { mutableStateOf<String?>(null) }
     var removedToast by remember { mutableStateOf(false) }
+    var updatedToast by remember { mutableStateOf(false) }
+    LaunchedEffect(reviewUpdated) {
+        if (reviewUpdated) {
+            updatedToast = true
+            onUpdatedShown()
+        }
+    }
     var languageSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -140,7 +150,8 @@ fun ProfileScreen(
                             userName = mine.userName.takeIf { it != "You" } ?: profile.displayName,
                             userRole = roleLabel,
                             avatarUrl = profile.avatarUrl ?: mine.avatarUrl,
-                            onUpdate = { onOpenPlace(it.placeId) },
+                            // Structured reviews open Edit Response; older ones open the place to review again.
+                            onUpdate = { if (it.editable) onEditReview(it.id) else onOpenPlace(it.placeId) },
                             onDelete = { deleteError = null; toDelete = it },
                         )
                         ProfileTab.Photos -> PhotosTab(mine.photos, mine.isLoading && !mine.hasLoaded) { photo ->
@@ -154,6 +165,7 @@ fun ProfileScreen(
                         )
                     }
                     SuccessToast(removedToast, "Review successfully removed") { removedToast = false }
+                    SuccessToast(updatedToast && !removedToast, "Review successfully updated") { updatedToast = false }
                 }
             }
 

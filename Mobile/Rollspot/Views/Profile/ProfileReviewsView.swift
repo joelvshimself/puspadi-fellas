@@ -10,6 +10,7 @@ struct ProfileReviewItem: Identifiable, Equatable, Hashable {
     var dateLabel: String
     var placeId: String
     var placeName: String
+    var editable: Bool = false
     var notes: String
     var providedTags: [String]
     var photoURLs: [URL]
@@ -26,9 +27,11 @@ struct ProfileReviewsView: View {
     @State private var reviews: [ProfileReviewItem] = []
     @State private var reviewToDelete: ProfileReviewItem? = nil
     @State private var reviewToOpen: ProfileReviewItem? = nil
+    @State private var reviewToEdit: ProfileReviewItem? = nil
     @State private var showDeleteConfirmation = false
     @State private var isDeleting = false
     @State private var showSuccessToast = false
+    @State private var showUpdatedToast = false
     @State private var deleteError: String?
     @State private var resolvedPlaces: [String: Place] = [:]
 
@@ -67,39 +70,9 @@ struct ProfileReviewsView: View {
             }
 
             if showSuccessToast {
-                HStack(spacing: 10) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(Color.green)
-
-                    Text("Review successfully removed".localized)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(Color.primary)
-
-                    Spacer()
-
-                    Button {
-                        withAnimation { showSuccessToast = false }
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color.green.opacity(0.12))
-                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Color.green.opacity(0.3), lineWidth: 1)
-                )
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
-                .transition(.move(edge: .top).combined(with: .opacity))
+                successToast("Review successfully removed".localized) { showSuccessToast = false }
+            } else if showUpdatedToast {
+                successToast("Review successfully updated".localized) { showUpdatedToast = false }
             }
         }
         .task(id: auth.userId) {
@@ -110,6 +83,12 @@ struct ProfileReviewsView: View {
                 .presentationDetents([.height(240)])
                 .presentationCornerRadius(28)
                 .presentationDragIndicator(.visible)
+        }
+        .navigationDestination(item: $reviewToEdit) { review in
+            EditResponseView(reviewId: review.id.uuidString.lowercased()) {
+                Task { await loadReviews() }
+                withAnimation { showUpdatedToast = true }
+            }
         }
         .navigationDestination(item: $reviewToOpen) { review in
             MockMyReviewView(
@@ -125,6 +104,42 @@ struct ProfileReviewsView: View {
             )
             .enableSwipeBack()
         }
+    }
+
+    private func successToast(_ text: String, onClose: @escaping () -> Void) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Color.green)
+
+            Text(text)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(Color.primary)
+
+            Spacer()
+
+            Button {
+                withAnimation { onClose() }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.green.opacity(0.12))
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.green.opacity(0.3), lineWidth: 1)
+        )
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+        .transition(.move(edge: .top).combined(with: .opacity))
     }
 
     private func loadReviews() async {
@@ -153,6 +168,7 @@ struct ProfileReviewsView: View {
                     dateLabel: row.dateLabel,
                     placeId: row.placeId,
                     placeName: resolved?.name ?? row.placeName,
+                    editable: row.editable,
                     notes: row.reviewText,
                     providedTags: row.providedFeatures,
                     photoURLs: row.photoURLs
@@ -260,7 +276,12 @@ struct ProfileReviewsView: View {
                 }
 
                 Button {
-                    reviewToOpen = review
+                    // Structured reviews open Edit Response; older ones show the review and its wizard.
+                    if review.editable {
+                        reviewToEdit = review
+                    } else {
+                        reviewToOpen = review
+                    }
                 } label: {
                     Text("Update Review".localized)
                         .font(.subheadline.weight(.semibold))

@@ -13,6 +13,7 @@ import com.rollspot.app.ui.screens.auth.AuthPreview
 import com.rollspot.app.ui.screens.profile.MyAccountScreen
 import com.rollspot.app.ui.screens.profile.ProfileScreen
 import com.rollspot.app.ui.screens.profile.ProfileTab
+import com.rollspot.app.ui.screens.review.EditResponseScreen
 import com.rollspot.app.ui.screens.splash.SplashScreen
 
 /**
@@ -59,6 +60,15 @@ fun DesignReviewRoot(screen: String, email: String? = null, password: String? = 
                 else -> ProfileTab.Reviews
             }
             ProfileScreen({}, {}, {}, {}, {}, initialTab = tab, review = screen)
+        }
+        "editResponse", "editResponseLeave" -> SignedIn(email, password) {
+            val mine = rollspotSdk().myReviews
+            var reviewId by remember { mutableStateOf<String?>(null) }
+            LaunchedEffect(Unit) {
+                runCatching { mine.load() }
+                reviewId = mine.state.value.reviews.firstOrNull { it.editable }?.id
+            }
+            reviewId?.let { EditResponseScreen(it, onClose = {}, onSaved = {}, review = screen) }
         }
         "myAccount", "mobilityProfile", "deleteAccount", "accountDeleted" -> SignedIn(email, password) {
             MyAccountScreen(onBack = {}, onAccountDeleted = {}, review = screen)

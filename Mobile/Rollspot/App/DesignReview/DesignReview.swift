@@ -16,6 +16,7 @@ enum DesignReview: String, CaseIterable {
     // Signed in: pass `-designReviewEmail <email> -designReviewPassword <password>` (a local test account).
     case profile, profileDeleteReview, profilePhotos, profileSettings, profileLanguage
     case myAccount, mobilityProfile, deleteAccount, accountDeleted
+    case editResponse, editResponseLeave
 
     static let current: DesignReview? = {
         let args = ProcessInfo.processInfo.arguments
@@ -67,6 +68,8 @@ struct DesignReviewRoot: View {
             signedIn { NavigationStack { ProfileView(initialTab: .settings) } }
         case .myAccount, .mobilityProfile, .deleteAccount, .accountDeleted:
             signedIn { NavigationStack { MyAccountView() } }
+        case .editResponse, .editResponseLeave:
+            signedIn { DesignReviewEditResponse() }
         }
     }
 
@@ -78,6 +81,21 @@ struct DesignReviewRoot: View {
         LoginView(onSuccess: {}, onCancel: {}, onExploreMalls: {}, initialPath: path, initialMobilityAids: aids)
     }
 }
+/// Edit Response for the account's newest editable review.
+private struct DesignReviewEditResponse: View {
+    @State private var reviewId: String?
+
+    var body: some View {
+        NavigationStack {
+            if let reviewId { EditResponseView(reviewId: reviewId) } else { ProgressView() }
+        }
+        .task {
+            let mine = try? await ReviewService.shared.fetchMyReviews()
+            reviewId = mine?.reviews.first(where: \.editable)?.id.uuidString.lowercased()
+        }
+    }
+}
+
 /// Signs in with the account from the launch arguments, then shows the screen.
 private struct DesignReviewSignIn<Content: View>: View {
     let content: Content

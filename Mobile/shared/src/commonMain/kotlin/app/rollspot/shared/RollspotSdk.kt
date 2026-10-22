@@ -10,6 +10,7 @@ import app.rollspot.shared.place.PlaceDetailModel
 import app.rollspot.shared.places.PlaceRepository
 import app.rollspot.shared.profile.MyReviewsModel
 import app.rollspot.shared.profile.ProfileModel
+import app.rollspot.shared.reviews.ReviewEditModel
 import app.rollspot.shared.reviews.ReviewModel
 import app.rollspot.shared.saved.SavedPlacesModel
 import io.ktor.client.engine.HttpClientEngine
@@ -41,6 +42,8 @@ class RollspotSdk(
     /** One per place page; call `close()` when the page goes away. */
     fun placeDetailModel(placeKey: String) = PlaceDetailModel(api, placeKey)
     val reviews = ReviewModel(api)
+    /** Edit Response page for one of the signed-in user's reviews. */
+    fun reviewEditModel(reviewId: String) = ReviewEditModel(api, reviewId)
 
     val profile = ProfileModel(api)
     val myReviews = MyReviewsModel(api)

@@ -165,6 +165,7 @@ fun BackCircleButton(onClick: () -> Unit, modifier: Modifier = Modifier, size: D
             .pressScale(interaction)
             .clip(CircleShape)
             .background(Color.White.copy(alpha = 0.7f))
+            .border(0.5.dp, Color(0x14000000), CircleShape)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {

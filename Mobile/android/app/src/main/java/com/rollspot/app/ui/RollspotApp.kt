@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -18,6 +19,7 @@ import com.rollspot.app.ui.screens.profile.AboutScreen
 import com.rollspot.app.ui.screens.profile.MyAccountScreen
 import com.rollspot.app.ui.screens.profile.ProfileScreen
 import com.rollspot.app.ui.screens.profile.SavedPlacesScreen
+import com.rollspot.app.ui.screens.review.EditResponseScreen
 import com.rollspot.app.ui.screens.auth.AuthFlowScreen
 
 @Composable
@@ -78,13 +80,27 @@ fun RollspotApp(review: String? = null) {
         }
 
         // Profile (F5): signed-in user's page, settings and account.
-        composable("me") {
+        composable("me") { entry ->
+            val updated by entry.savedStateHandle.getStateFlow(REVIEW_UPDATED, false).collectAsStateWithLifecycle()
             ProfileScreen(
                 onBack = { navController.popBackStack() },
                 onOpenPlace = { navController.navigate("place/$it") },
                 onOpenMyAccount = { navController.navigate("my-account") },
                 onOpenAbout = { navController.navigate("about") },
                 onSignedOut = { navController.popBackStack("home", inclusive = false) },
+                onEditReview = { navController.navigate("review/$it/edit") },
+                reviewUpdated = updated,
+                onUpdatedShown = { entry.savedStateHandle[REVIEW_UPDATED] = false },
+            )
+        }
+        composable("review/{reviewId}/edit", arguments = listOf(navArgument("reviewId") { type = NavType.StringType })) { entry ->
+            EditResponseScreen(
+                reviewId = entry.arguments?.getString("reviewId").orEmpty(),
+                onClose = { navController.popBackStack() },
+                onSaved = {
+                    navController.previousBackStackEntry?.savedStateHandle?.set(REVIEW_UPDATED, true)
+                    navController.popBackStack()
+                },
             )
         }
         composable("my-account") {
@@ -125,3 +141,6 @@ fun RollspotApp(review: String? = null) {
         }
     }
 }
+
+/** Set on the profile entry when Edit Response saved, so it shows "Review successfully updated". */
+private const val REVIEW_UPDATED = "reviewUpdated"
