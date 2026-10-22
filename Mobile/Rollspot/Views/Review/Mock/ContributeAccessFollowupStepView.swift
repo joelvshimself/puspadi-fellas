@@ -1,4 +1,3 @@
-import PhotosUI
 import SwiftUI
 
 /// Single-select follow-up question — entrance's Ramp/Handrail screens
@@ -32,15 +31,10 @@ struct ContributeAccessFollowupStepView: View {
     let onBack: () -> Void
     let onContinue: () -> Void
 
-    private static let topSectionID = "topSection"
-    private static let photosSectionID = "photosSection"
-    private static let bottomSpacerID = "bottomSpacer"
+    private static let bottomID = "bottom"
 
     @State private var showPhotosSection = false
-    @State private var photoPickerItems: [PhotosPickerItem] = []
-    @State private var showPhotosPicker = false
-    @State private var showCamera = false
-    @State private var scrollTask: Task<Void, Never>?
+    @State private var isAdvancing = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -53,324 +47,94 @@ struct ContributeAccessFollowupStepView: View {
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        Group {
-                            if let loopingVideoName {
-                                RampLoopVideoCard(
-                                    resourceName: loopingVideoName,
-                                    infoTitle: videoInfoTitle,
-                                    infoSections: videoInfoSections,
-                                    infoVideoName: infoVideoName
-                                )
-                                .id(loopingVideoName)
-                            } else if !videoInfoSections.isEmpty {
-                                FollowUpStillCard(
-                                    imageName: illustrationAssetName,
-                                    infoTitle: videoInfoTitle,
-                                    infoSections: videoInfoSections
-                                )
-                            } else {
-                                Image(illustrationAssetName)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(maxWidth: .infinity)
-                                    .scaleEffect(1.05)
-                                    .frame(height: 180)
-                            }
-                        }
-                        .id(Self.topSectionID)
+                    VStack(alignment: .leading, spacing: 0) {
+                        illustration
+                            .padding(.top, advancesOnSelect ? 26 : 14)
 
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(eyebrow.localized)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            Text(questionTitle.localized)
-                                .font(.title2.bold())
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        ContributeQuestionHeading(eyebrow: eyebrow, title: questionTitle)
+                            .padding(.top, advancesOnSelect ? 40 : 34)
 
-                        VStack(spacing: 12) {
-                            ForEach(options, id: \.self) { option in
-                                optionRow(option)
-                            }
-                        }
-
-                        if showPhotosSection {
-                            addPhotosBox
-                                .id(Self.photosSectionID)
-                                .transition(.opacity)
-
-                            Spacer()
-                                .frame(height: 40)
-                                .id(Self.bottomSpacerID)
-                        }
-                    }
-                    .padding(20)
-                }
-                .onAppear {
-                    showPhotosSection = (selection == photoRevealOption)
-                }
-                .onChange(of: selection) { oldVal, newVal in
-                    scrollTask?.cancel()
-                    scrollTask = Task { @MainActor in
-                        let isShortForm = options.count <= 3
-
-                        if newVal == photoRevealOption {
-                            showPhotosSection = true
-                            try? await Task.sleep(nanoseconds: 30_000_000)
-                            guard !Task.isCancelled else { return }
-                            withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) {
-                                proxy.scrollTo(Self.bottomSpacerID, anchor: .bottom)
-                            }
-                        } else if oldVal == photoRevealOption {
-                            if isShortForm {
-                                withAnimation(.snappy(duration: 0.32)) {
-                                    showPhotosSection = false
-                                }
-                            } else {
-                                withAnimation(.easeInOut(duration: 0.35)) {
-                                    proxy.scrollTo(Self.topSectionID, anchor: .top)
-                                }
-                                try? await Task.sleep(nanoseconds: 360_000_000)
-                                guard !Task.isCancelled else { return }
-                                if selection != photoRevealOption {
-                                    withAnimation(.easeInOut(duration: 0.2)) {
-                                        showPhotosSection = false
+                        if !advancesOnSelect {
+                            VStack(spacing: ContributeQuestionMetrics.optionSpacing) {
+                                ForEach(options, id: \.self) { option in
+                                    ContributeOptionRow(title: option, isSelected: selection == option) {
+                                        selection = option
                                     }
                                 }
                             }
+                            .padding(.top, 18)
+                        }
+
+                        if showPhotosSection {
+                            // "Not sure": evidence photos for this question.
+                            ContributePhotoStrip(note: $note, limit: photoLimit, style: .reveal)
+                                .padding(.top, 12)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                        Color.clear.frame(height: 1).id(Self.bottomID)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 16)
+                }
+                .onAppear { showPhotosSection = !photoRevealOption.isEmpty && selection == photoRevealOption }
+                .onChange(of: selection) { _, newValue in
+                    let reveal = !photoRevealOption.isEmpty && newValue == photoRevealOption
+                    guard reveal != showPhotosSection else { return }
+                    withAnimation(.easeOut(duration: 0.25)) { showPhotosSection = reveal }
+                    if reveal {
+                        // Bring the new photo box into view.
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 60_000_000)
+                            withAnimation(.easeOut(duration: 0.3)) { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
                         }
                     }
                 }
             }
 
-            if !advancesOnSelect {
+            if advancesOnSelect {
+                // "Review another …?": the answers sit where Continue usually is.
+                VStack(spacing: 10) {
+                    ForEach(options, id: \.self) { option in
+                        ContributeChoiceButton(title: option, isSelected: selection == option) { choose(option) }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .padding(.bottom, -14)
+            } else {
                 ContributeContinueButton(isEnabled: selection != nil, action: onContinue)
             }
         }
         .background(Color(.systemBackground))
-        .photosPicker(
-            isPresented: $showPhotosPicker,
-            selection: $photoPickerItems,
-            maxSelectionCount: max(photoLimit - note.photos.count, 0),
-            matching: .images
-        )
-        .onChange(of: photoPickerItems) { _, newItems in
-            guard !newItems.isEmpty else { return }
-            Task {
-                await loadPhotos(from: newItems)
-                photoPickerItems = []
-            }
-        }
-        .fullScreenCover(isPresented: $showCamera) {
-            CameraPicker(
-                onCapture: { image in
-                    note.addPhoto(from: image, limit: photoLimit)
-                    showCamera = false
-                },
-                onCancel: { showCamera = false }
+    }
+
+    @ViewBuilder
+    private var illustration: some View {
+        if let loopingVideoName {
+            RampLoopVideoCard(
+                resourceName: loopingVideoName,
+                infoTitle: videoInfoTitle,
+                infoSections: videoInfoSections,
+                infoVideoName: infoVideoName ?? loopingVideoName
             )
-            .ignoresSafeArea()
-        }
-        .fullScreenCover(item: $selectedPhotoForCaption) { photo in
-            PhotoCaptionEditorView(
-                photo: photo,
-                onSave: { newCaption in
-                    note.updatePhotoCaption(id: photo.id, caption: newCaption)
-                },
-                onDismiss: {
-                    selectedPhotoForCaption = nil
-                }
-            )
+            .id(loopingVideoName)
+        } else if !videoInfoSections.isEmpty {
+            FollowUpStillCard(imageName: illustrationAssetName, infoTitle: videoInfoTitle, infoSections: videoInfoSections)
+        } else {
+            ContributeIllustration(name: illustrationAssetName)
         }
     }
 
-    @State private var showPhotoOptions = false
-    @State private var selectedPhotoForCaption: ReviewPhotoDraft? = nil
-    @State private var isAdvancing = false
-
-    private func optionRow(_ option: String) -> some View {
-        let isSelected = selection == option
-        let filled = advancesOnSelect && isSelected
-        return Button {
-            guard !isAdvancing else { return }
-            if advancesOnSelect {
-                isAdvancing = true
-                withAnimation(.easeInOut(duration: 0.32)) {
-                    selection = option
-                }
-                Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 280_000_000)
-                    onContinue()
-                    isAdvancing = false
-                }
-            } else {
-                selection = option
-            }
-        } label: {
-            Text(option.localized)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(filled ? Color.white : (advancesOnSelect || isSelected ? ContributePalette.blue : .primary))
-                .frame(maxWidth: .infinity, alignment: advancesOnSelect ? .center : .leading)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 16)
-                .background(filled ? ContributePalette.blue : Color(.secondarySystemBackground), in: Capsule())
-                .overlay {
-                    if !advancesOnSelect {
-                        Capsule()
-                            .strokeBorder(isSelected ? ContributePalette.blue : Color.clear, lineWidth: 1.5)
-                    }
-                }
-                .animation(.easeInOut(duration: 0.32), value: filled)
+    /// Tap → the pill fills blue → the flow moves on a beat later, so the choice is seen.
+    private func choose(_ option: String) {
+        guard !isAdvancing else { return }
+        isAdvancing = true
+        selection = option
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 280_000_000)
+            onContinue()
+            isAdvancing = false
         }
-        .buttonStyle(GentlePressButtonStyle())
-    }
-
-    private var addPhotosBox: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if note.photos.isEmpty {
-                addPhotoButtonTile(isWide: true)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        if note.photos.count < photoLimit {
-                            addPhotoButtonTile(isWide: false)
-                        }
-
-                        ForEach(note.photos) { photo in
-                            photoThumbnail(photo)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private func addPhotoButtonTile(isWide: Bool) -> some View {
-        Button {
-            showPhotoOptions.toggle()
-        } label: {
-            VStack(spacing: 8) {
-                Image(systemName: "photo.badge.plus")
-                    .font(.system(size: 28))
-                    .foregroundStyle(ContributePalette.blue)
-                Text("Add Photos".localized)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(ContributePalette.blue)
-                    .lineLimit(1)
-                    .fixedSize()
-                Text("(Optional)".localized)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
-            .frame(width: isWide ? nil : 120, height: 120)
-            .frame(maxWidth: isWide ? .infinity : nil)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color(.secondarySystemBackground))
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(ContributePalette.blue.opacity(0.4), style: StrokeStyle(lineWidth: 1.5, dash: [6]))
-            }
-        }
-        .buttonStyle(.plain)
-        .disabled(note.photos.count >= photoLimit)
-        .opacity(note.photos.count < photoLimit ? 1 : 0.4)
-        .popover(isPresented: $showPhotoOptions, attachmentAnchor: .point(.center), arrowEdge: .top) {
-            VStack(alignment: .leading, spacing: 16) {
-                Button {
-                    showPhotoOptions = false
-                    showPhotosPicker = true
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "photo.on.rectangle")
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundStyle(.primary)
-                        Text("Choose Existing".localized)
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(.primary)
-                    }
-                }
-                .buttonStyle(.plain)
-
-                if CameraPicker.isAvailable {
-                    Button {
-                        showPhotoOptions = false
-                        showCamera = true
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "camera")
-                                .font(.system(size: 18, weight: .medium))
-                                .foregroundStyle(.primary)
-                            Text("Take New Photo".localized)
-                                .font(.system(size: 15, weight: .medium))
-                                .foregroundStyle(.primary)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(16)
-            .presentationCompactAdaptation(.popover)
-        }
-    }
-
-    private func photoThumbnail(_ photo: ReviewPhotoDraft) -> some View {
-        ZStack(alignment: .topTrailing) {
-            Button {
-                selectedPhotoForCaption = photo
-            } label: {
-                ZStack(alignment: .bottomLeading) {
-                    Image(uiImage: photo.image)
-                        .resizable()
-                        .scaledToFill()
-
-                    if !photo.caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        PhotoCaptionBadge()
-                            .padding(6)
-                    }
-                }
-                .frame(width: 120, height: 120)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                withAnimation(.snappy(duration: 0.18)) {
-                    note.removePhoto(id: photo.id)
-                }
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.black)
-                    .frame(width: 24, height: 24)
-                    .background(Color.white, in: Circle())
-                    .shadow(color: .black.opacity(0.18), radius: 3, x: 0, y: 1)
-            }
-            .buttonStyle(.plain)
-            .padding(6)
-        }
-    }
-
-    @MainActor
-    private func loadPhotos(from items: [PhotosPickerItem]) async {
-        for item in items {
-            guard note.photos.count < photoLimit else { break }
-            if let data = try? await item.loadTransferable(type: Data.self),
-               let image = UIImage(data: data) {
-                note.addPhoto(from: image, limit: photoLimit)
-            }
-        }
-    }
-}
-
-private struct GentlePressButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.985 : 1)
-            .opacity(configuration.isPressed ? 0.92 : 1)
-            .animation(.easeOut(duration: 0.18), value: configuration.isPressed)
     }
 }
 

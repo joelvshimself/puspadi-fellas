@@ -1,5 +1,20 @@
 package com.rollspot.app.ui.screens.contribute
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.sp
+import com.rollspot.app.ui.theme.ContributeColors
 import app.rollspot.shared.reviews.ContributeCategoryLabels
 import com.rollspot.app.ui.screens.contribute.components.ContributeNotesScreen
 import com.rollspot.app.ui.screens.contribute.components.ContributeCategoryMenuScreen
@@ -40,9 +55,14 @@ import kotlinx.coroutines.launch
 
 /** Contribute flow. Question titles follow the signed-in mobility profile. */
 @Composable
-fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
+fun ContributeFlowScreen(
+    placeId: String,
+    onFinished: () -> Unit,
+    /** Debug design review: open on this exact state, offline. */
+    preview: app.rollspot.shared.reviews.ContributeFlowState? = null,
+) {
     val sdk = rollspotSdk()
-    val vm: ContributeFlowViewModel = viewModel(key = placeId) { ContributeFlowViewModel(sdk, placeId) }
+    val vm: ContributeFlowViewModel = viewModel(key = placeId) { ContributeFlowViewModel(sdk, placeId, preview) }
     val ui by vm.ui.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
@@ -196,9 +216,51 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
 
     val hero = ContributeStepPresentation.heroAsset(step)
     val canContinue = vm.canContinueCurrentStep()
-    val isCategoryPick = step is ContributeStep.CategoryPick
-    val ctaTitle = if (isCategoryPick) "Submit review" else "Continue"
+    val snapshot = ui.flowSnapshot
+    val isPhotoStep = step == ContributeStep.EntrancePhotos || step == ContributeStep.ElevatorPhotos ||
+        step == ContributeStep.ToiletPhotos || step == ContributeStep.PathwayPhotos ||
+        step == ContributeStep.SeatingPhotos || step == ContributeStep.ParkingPhotos
+    val anotherChoice: ((String) -> Unit)? = when (step) {
+        ContributeStep.EntranceAnother -> vm::chooseAnotherEntrance
+        ContributeStep.ElevatorAnother -> vm::chooseAnotherElevator
+        ContributeStep.ToiletAnother -> vm::chooseAnotherToilet
+        else -> null
+    }
 
+    val followUpStill = (step as? ContributeStep.Toilet)?.let { toiletStill(it.question) }
+    val followUpVideo = when {
+        followUpStill != null -> null
+        step is ContributeStep.EntranceRamp -> R.raw.entrance_ramp to rampVideoInfo
+        step is ContributeStep.EntranceHandrail -> R.raw.entrance_handrail to handrailVideoInfo
+        step is ContributeStep.Elevator -> elevatorVideo(step.question)
+        step is ContributeStep.Toilet -> toiletVideo(step.question)
+        step is ContributeStep.SeatingQuestion -> seatingVideo
+        step is ContributeStep.ParkingQuestion -> parkingVideo
+        else -> null
+    }
+    val hasCard = followUpStill != null || followUpVideo != null
+
+    // A photo under the current answer, opened for its caption.
+    var captioning by remember { mutableStateOf<app.rollspot.shared.reviews.LocalReviewPhoto?>(null) }
+    @Composable
+    fun photos(list: List<app.rollspot.shared.reviews.LocalReviewPhoto>, style: PhotoStripStyle = PhotoStripStyle.Reveal) =
+        ContributePhotoStrip(
+            photos = list,
+            canAdd = vm.canAddPhoto(),
+            onChooseExisting = ::chooseExisting,
+            onTakePhoto = ::takePhoto,
+            onRemove = vm::removePhoto,
+            onOpen = { captioning = it },
+            style = style,
+            // The strip runs to the screen edges.
+            modifier = Modifier.layout { measurable, constraints ->
+                val extra = 40.dp.roundToPx()
+                val placeable = measurable.measure(constraints.copy(maxWidth = constraints.maxWidth + extra, minWidth = constraints.minWidth + extra))
+                layout(placeable.width - extra, placeable.height) { placeable.place(-extra / 2, 0) }
+            },
+        )
+
+    Box(Modifier.fillMaxSize()) {
     Column(
         Modifier
             .fillMaxSize()
@@ -206,57 +268,43 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
             .navigationBarsPadding(),
     ) {
         // Design: progress line on top, then the back button row.
-        when {
-            isCategoryPick -> ContributeCategoryPickProgress()
-            step !is ContributeStep.Submitted &&
-                ContributeStepPresentation.showsFacilityProgressBar(step) -> {
-                ContributeStepProgressBar(currentStep = ui.progressStep, subStepProgress = ui.subStepProgress)
-            }
+        if (ContributeStepPresentation.showsFacilityProgressBar(step)) {
+            ContributeStepProgressBar(currentStep = ui.progressStep, subStepProgress = ui.subStepProgress)
         }
-        ContributeFlowHeader(
-            title = if (isCategoryPick) "" else ui.navTitle,
-            onBack = { vm.goBack(onFinished) },
-        )
+        ContributeFlowHeader(title = ui.navTitle, onBack = { vm.goBack(onFinished) })
 
         Column(
             Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .imePadding()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 16.dp),
         ) {
-            val followUpStill = when (step) {
-                is ContributeStep.Toilet -> toiletStill(step.question)
-                else -> null
-            }
-            val followUpVideo = when {
-                followUpStill != null -> null
-                step is ContributeStep.EntranceRamp -> R.raw.entrance_ramp to rampVideoInfo
-                step is ContributeStep.EntranceHandrail -> R.raw.entrance_handrail to handrailVideoInfo
-                step is ContributeStep.Elevator -> elevatorVideo(step.question)
-                step is ContributeStep.Toilet -> toiletVideo(step.question)
-                step is ContributeStep.SeatingQuestion -> seatingVideo
-                else -> null
-            }
-            if (!isCategoryPick && hero != ContributeHeroAsset.None && followUpVideo == null && followUpStill == null) {
-                ContributeHeroImage(hero)
-            }
-            followUpStill?.let { (drawableRes, info) ->
-                FollowUpStillCard(drawableRes = drawableRes, infoTitle = info.first, infoSections = info.second)
-            }
-            followUpVideo?.let { (rawRes, info) ->
-                key(rawRes) {
+            when {
+                followUpStill != null -> FollowUpStillCard(
+                    drawableRes = followUpStill.first, infoTitle = followUpStill.second.first, infoSections = followUpStill.second.second,
+                    modifier = Modifier.padding(top = 14.dp),
+                )
+                followUpVideo != null -> key(followUpVideo.first) {
                     RampLoopVideoCard(
-                        rawRes = rawRes,
-                        infoTitle = info.first,
-                        infoSections = info.second,
-                        infoRawRes = if (step is ContributeStep.SeatingQuestion) rawRes else null,
+                        rawRes = followUpVideo.first,
+                        infoTitle = followUpVideo.second.first,
+                        infoSections = followUpVideo.second.second,
+                        infoRawRes = followUpVideo.first,
+                        modifier = Modifier.padding(top = 14.dp),
                     )
                 }
+                hero != ContributeHeroAsset.None -> ContributeHeroImage(
+                    hero,
+                    Modifier.padding(top = if (isPhotoStep) 30.dp else 26.dp),
+                    height = if (isPhotoStep) 120.dp else 118.dp,
+                )
             }
 
+            Spacer(Modifier.height(if (hasCard) 34.dp else if (isPhotoStep) 50.dp else 40.dp))
             ContributeQuestionBlock(
-                eyebrow = if (isCategoryPick) null else ContributeStepPresentation.eyebrow(step),
+                eyebrow = ContributeStepPresentation.eyebrow(step),
                 title = ContributeStepPresentation.questionTitle(step, ui.persona),
                 subtitle = ContributeStepPresentation.questionSubtitle(step),
                 onInfo = if (step is ContributeStep.EntranceLocationPick) {
@@ -265,123 +313,53 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
                     null
                 },
             )
+            when (step) {
+                ContributeStep.ParkingQuestion -> LearnMoreLink("Learn more about accessible parking") { showParkingInfo = true }
+                ContributeStep.PathwayNotice -> LearnMoreLink("Learn more about accessible pathways") { showPathwayInfo = true }
+                else -> Unit
+            }
+            Spacer(Modifier.height(if (isPhotoStep) 30.dp else 18.dp))
+
+            @Composable
+            fun options(selected: String?, onSelect: (String) -> Unit) =
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ContributeStepPresentation.optionsFor(step).forEach { opt ->
+                        ContributeSingleChoiceRow(label = opt, selected = selected == opt, onClick = { onSelect(opt) })
+                    }
+                }
+
+            @Composable
+            fun evidence(selected: String?, notSure: String, list: List<app.rollspot.shared.reviews.LocalReviewPhoto>) {
+                AnimatedVisibility(
+                    selected == notSure,
+                    enter = fadeIn(tween(250)) + expandVertically(tween(250)),
+                    exit = fadeOut(tween(200)) + shrinkVertically(tween(200)),
+                ) {
+                    Box(Modifier.padding(top = 12.dp)) { photos(list) }
+                }
+            }
 
             when (step) {
-                ContributeStep.CategoryPick -> {
-                    ContributeCategoryMenusGrid(
-                        status = ui.flowSnapshot?.sectionStatus ?: emptyMap(),
-                        onOpen = vm::openCategory,
-                    )
-                }
-                ContributeStep.SeatingPhotos -> {
-                    ContributeAddPhotosBox(
-                        photos = ui.flowSnapshot?.seatingPhotos ?: emptyList(),
-                        onAddPhoto = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                        onRemovePhoto = vm::removePhoto,
-                    )
-                }
-                ContributeStep.SeatingQuestion -> {
-                    val selected = ui.flowSnapshot?.seatingAnswer
-                    ContributeStepPresentation.optionsFor(step).forEach { opt ->
-                        ContributeSingleChoiceRow(
-                            label = opt,
-                            selected = selected == opt,
-                            onClick = { vm.setSeatingAnswer(opt) },
-                        )
-                    }
-                }
-                ContributeStep.ParkingPhotos -> {
-                    ContributeAddPhotosBox(
-                        photos = ui.flowSnapshot?.parkingPhotos ?: emptyList(),
-                        onAddPhoto = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                        onRemovePhoto = vm::removePhoto,
-                    )
-                }
-                ContributeStep.ParkingQuestion -> {
-                    TextButton(onClick = { showParkingInfo = true }, contentPadding = PaddingValues(0.dp)) {
-                        Icon(Icons.Outlined.Info, contentDescription = null, tint = RollspotBlue)
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "Learn more about accessible parking",
-                            color = RollspotBlue,
-                            textDecoration = TextDecoration.Underline,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                    val selected = ui.flowSnapshot?.parkingAnswer
-                    ContributeStepPresentation.optionsFor(step).forEach { opt ->
-                        ContributeSingleChoiceRow(
-                            label = opt,
-                            selected = selected == opt,
-                            onClick = { vm.setParkingAnswer(opt) },
-                        )
-                    }
-                }
-                ContributeStep.PathwayPhotos -> {
-                    ContributeAddPhotosBox(
-                        photos = ui.flowSnapshot?.supplementalNotes?.get(ContributeReviewCategory.OutdoorPathways)?.photos
-                            ?: emptyList(),
-                        onAddPhoto = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                        onRemovePhoto = vm::removePhoto,
-                    )
-                }
-                ContributeStep.PathwayNotice -> {
-                    TextButton(onClick = { showPathwayInfo = true }, contentPadding = PaddingValues(0.dp)) {
-                        Icon(Icons.Outlined.Info, contentDescription = null, tint = RollspotBlue)
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "Learn more about accessible pathways",
-                            color = RollspotBlue,
-                            textDecoration = TextDecoration.Underline,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
+                ContributeStep.EntrancePhotos -> photos(snapshot?.entrancePhotos.orEmpty(), PhotoStripStyle.Box)
+                ContributeStep.ElevatorPhotos -> photos(snapshot?.elevatorPhotos.orEmpty(), PhotoStripStyle.Box)
+                ContributeStep.ToiletPhotos -> photos(snapshot?.toiletPhotos.orEmpty(), PhotoStripStyle.Box)
+                ContributeStep.PathwayPhotos -> photos(
+                    snapshot?.supplementalNotes?.get(ContributeReviewCategory.OutdoorPathways)?.photos.orEmpty(), PhotoStripStyle.Box,
+                )
+                ContributeStep.SeatingPhotos -> photos(snapshot?.seatingPhotos.orEmpty(), PhotoStripStyle.Box)
+                ContributeStep.ParkingPhotos -> photos(snapshot?.parkingPhotos.orEmpty(), PhotoStripStyle.Box)
+                ContributeStep.SeatingQuestion -> options(snapshot?.seatingAnswer, vm::setSeatingAnswer)
+                ContributeStep.ParkingQuestion -> options(snapshot?.parkingAnswer, vm::setParkingAnswer)
+                ContributeStep.PathwayNotice -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     ContributeStepPresentation.tagOptions(step).forEach { option ->
-                        val selected = option in (ui.flowSnapshot?.pathwayNotices ?: emptySet())
-                        ContributeNoticeRow(
-                            label = option,
-                            selected = selected,
-                            onClick = { vm.togglePathwayNotice(option) },
-                        )
+                        ContributeNoticeRow(option, option in snapshot?.pathwayNotices.orEmpty()) { vm.togglePathwayNotice(option) }
                     }
                 }
-                is ContributeStep.SupplementalNotes -> {
-                    val notes = ui.flowSnapshot?.supplementalNotes?.get(step.category)
-                    OutlinedTextField(
-                        value = notes?.text ?: "",
-                        onValueChange = { vm.setSupplementalNote(step.category, it) },
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp),
-                        placeholder = { Text("Tell us more about your experience …") },
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-                        minLines = 5,
-                    )
-                }
-                ContributeStep.EntrancePhotos -> {
-                    ContributeAddPhotosBox(
-                        photos = ui.flowSnapshot?.entrancePhotos ?: emptyList(),
-                        onAddPhoto = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                        onRemovePhoto = vm::removePhoto,
-                    )
-                }
-                ContributeStep.ElevatorPhotos -> {
-                    ContributeAddPhotosBox(
-                        photos = ui.flowSnapshot?.elevatorPhotos ?: emptyList(),
-                        onAddPhoto = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                        onRemovePhoto = vm::removePhoto,
-                    )
-                }
-                ContributeStep.ToiletPhotos -> {
-                    ContributeAddPhotosBox(
-                        photos = ui.flowSnapshot?.toiletPhotos ?: emptyList(),
-                        onAddPhoto = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                        onRemovePhoto = vm::removePhoto,
-                    )
-                }
-                ContributeStep.EntranceLocationPick -> {
+                ContributeStep.EntranceLocationPick -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     EntranceLocation.entries.forEach { loc ->
                         ContributeEntranceLocationRow(
                             label = loc.name,
-                            selected = loc in (ui.flowSnapshot?.entranceLocations ?: emptySet()),
+                            selected = loc in snapshot?.entranceLocations.orEmpty(),
                             onClick = { vm.toggleEntranceLocation(loc) },
                         )
                     }
@@ -390,165 +368,79 @@ fun ContributeFlowScreen(placeId: String, onFinished: () -> Unit) {
                     // Notes to DEV: Ramp and/or Handrail have a follow-up question.
                     // Every other tag only records whether it is present. Do not add extra screens for those yet.
                     val selected = when (step.location) {
-                        EntranceLocation.Lobby -> ui.flowSnapshot?.lobbyTags ?: emptySet()
-                        EntranceLocation.Basement -> ui.flowSnapshot?.basementTags ?: emptySet()
+                        EntranceLocation.Lobby -> snapshot?.lobbyTags.orEmpty()
+                        EntranceLocation.Basement -> snapshot?.basementTags.orEmpty()
                     }
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         ContributeStepPresentation.tagOptions(step).forEach { tag ->
-                            ContributeTagChip(
-                                label = tag,
-                                selected = tag in selected,
-                                onClick = { vm.toggleEntranceTag(step.location, tag) },
-                            )
+                            ContributeTagChip(label = tag, selected = tag in selected, onClick = { vm.toggleEntranceTag(step.location, tag) })
                         }
                     }
                 }
                 is ContributeStep.EntranceRamp -> {
                     val selected = when (step.location) {
-                        EntranceLocation.Lobby -> ui.flowSnapshot?.lobbyRampAnswer
-                        EntranceLocation.Basement -> ui.flowSnapshot?.basementRampAnswer
+                        EntranceLocation.Lobby -> snapshot?.lobbyRampAnswer
+                        EntranceLocation.Basement -> snapshot?.basementRampAnswer
                     }
-                    ContributeStepPresentation.optionsFor(step).forEach { opt ->
-                        ContributeSingleChoiceRow(
-                            label = opt,
-                            selected = selected == opt,
-                            onClick = { vm.setRampAnswer(step.location, opt) },
-                        )
-                    }
-                    if (selected == "Not sure") {
-                        FollowUpPhotosRow(
-                            photos = entranceEvidence(step.location, ContributeCodes.RAMP),
-                            canAdd = vm.canAddPhoto(),
-                            onAddPhoto = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                            onRemovePhoto = vm::removePhoto,
-                        )
-                    }
+                    options(selected) { vm.setRampAnswer(step.location, it) }
+                    evidence(selected, "Not sure", entranceEvidence(step.location, ContributeCodes.RAMP))
                 }
                 is ContributeStep.EntranceHandrail -> {
                     val selected = when (step.location) {
-                        EntranceLocation.Lobby -> ui.flowSnapshot?.lobbyHandrailAnswer
-                        EntranceLocation.Basement -> ui.flowSnapshot?.basementHandrailAnswer
+                        EntranceLocation.Lobby -> snapshot?.lobbyHandrailAnswer
+                        EntranceLocation.Basement -> snapshot?.basementHandrailAnswer
                     }
-                    ContributeStepPresentation.optionsFor(step).forEach { opt ->
-                        ContributeSingleChoiceRow(
-                            label = opt,
-                            selected = selected == opt,
-                            onClick = { vm.setHandrailAnswer(step.location, opt) },
-                        )
-                    }
-                    if (selected == "Not sure") {
-                        FollowUpPhotosRow(
-                            photos = entranceEvidence(step.location, ContributeCodes.HANDRAIL),
-                            canAdd = vm.canAddPhoto(),
-                            onAddPhoto = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                            onRemovePhoto = vm::removePhoto,
-                        )
-                    }
+                    options(selected) { vm.setHandrailAnswer(step.location, it) }
+                    evidence(selected, "Not sure", entranceEvidence(step.location, ContributeCodes.HANDRAIL))
                 }
                 is ContributeStep.Elevator -> {
-                    val selected = ui.flowSnapshot?.elevatorAnswers?.get(step.question)
-                    ContributeStepPresentation.optionsFor(step).forEach { opt ->
-                        ContributeSingleChoiceRow(
-                            label = opt,
-                            selected = selected == opt,
-                            onClick = { vm.setElevatorAnswer(step.question, opt) },
-                        )
-                    }
-                    val question = ContributeCodes.elevatorQuestion(step.question)
-                    if (selected == "Not Sure") {
-                        FollowUpPhotosRow(
-                            photos = ui.flowSnapshot?.elevatorEvidence?.get(question) ?: emptyList(),
-                            canAdd = vm.canAddPhoto(),
-                            onAddPhoto = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                            onRemovePhoto = vm::removePhoto,
-                        )
-                    }
-                }
-                ContributeStep.ElevatorLocation -> {
-                    OutlinedTextField(
-                        value = ui.flowSnapshot?.elevatorLocation ?: "",
-                        onValueChange = vm::setElevatorLocation,
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("Describe what's around ...") },
-                        minLines = 4,
-                    )
-                }
-                ContributeStep.ElevatorAnother -> {
-                    ContributeStepPresentation.optionsFor(step).forEach { opt ->
-                        ContributeSingleChoiceRow(
-                            label = opt,
-                            selected = false,
-                            onClick = { vm.chooseAnotherElevator(opt) },
-                        )
-                    }
-                }
-                ContributeStep.EntranceAnother -> {
-                    ContributeStepPresentation.optionsFor(step).forEach { opt ->
-                        ContributeSingleChoiceRow(
-                            label = opt,
-                            selected = false,
-                            onClick = { vm.chooseAnotherEntrance(opt) },
-                        )
-                    }
+                    val selected = snapshot?.elevatorAnswers?.get(step.question)
+                    options(selected) { vm.setElevatorAnswer(step.question, it) }
+                    evidence(selected, "Not Sure", snapshot?.elevatorEvidence?.get(ContributeCodes.elevatorQuestion(step.question)).orEmpty())
                 }
                 is ContributeStep.Toilet -> {
-                    val selected = ui.flowSnapshot?.toiletAnswers?.get(step.question)
-                    ContributeStepPresentation.optionsFor(step).forEach { opt ->
-                        ContributeSingleChoiceRow(
-                            label = opt,
-                            selected = selected == opt,
-                            onClick = { vm.setToiletAnswer(step.question, opt) },
-                        )
-                    }
+                    val selected = snapshot?.toiletAnswers?.get(step.question)
+                    options(selected) { vm.setToiletAnswer(step.question, it) }
                     val question = ContributeCodes.toiletQuestion(step.question)
-                    if (selected == "Not sure" && question != null) {
-                        FollowUpPhotosRow(
-                            photos = ui.flowSnapshot?.toiletEvidence?.get(question) ?: emptyList(),
-                            canAdd = vm.canAddPhoto(),
-                            onAddPhoto = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                            onRemovePhoto = vm::removePhoto,
-                        )
-                    }
+                    if (question != null) evidence(selected, "Not sure", snapshot?.toiletEvidence?.get(question).orEmpty())
                 }
-                ContributeStep.ToiletLocation -> {
-                    OutlinedTextField(
-                        value = ui.flowSnapshot?.toiletLocationNote ?: "",
-                        onValueChange = vm::setToiletLocation,
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("Describe what's around ...") },
-                        minLines = 4,
-                    )
-                }
-                ContributeStep.ToiletAnother -> {
-                    ContributeStepPresentation.optionsFor(step).forEach { opt ->
-                        ContributeSingleChoiceRow(
-                            label = opt,
-                            selected = false,
-                            onClick = { vm.chooseAnotherToilet(opt) },
-                        )
-                    }
-                }
-                ContributeStep.Submitted -> Unit
+                ContributeStep.ElevatorLocation -> ContributeTextArea(snapshot?.elevatorLocation.orEmpty(), vm::setElevatorLocation)
+                ContributeStep.ToiletLocation -> ContributeTextArea(snapshot?.toiletLocationNote.orEmpty(), vm::setToiletLocation)
+                else -> Unit
             }
-            Spacer(Modifier.height(8.dp))
         }
 
-        if (step !is ContributeStep.ElevatorAnother &&
-            step !is ContributeStep.EntranceAnother &&
-            step !is ContributeStep.ToiletAnother
-        ) {
-            ContributeContinueButton(
-                title = ctaTitle,
-                enabled = canContinue,
-                loading = ui.isSubmitting,
-                onClick = {
-                    if (isCategoryPick) vm.submit() else vm.goNext()
-                },
-            )
+        if (anotherChoice != null) {
+            // "Review another …?": the answers sit where Continue usually is; the tapped one fills blue.
+            var chosen by remember(step) { mutableStateOf<String?>(null) }
+            val scope2 = rememberCoroutineScope()
+            Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                ContributeStepPresentation.optionsFor(step).forEach { opt ->
+                    ContributeChoiceButton(opt, selected = chosen == opt) {
+                        if (chosen != null) return@ContributeChoiceButton
+                        chosen = opt
+                        scope2.launch {
+                            kotlinx.coroutines.delay(280)
+                            anotherChoice(opt)
+                        }
+                    }
+                }
+            }
+        } else {
+            ContributeContinueButton(title = "Continue", enabled = canContinue, loading = ui.isSubmitting, onClick = vm::goNext)
         }
+    }
+    captioning?.let { photo ->
+        // Re-read the photo so a caption saved earlier shows when reopened.
+        val current = vm.allPhotos().firstOrNull { it.fileId == photo.fileId } ?: photo
+        PhotoCaptionScreen(
+            photo = current,
+            progressStep = ui.progressStep,
+            progress = ui.subStepProgress,
+            onSave = { vm.setPhotoCaption(photo.fileId, it) },
+            onDismiss = { captioning = null },
+        )
+    }
     }
 
     if (showEntranceInfo) {
@@ -566,6 +458,43 @@ private val seatingVideo = R.raw.seating to ("Wheelchair Friendly Seating" to li
     "Height" to "Low enough to comfortably reach the tabletop from a seated position.",
     "Clearance" to "Open space underneath so a wheelchair can roll up close and not blocked by a solid base or crossbar.",
 ))
+
+private val parkingVideo = R.raw.parking_accessible_parking to ("Accessible Parking" to listOf(
+    "Space" to "Wider than a standard spot, with designated access aisle for a wheelchair to unload.",
+    "Distance" to "Ideally located on the shortest, most direct route to the entrance, not the far end of the lot.",
+))
+
+/** Blue underlined "Learn more …" link under a question. */
+@Composable
+private fun LearnMoreLink(text: String, onClick: () -> Unit) {
+    Row(
+        Modifier.padding(top = 8.dp).clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(Icons.Filled.Info, null, Modifier.size(13.dp), tint = ContributeColors.Blue)
+        Text(text, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = ContributeColors.Blue, textDecoration = TextDecoration.Underline)
+    }
+}
+
+/** "Describe what's around ..." box for the elevator / toilet location (Figma). */
+@Composable
+private fun ContributeTextArea(value: String, onChange: (String) -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
+    val border by androidx.compose.animation.animateColorAsState(ContributeColors.Blue.copy(alpha = if (focused) 0.5f else 0f), tween(150), label = "area")
+    Box(
+        Modifier.fillMaxWidth().heightIn(min = 112.dp).clip(shape).background(ContributeColors.Fill)
+            .border(2.dp, border, shape).padding(horizontal = 15.dp, vertical = 16.dp),
+    ) {
+        if (value.isEmpty()) Text("Describe what's around ...", fontSize = 15.sp, color = ContributeColors.Placeholder)
+        androidx.compose.foundation.text.BasicTextField(
+            value, onChange,
+            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 15.sp, color = ContributeColors.Text),
+            modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused },
+        )
+    }
+}
 
 private val rampVideoInfo = "Ramps" to listOf(
     "Slope" to "Steep slopes require wheelchair users to push hard. The taller the step up, the longer the ramp needs to be to stay gentle.",

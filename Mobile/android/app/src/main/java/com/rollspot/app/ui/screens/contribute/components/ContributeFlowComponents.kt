@@ -1,5 +1,8 @@
 package com.rollspot.app.ui.screens.contribute.components
 
+import androidx.compose.material.icons.filled.RadioButtonChecked
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.unit.Dp
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -159,18 +162,25 @@ fun ContributeStepProgressBar(currentStep: Int, subStepProgress: Float) {
     }
 }
 
+/** Plain (card-less) illustration: 118dp on questions, 120dp on "Take or upload a photo" (Figma). */
 @Composable
-fun ContributeHeroImage(asset: ContributeHeroAsset, modifier: Modifier = Modifier) {
+fun ContributeHeroImage(asset: ContributeHeroAsset, modifier: Modifier = Modifier, height: Dp = 118.dp) {
     val painter = rememberHeroPainter(asset) ?: return
     Image(
         painter = painter,
         contentDescription = null,
-        modifier = modifier
-            .fillMaxWidth()
-            .height(180.dp),
+        modifier = modifier.fillMaxWidth().height(height),
         contentScale = ContentScale.Fit,
     )
 }
+
+/** The white card around a question's illustration or loop (Figma: 262dp, 16dp corners, hairline). */
+fun Modifier.contributeIllustrationCard(): Modifier = this
+    .fillMaxWidth()
+    .height(262.dp)
+    .clip(RoundedCornerShape(16.dp))
+    .background(Color.White)
+    .border(1.dp, Color(0xFFF0F0F0), RoundedCornerShape(16.dp))
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -181,30 +191,14 @@ fun FollowUpStillCard(
     modifier: Modifier = Modifier,
 ) {
     var showInfo by remember { mutableStateOf(false) }
-    Box(
-        modifier
-            .fillMaxWidth()
-            .height(220.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(Color.White)
-            .clickable { showInfo = true },
-        contentAlignment = Alignment.Center,
-    ) {
+    Box(modifier.contributeIllustrationCard().clickable { showInfo = true }, contentAlignment = Alignment.Center) {
         Image(
             painter = painterResource(drawableRes),
             contentDescription = null,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxSize().padding(16.dp),
             contentScale = ContentScale.Fit,
         )
-        OverlayCircleButton(
-            onClick = { showInfo = true },
-            fill = RollspotBlue,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
-        ) {
-            Icon(Icons.Outlined.Info, contentDescription = infoTitle, tint = Color.White, modifier = Modifier.size(16.dp))
-        }
+        CardInfoButton(infoTitle, Modifier.align(Alignment.BottomEnd)) { showInfo = true }
     }
     if (showInfo) {
         FollowUpInfoSheet(infoTitle = infoTitle, infoSections = infoSections, onDismiss = { showInfo = false })
@@ -261,47 +255,22 @@ private fun LoopingVideoSurface(
         onDispose { videoView.stopPlayback() }
     }
 
-    Box(
-        modifier
-            .fillMaxWidth()
-            .height(220.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(Color.White),
-    ) {
+    Box(modifier.contributeIllustrationCard()) {
         AndroidView(factory = { videoView }, modifier = Modifier.fillMaxSize())
         if (onSurfaceClick != null) {
             Box(Modifier.fillMaxSize().clickable { onSurfaceClick() })
         }
-        OverlayCircleButton(
-            onClick = {
-                if (playing) videoView.pause() else videoView.start()
-                playing = !playing
-            },
-            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
-        ) {
-            Icon(
-                if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                contentDescription = if (playing) "Pause" else "Play",
-                modifier = Modifier.size(16.dp),
-            )
+        CardPauseButton(playing, Modifier.align(Alignment.TopEnd)) {
+            if (playing) videoView.pause() else videoView.start()
+            playing = !playing
         }
         if (onInfo != null) {
-            OverlayCircleButton(
-                onClick = onInfo,
-                fill = RollspotBlue,
-                modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
-            ) {
-                Icon(
-                    Icons.Outlined.Info,
-                    contentDescription = infoContentDescription,
-                    tint = Color.White,
-                    modifier = Modifier.size(16.dp),
-                )
-            }
+            CardInfoButton(infoContentDescription ?: "More information", Modifier.align(Alignment.BottomEnd), onInfo)
         }
     }
 }
 
+/** Explanation sheet behind the card's "i": grey sheet, white card with the loop, title, headings, body. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FollowUpInfoSheet(
@@ -312,65 +281,53 @@ private fun FollowUpInfoSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        containerColor = Color(0xFFE8E8E8),
+        shape = RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp),
     ) {
         Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp)
-                .navigationBarsPadding(),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp).navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             if (infoRawRes != null) {
-                LoopingVideoSurface(rawRes = infoRawRes)
+                LoopingVideoSurface(rawRes = infoRawRes, modifier = Modifier.padding(bottom = 6.dp))
             }
-            Text(infoTitle, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            infoSections.forEach { (title, body) ->
-                RampInfoBlock(title = title, body = body, headingMuted = infoRawRes != null)
-            }
-            if (infoRawRes != null) {
-                HorizontalDivider()
-            }
+            Text(infoTitle, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = ContributeColors.Text)
+            infoSections.forEach { (title, body) -> RampInfoBlock(title = title, body = body) }
         }
     }
 }
 
+/** Small grey pause/play dot, top-right of the card. The hit area is larger than the dot. */
 @Composable
-private fun OverlayCircleButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    fill: Color = MaterialTheme.colorScheme.surfaceVariant,
-    content: @Composable () -> Unit,
-) {
+private fun CardPauseButton(playing: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
-        modifier
-            .size(32.dp)
-            .clip(CircleShape)
-            .background(fill)
-            .clickable(onClick = onClick),
+        modifier.size(40.dp).clickable(onClick = onClick).semantics { contentDescription = if (playing) "Pause" else "Play" },
         contentAlignment = Alignment.Center,
     ) {
-        content()
+        Box(Modifier.size(22.dp).background(ContributeColors.CircleButton, CircleShape), contentAlignment = Alignment.Center) {
+            Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, null, Modifier.size(11.dp), tint = Color(0xFF8E8E93))
+        }
+    }
+}
+
+/** Small blue "i", bottom-right of the card: opens the explanation sheet. */
+@Composable
+private fun CardInfoButton(description: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(
+        modifier.size(40.dp).clickable(onClick = onClick).semantics { contentDescription = description },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(Modifier.size(16.dp).background(ContributeColors.Blue, CircleShape), contentAlignment = Alignment.Center) {
+            Text("i", fontSize = 10.sp, fontWeight = FontWeight.Black, color = Color.White, lineHeight = 10.sp)
+        }
     }
 }
 
 @Composable
-private fun RampInfoBlock(title: String, body: String, headingMuted: Boolean = false) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        if (title.isNotEmpty()) {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = if (headingMuted) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-            )
-        }
-        Text(body, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun RampInfoBlock(title: String, body: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (title.isNotEmpty()) Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF575757))
+        Text(body, fontSize = 13.sp, lineHeight = 18.sp, color = Color(0xFF5D5D5D))
     }
 }
 
@@ -410,6 +367,7 @@ fun ContributeContinueButton(
     }
 }
 
+/** Eyebrow (13sp grey), question (22sp semibold) and an optional hint (Figma question frames). */
 @Composable
 fun ContributeQuestionBlock(
     eyebrow: String?,
@@ -417,37 +375,23 @@ fun ContributeQuestionBlock(
     subtitle: String? = null,
     onInfo: (() -> Unit)? = null,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        eyebrow?.let {
-            Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        eyebrow?.takeIf { it.isNotEmpty() }?.let { Text(it, fontSize = 13.sp, color = Color(0xFF5C5C5C)) }
         Row(verticalAlignment = Alignment.Top) {
-            Text(
-                title,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-            )
+            Text(title, Modifier.weight(1f), fontSize = 22.sp, lineHeight = 27.sp, fontWeight = FontWeight.SemiBold, color = ContributeColors.Text)
             if (onInfo != null) {
-                IconButton(onClick = onInfo, modifier = Modifier.size(36.dp)) {
-                    Box(
-                        Modifier
-                            .size(28.dp)
-                            .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            Icons.Outlined.Info,
-                            contentDescription = "Accessible entrance info",
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                Box(
+                    Modifier.offset(y = (-8).dp).size(36.dp).clickable(onClick = onInfo).semantics { contentDescription = "Accessible entrance info" },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(Modifier.size(18.dp).background(Color(0xFFA8ABB0), CircleShape), contentAlignment = Alignment.Center) {
+                        Text("i", fontSize = 10.sp, fontWeight = FontWeight.Black, color = Color.White, lineHeight = 10.sp)
                     }
                 }
             }
         }
-        subtitle?.let {
-            Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        subtitle?.takeIf { it.isNotEmpty() }?.let {
+            Text(it, fontSize = if (it == "(Optional)") 14.sp else 13.sp, color = if (it == "(Optional)") ContributeColors.OptionalText else ContributeColors.SecondaryText)
         }
     }
 }
@@ -494,242 +438,95 @@ fun AccessibleEntranceInfoSheet(onDismiss: () -> Unit) {
     }
 }
 
+/** Icon chip: grey; picked turns white with a blue outline and blue label (Figma tag questions). */
 @Composable
 fun ContributeTagChip(label: String, selected: Boolean, onClick: () -> Unit) {
     val iconId = tagChipDrawable(label)
-    val shape = RoundedCornerShape(50)
-    val bg = if (selected) RollspotBlue.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surfaceVariant
-    val border = if (selected) BorderStroke(1.5.dp, RollspotBlue) else null
+    val interaction = remember { MutableInteractionSource() }
+    val border by animateColorAsState(ContributeColors.Blue.copy(alpha = if (selected) 1f else 0f), tween(150), label = "chip")
     Row(
-        modifier = Modifier
-            .padding(vertical = 4.dp)
-            .clip(shape)
-            .background(bg, shape)
-            .then(if (border != null) Modifier.border(border, shape) else Modifier)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+        Modifier
+            .height(34.dp)
+            .pressScale(interaction)
+            .clip(CircleShape)
+            .background(if (selected) Color.White else ContributeColors.Fill)
+            .border(1.5.dp, border, CircleShape)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .semantics { this.selected = selected }
+            .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        if (iconId != null) {
-            Image(
-                painter = painterResource(iconId),
-                contentDescription = null,
-                modifier = Modifier.size(14.dp),
-            )
-        }
+        if (iconId != null) Image(painterResource(iconId), null, Modifier.size(11.dp))
         Text(
-            label.lowercase().replaceFirstChar { it.titlecase() },
-            fontSize = 14.sp,
+            label.lowercase().split(" ").joinToString(" ") { word -> word.replaceFirstChar { it.titlecase() } },
+            fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
-            color = if (selected) RollspotBlue else MaterialTheme.colorScheme.onSurface,
+            color = if (selected) ContributeColors.Blue else Color(0xFF3E4042),
         )
     }
 }
 
+/** One answer: a 46dp grey pill; selected turns white with a blue outline and blue text (Figma). */
 @Composable
-fun ContributeSingleChoiceRow(label: String, selected: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(50)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp)
-            .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceVariant, shape)
-            .then(
-                if (selected) Modifier.border(BorderStroke(1.5.dp, RollspotBlue), shape) else Modifier,
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            label,
-            modifier = Modifier.weight(1f),
-            fontWeight = FontWeight.Medium,
-            color = if (selected) RollspotBlue else MaterialTheme.colorScheme.onSurface,
-        )
-        if (selected) {
-            Icon(Icons.Default.Check, contentDescription = null, tint = RollspotBlue, modifier = Modifier.size(20.dp))
-        }
-    }
-}
-
-@Composable
-fun ContributeEntranceLocationRow(label: String, selected: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(50)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp)
-            .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceVariant, shape)
-            .then(
-                if (selected) Modifier.border(BorderStroke(1.5.dp, RollspotBlue), shape) else Modifier,
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Icon(
-            Icons.Default.DoorFront,
-            contentDescription = null,
-            tint = if (selected) RollspotBlue else MaterialTheme.colorScheme.onSurface,
-        )
-        Text(
-            label,
-            modifier = Modifier.weight(1f),
-            fontWeight = FontWeight.Medium,
-            color = if (selected) RollspotBlue else MaterialTheme.colorScheme.onSurface,
-        )
-        if (selected) {
-            Icon(Icons.Default.Check, contentDescription = null, tint = RollspotBlue, modifier = Modifier.size(20.dp))
-        } else {
-            Icon(Icons.Outlined.Circle, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-        }
-    }
-}
-
-@Composable
-fun FollowUpPhotosRow(
-    photos: List<LocalReviewPhoto>,
-    canAdd: Boolean = true,
-    onAddPhoto: () -> Unit,
-    onRemovePhoto: (String) -> Unit,
+fun ContributeSingleChoiceRow(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    leadingIcon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    showsRadio: Boolean = false,
 ) {
-    if (photos.isEmpty()) {
-        if (canAdd) FollowUpAddPhotoTile(wide = true, onClick = onAddPhoto)
-    } else {
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            if (canAdd) FollowUpAddPhotoTile(wide = false, onClick = onAddPhoto)
-            photos.forEach { photo ->
-                val bitmap = remember(photo.fileId) {
-                    BitmapFactory.decodeByteArray(photo.jpeg, 0, photo.jpeg.size)?.asImageBitmap()
-                }
-                Box(Modifier.size(120.dp)) {
-                    if (bitmap != null) {
-                        Image(
-                            bitmap = bitmap,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp)),
-                            contentScale = ContentScale.Crop,
-                        )
-                    }
-                    IconButton(
-                        onClick = { onRemovePhoto(photo.fileId) },
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(4.dp)
-                            .size(24.dp)
-                            .background(Color.White.copy(alpha = 0.9f), CircleShape),
-                    ) {
-                        Icon(Icons.Default.Close, contentDescription = "Remove", modifier = Modifier.size(14.dp))
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun FollowUpAddPhotoTile(wide: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(16.dp)
-    Column(
+    val interaction = remember { MutableInteractionSource() }
+    val border by animateColorAsState(ContributeColors.Blue.copy(alpha = if (selected) 1f else 0f), tween(150), label = "row")
+    val content = if (selected) ContributeColors.Blue else Color(0xFF3E4042)
+    Row(
         Modifier
-            .then(if (wide) Modifier.fillMaxWidth() else Modifier.width(120.dp))
-            .height(120.dp)
-            .clip(shape)
-            .border(BorderStroke(1.5.dp, RollspotBlue.copy(alpha = 0.4f)), shape)
-            .clickable(onClick = onClick)
-            .padding(12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+            .fillMaxWidth()
+            .height(46.dp)
+            .pressScale(interaction)
+            .clip(CircleShape)
+            .background(if (selected) Color.White else ContributeColors.Fill)
+            .border(1.5.dp, border, CircleShape)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .semantics { this.selected = selected }
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Icon(Icons.Outlined.Photo, contentDescription = null, tint = RollspotBlue, modifier = Modifier.size(28.dp))
-        Spacer(Modifier.height(6.dp))
-        Text("Add Photos", fontWeight = FontWeight.SemiBold, color = RollspotBlue, fontSize = 14.sp)
-        Text("(Optional)", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-    }
-}
-
-@Composable
-fun ContributeAddPhotosBox(
-    photos: List<LocalReviewPhoto>,
-    onAddPhoto: () -> Unit,
-    onRemovePhoto: (String) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        OutlinedCard(
-            onClick = onAddPhoto,
-            modifier = Modifier.fillMaxWidth(),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        ) {
-            Column(
-                Modifier.fillMaxWidth().padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Icon(Icons.Outlined.Photo, contentDescription = null, tint = RollspotBlue, modifier = Modifier.size(32.dp))
-                Spacer(Modifier.height(8.dp))
-                Text("Add Photos", fontWeight = FontWeight.SemiBold, color = RollspotBlue)
-            }
-        }
-        if (photos.isNotEmpty()) {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(photos, key = { it.fileId }) { photo ->
-                    val bitmap = remember(photo.fileId) {
-                        BitmapFactory.decodeByteArray(photo.jpeg, 0, photo.jpeg.size)?.asImageBitmap()
-                    }
-                    Box {
-                        if (bitmap != null) {
-                            Image(
-                                bitmap = bitmap,
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .size(72.dp)
-                                    .clip(RoundedCornerShape(12.dp)),
-                                contentScale = ContentScale.Crop,
-                            )
-                        }
-                        IconButton(
-                            onClick = { onRemovePhoto(photo.fileId) },
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .size(28.dp)
-                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), CircleShape),
-                        ) {
-                            Icon(Icons.Default.Close, contentDescription = "Remove", modifier = Modifier.size(16.dp))
-                        }
-                    }
-                }
-            }
+        leadingIcon?.let { Icon(it, null, Modifier.size(18.dp), tint = content) }
+        Text(label, Modifier.weight(1f), fontSize = 15.sp, fontWeight = FontWeight.Medium, color = content)
+        if (showsRadio && selected) {
+            Icon(Icons.Default.RadioButtonChecked, null, Modifier.size(18.dp), tint = ContributeColors.Blue)
         }
     }
 }
 
+/** "Review another …?" answers: light pills with blue text; the tapped one fills blue. */
 @Composable
-fun ContributePhotosSection(
-    note: String,
-    photos: List<LocalReviewPhoto>,
-    onNoteChange: (String) -> Unit,
-    onAddPhoto: () -> Unit,
-    onRemovePhoto: (String) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        ContributeAddPhotosBox(photos = photos, onAddPhoto = onAddPhoto, onRemovePhoto = onRemovePhoto)
-        Text("Notes", fontWeight = FontWeight.SemiBold)
-        OutlinedTextField(
-            value = note,
-            onValueChange = onNoteChange,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp),
-            placeholder = { Text("Your experience…") },
-            shape = RoundedCornerShape(16.dp),
-        )
+fun ContributeChoiceButton(title: String, selected: Boolean, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val fill by animateColorAsState(if (selected) ContributeColors.Blue else ContributeColors.Fill, tween(200), label = "choice")
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(54.dp)
+            .pressScale(interaction)
+            .clip(CircleShape)
+            .background(fill)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = if (selected) Color.White else ContributeColors.Blue)
     }
 }
+
+@Composable
+fun ContributeEntranceLocationRow(label: String, selected: Boolean, onClick: () -> Unit) =
+    ContributeSingleChoiceRow(label, selected, onClick, leadingIcon = Icons.Default.DoorFront, showsRadio = true)
+
+
+
+
 
 /** "Contribution Submitted" (Figma): illustration, "Review Submitted!", "Back to Home", on white. */
 @Composable
@@ -785,22 +582,8 @@ fun ContributeSubmittedScreen(onDone: () -> Unit, modifier: Modifier = Modifier)
 }
 
 @Composable
-fun ContributeNoticeRow(label: String, selected: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(50)
-    Text(
-        label,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp)
-            .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceVariant, shape)
-            .then(if (selected) Modifier.border(BorderStroke(1.5.dp, RollspotBlue), shape) else Modifier)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 16.dp),
-        fontWeight = FontWeight.Medium,
-        color = if (selected) RollspotBlue else MaterialTheme.colorScheme.onSurface,
-    )
-}
+fun ContributeNoticeRow(label: String, selected: Boolean, onClick: () -> Unit) =
+    ContributeSingleChoiceRow(label, selected, onClick)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -955,24 +738,15 @@ private fun PathwayCarouselVideo(@RawRes rawRes: Int, active: Boolean) {
             .background(Color.White),
     ) {
         AndroidView(factory = { videoView }, modifier = Modifier.fillMaxSize())
-        OverlayCircleButton(
-            onClick = {
-                if (playing) {
-                    shouldPlay.value = false
-                    videoView.pause()
-                } else {
-                    shouldPlay.value = true
-                    videoView.start()
-                }
-                playing = !playing
-            },
-            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
-        ) {
-            Icon(
-                if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                contentDescription = if (playing) "Pause" else "Play",
-                modifier = Modifier.size(16.dp),
-            )
+        CardPauseButton(playing, Modifier.align(Alignment.TopEnd)) {
+            if (playing) {
+                shouldPlay.value = false
+                videoView.pause()
+            } else {
+                shouldPlay.value = true
+                videoView.start()
+            }
+            playing = !playing
         }
     }
 }

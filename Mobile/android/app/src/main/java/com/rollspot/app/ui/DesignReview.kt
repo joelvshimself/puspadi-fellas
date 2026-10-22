@@ -1,5 +1,12 @@
 package com.rollspot.app.ui
 
+import app.rollspot.shared.reviews.ContributeCatalog
+import app.rollspot.shared.reviews.ContributeFlow
+import app.rollspot.shared.reviews.ContributeFlowState
+import app.rollspot.shared.reviews.ContributeStep
+import app.rollspot.shared.reviews.ElevatorQuestion
+import app.rollspot.shared.reviews.EntranceLocation
+import com.rollspot.app.ui.screens.contribute.ContributeFlowScreen
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -84,6 +91,10 @@ fun DesignReviewRoot(screen: String, email: String? = null, password: String? = 
             modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
         )
         "contributeNotes", "contributeNotesFilled", "contributeCaption" -> ReviewNotes(screen)
+        "flowPhotos", "flowQuestion", "flowQuestionYes", "flowQuestionNotSure", "flowParking",
+        "flowLocation", "flowTags", "flowAnother", "flowWhere" -> ContributeFlowScreen(
+            placeId = "design-review-$screen", onFinished = {}, preview = flowPreview(screen),
+        )
         "contributeSubmitted" -> ContributeSubmittedScreen(onDone = {}, modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding())
         "editResponse", "editResponseLeave" -> SignedIn(email, password) {
             val mine = rollspotSdk().myReviews
@@ -148,4 +159,40 @@ private fun ReviewNotes(screen: String) {
     if (screen == "contributeCaption") {
         PhotoCaptionScreen(LocalReviewPhoto("c", sample), progressStep = 4, progress = 0.35f, onSave = {}, onDismiss = {})
     }
+}
+
+/** A contribute flow parked on one question, in the same state as the iOS review screen. */
+@Composable
+private fun flowPreview(screen: String): ContributeFlowState {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val sample = remember { context.resources.openRawResource(com.rollspot.app.R.drawable.all_set_mall).use { it.readBytes() } }
+    val flow = ContributeFlow("design-review", "Park 23")
+    fun at(category: ContributeReviewCategory, step: ContributeStep, configure: ContributeFlowState.() -> ContributeFlowState = { this }) {
+        flow.openCategory(category)
+        flow.state = flow.state.configure()
+        flow.state = flow.state.copy(stepIndex = flow.steps().indexOf(step).coerceAtLeast(0))
+    }
+    when (screen) {
+        "flowPhotos" -> at(ContributeReviewCategory.Seating, ContributeStep.SeatingPhotos)
+        "flowQuestion" -> at(ContributeReviewCategory.Seating, ContributeStep.SeatingQuestion)
+        "flowQuestionYes" -> at(ContributeReviewCategory.Seating, ContributeStep.SeatingQuestion) { copy(seatingAnswer = "Yes") }
+        "flowQuestionNotSure" -> at(ContributeReviewCategory.Elevator, ContributeStep.Elevator(ElevatorQuestion.WideEntrance)) {
+            copy(
+                elevatorAnswers = mapOf(ElevatorQuestion.WideEntrance to "Not Sure"),
+                elevatorEvidence = mapOf("wideEntrance" to listOf(LocalReviewPhoto("e1", sample), LocalReviewPhoto("e2", sample))),
+            )
+        }
+        "flowParking" -> at(ContributeReviewCategory.Parking, ContributeStep.ParkingQuestion) { copy(parkingAnswer = "Not sure") }
+        "flowLocation" -> at(ContributeReviewCategory.Entrance, ContributeStep.EntranceLocationPick) { copy(entranceLocations = setOf(EntranceLocation.Lobby)) }
+        "flowTags" -> at(ContributeReviewCategory.Entrance, ContributeStep.EntranceTags(EntranceLocation.Lobby)) {
+            copy(entranceLocations = setOf(EntranceLocation.Lobby), lobbyTags = setOf(ContributeCatalog.TAG_RAMP, ContributeCatalog.TAG_HANDRAIL))
+        }
+        "flowAnother" -> at(ContributeReviewCategory.Entrance, ContributeStep.EntranceAnother) {
+            copy(entranceLocations = setOf(EntranceLocation.Lobby), lobbyTags = setOf(ContributeCatalog.TAG_AUTO_DOORS))
+        }
+        else -> at(ContributeReviewCategory.Elevator, ContributeStep.ElevatorLocation) {
+            copy(elevatorAnswers = mapOf(ElevatorQuestion.WideEntrance to "Yes", ElevatorQuestion.SpaceToManeuver to "Yes", ElevatorQuestion.ReachableButtons to "Yes"))
+        }
+    }
+    return flow.state
 }

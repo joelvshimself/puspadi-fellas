@@ -94,17 +94,11 @@ fun ContributeNotesScreen(
                     SectionTitle("Photos", inline = true)
                     Spacer(Modifier.height(14.dp))
                 }
-                if (photos.isEmpty()) {
-                    AddPhotoTile(wide = true, enabled = canAddPhoto, onChooseExisting, onTakePhoto, Modifier.padding(horizontal = 21.dp))
-                } else {
-                    // The strip runs to the screen edges, as in the design.
-                    LazyRow(contentPadding = PaddingValues(horizontal = 21.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        if (canAddPhoto) item(key = "add") { AddPhotoTile(wide = false, enabled = true, onChooseExisting, onTakePhoto) }
-                        items(photos, key = { it.fileId }) { photo ->
-                            PhotoTile(photo, Modifier.animateItem(), onOpen = { captioning = photo.fileId }, onRemove = { onRemovePhoto(photo.fileId) })
-                        }
-                    }
-                }
+                ContributePhotoStrip(
+                    photos = photos, canAdd = canAddPhoto, edgeInset = 21.dp,
+                    onChooseExisting = onChooseExisting, onTakePhoto = onTakePhoto,
+                    onRemove = onRemovePhoto, onOpen = { captioning = it.fileId },
+                )
             }
             ContributeContinueButton(title = continueTitle, enabled = !submitting, loading = submitting, onClick = onContinue)
         }
@@ -116,6 +110,42 @@ fun ContributeNotesScreen(
                 onSave = { onCaption(photo.fileId, it) },
                 onDismiss = { captioning = null },
             )
+        }
+    }
+}
+
+/** Which box the strip's "Add Photos" tile uses. */
+enum class PhotoStripStyle {
+    /** "Take or upload a photo" screens: grey box. */
+    Box,
+    /** Revealed under "Not sure" and on the notes step. */
+    Reveal,
+}
+
+/**
+ * Add Photos tile + photos (iOS ContributePhotoStrip). Empty, the tile spans the width; with photos
+ * it becomes the first square of a strip that runs to the screen edges. Tap a photo to caption it.
+ */
+@Composable
+fun ContributePhotoStrip(
+    photos: List<LocalReviewPhoto>,
+    canAdd: Boolean,
+    onChooseExisting: () -> Unit,
+    onTakePhoto: () -> Unit,
+    onRemove: (String) -> Unit,
+    onOpen: (LocalReviewPhoto) -> Unit,
+    modifier: Modifier = Modifier,
+    style: PhotoStripStyle = PhotoStripStyle.Reveal,
+    edgeInset: androidx.compose.ui.unit.Dp = 20.dp,
+) {
+    if (photos.isEmpty()) {
+        AddPhotoTile(wide = true, enabled = canAdd, onChooseExisting, onTakePhoto, modifier.padding(horizontal = edgeInset), style)
+    } else {
+        LazyRow(modifier, contentPadding = PaddingValues(horizontal = edgeInset), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (canAdd) item(key = "add") { AddPhotoTile(wide = false, enabled = true, onChooseExisting, onTakePhoto, style = style) }
+            items(photos, key = { it.fileId }) { photo ->
+                PhotoTile(photo, Modifier.animateItem(), onOpen = { onOpen(photo) }, onRemove = { onRemove(photo.fileId) })
+            }
         }
     }
 }
@@ -159,7 +189,10 @@ private fun AddPhotoTile(
     onChooseExisting: () -> Unit,
     onTakePhoto: () -> Unit,
     modifier: Modifier = Modifier,
+    style: PhotoStripStyle = PhotoStripStyle.Reveal,
 ) {
+    val fill = if (style == PhotoStripStyle.Box) Color(0xFFE9EDF0) else ContributeColors.Fill
+    val dash = if (style == PhotoStripStyle.Box) Color(0xFFC9CED4) else ContributeColors.Dash
     var menu by remember { mutableStateOf(false) }
     val interaction = remember { MutableInteractionSource() }
     val shape = RoundedCornerShape(14.dp)
@@ -170,10 +203,10 @@ private fun AddPhotoTile(
                 .height(TileSize)
                 .pressScale(interaction)
                 .clip(shape)
-                .background(ContributeColors.Fill)
+                .background(fill)
                 .drawBehind {
                     drawRoundRect(
-                        ContributeColors.Dash,
+                        dash,
                         style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 4.dp.toPx()))),
                         cornerRadius = CornerRadius(14.dp.toPx()),
                     )

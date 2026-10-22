@@ -906,7 +906,7 @@ fun newPhotoFileId(): String = buildString {
 }
 
 /** Every photo in a flow state, transformed by [transform] (used to strip and restore bytes). */
-internal fun mapPhotosIn(state: ContributeFlowState, transform: (LocalReviewPhoto) -> LocalReviewPhoto): ContributeFlowState {
+fun mapPhotosIn(state: ContributeFlowState, transform: (LocalReviewPhoto) -> LocalReviewPhoto): ContributeFlowState {
     fun list(photos: List<LocalReviewPhoto>) = photos.map(transform)
     fun evidence(map: Map<String, List<LocalReviewPhoto>>) = map.mapValues { (_, photos) -> list(photos) }
     return state.copy(

@@ -43,11 +43,12 @@ data class ContributeUiState(
 
 class ContributeFlowViewModel(
     private val sdk: RollspotSdk,
-    placeId: String,
+    private val placeId: String,
+    private val preview: ContributeFlowState? = null,
 ) : ViewModel() {
     private val reviewModel: ReviewModel = sdk.reviews
     // Picks up where the user left off on this device (shared ContributeDrafts).
-    private val flow = ContributeFlow(placeId = placeId, placeName = "", initial = sdk.drafts.restoreFlow(placeId))
+    private val flow = ContributeFlow(placeId = placeId, placeName = "", initial = preview ?: sdk.drafts.restoreFlow(placeId))
     /** Draft saves run one at a time, off the main thread. */
     private val draftWriter = Dispatchers.IO.limitedParallelism(1)
 
@@ -55,6 +56,15 @@ class ContributeFlowViewModel(
     val ui: StateFlow<ContributeUiState> = _ui.asStateFlow()
 
     init {
+        if (preview != null) {
+            _ui.update { it.copy(placeName = preview.placeName, loadingPlace = false) }
+            publishFlow()
+        } else {
+            load()
+        }
+    }
+
+    private fun load() {
         viewModelScope.launch {
             try {
                 val aids = sdk.api.profile().mobilityAids
@@ -82,7 +92,7 @@ class ContributeFlowViewModel(
     }
 
     private fun publishFlow() {
-        if (!_ui.value.submitted) {
+        if (!_ui.value.submitted && preview == null) {
             val snapshot = flow.state
             val hasProgress = flow.hasProgress()
             viewModelScope.launch(draftWriter) { sdk.drafts.saveFlow(snapshot, hasProgress) }
@@ -209,6 +219,11 @@ class ContributeFlowViewModel(
 
     /** The section photos the notes step shows (shared ContributeFlow.notesPhotos). */
     fun notesPhotos(category: ContributeReviewCategory): List<LocalReviewPhoto> = flow.notesPhotos(category)
+
+    /** Every photo in the flow (for reopening one to caption it). */
+    fun allPhotos(): List<LocalReviewPhoto> = buildList {
+        app.rollspot.shared.reviews.mapPhotosIn(flow.state) { add(it); it }
+    }
 
     fun setPhotoCaption(fileId: String, caption: String) {
         mutate { flow.setPhotoCaption(fileId, caption) }

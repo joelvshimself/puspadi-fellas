@@ -22,6 +22,9 @@ enum DesignReview: String, CaseIterable {
     /// Contribute flow (Figma "Contribute Review Category Menus" and "Question 3 - Filled").
     case contributeMenu, contributeMenuProgress, contributeMenuComplete
     case contributeNotes, contributeNotesFilled, contributeCaption, contributeSubmitted
+    /// Question steps (Figma Entrance / Elevators / Toilets / Seating / Parking frames).
+    case flowPhotos, flowQuestion, flowQuestionYes, flowQuestionNotSure, flowParking
+    case flowLocation, flowTags, flowAnother, flowWhere
 
     static let current: DesignReview? = {
         let args = ProcessInfo.processInfo.arguments
@@ -90,6 +93,9 @@ struct DesignReviewRoot: View {
             PhotoCaptionEditorView(photo: DesignReviewNotes.samplePhoto(), onSave: { _ in }, onDismiss: {})
         case .contributeSubmitted:
             ContributeSubmittedView(onDone: {})
+        case .flowPhotos, .flowQuestion, .flowQuestionYes, .flowQuestionNotSure, .flowParking,
+             .flowLocation, .flowTags, .flowAnother, .flowWhere:
+            DesignReviewFlowStep(screen: screen)
         case .editResponse, .editResponseLeave:
             signedIn { DesignReviewEditResponse() }
         }
@@ -124,6 +130,75 @@ private struct DesignReviewWaiting<Content: View>: View {
                 )
                 ready = true
             }
+    }
+}
+
+/// One question step in a fixed state, matching a Figma frame.
+private struct DesignReviewFlowStep: View {
+    let screen: DesignReview
+    @State private var note = ReviewNoteDraft()
+    @State private var answer: String?
+    @State private var locations: Set<EntranceLocation> = []
+    @State private var tags: Set<ContributeTagOption> = []
+    @State private var location = ""
+
+    var body: some View {
+        content.onAppear {
+            switch screen {
+            case .flowQuestionYes: answer = "Yes"
+            case .flowQuestionNotSure:
+                answer = "Not sure"
+                note.photos = [DesignReviewNotes.samplePhoto(), DesignReviewNotes.samplePhoto()]
+            case .flowParking: answer = "Not sure"
+            case .flowLocation: locations = [.lobby]
+            case .flowTags: tags = Set(ContributeReviewTags.tags(forEntrance: .lobby).prefix(2))
+            default: break
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch screen {
+        case .flowPhotos:
+            ContributeEntrancePhotosStepView(
+                navTitle: "Seating", illustrationAssetName: "Toilet Survey Asset", stepNumber: 4,
+                progress: (1, 3), note: $note, onBack: {}, onContinue: {}
+            )
+        case .flowQuestion, .flowQuestionYes, .flowQuestionNotSure:
+            ContributeAccessFollowupStepView(
+                navTitle: "Seating", illustrationAssetName: "Toilet Survey Asset",
+                eyebrow: "Wheelchair Friendly Seating", questionTitle: "Are there wheelchair friendly seatings?",
+                progress: (2, 3), options: ["Yes", "No", "Not sure"], photoRevealOption: "Not sure",
+                selection: $answer, note: $note, stepNumber: 4,
+                loopingVideoName: "SEATING_SEATING", videoInfoTitle: "Wheelchair Friendly Seating",
+                videoInfoSections: [("Height", "Low enough to comfortably reach the tabletop from a seated position.")],
+                onBack: {}, onContinue: {}
+            )
+        case .flowParking:
+            ContributeParkingQuestionStepView(progress: (2, 3), selection: $answer, onBack: {}, onContinue: {})
+        case .flowLocation:
+            ContributeEntranceLocationStepView(facilityName: "Park 23", progress: (1, 6), selection: $locations, onBack: {}, onContinue: {})
+        case .flowTags:
+            ContributeFacilityQuestionStepView(
+                kind: .entrance, navTitle: "Entrances", questionTitle: "What does the lobby have?", progress: (2, 6),
+                selection: $tags, illustrationAssetName: "Lobby Asset",
+                optionsOverride: ContributeReviewTags.tags(forEntrance: .lobby), onBack: {}, onContinue: {}
+            )
+        case .flowAnother:
+            ContributeAccessFollowupStepView(
+                navTitle: "Entrances", illustrationAssetName: "Lobby Asset", eyebrow: "",
+                questionTitle: "Review another entrance?", progress: (5, 6), options: ["Yes", "No"],
+                photoRevealOption: "", selection: $answer, note: $note, advancesOnSelect: true,
+                onBack: {}, onContinue: {}
+            )
+        default:
+            ContributeToiletLocationStepView(
+                navTitle: "Elevators", question: "Where is the elevator located?",
+                illustrationAssetName: "Elevator Question Asset", stepNumber: 2,
+                locationText: $location, onBack: {}, onContinue: {}
+            )
+        }
     }
 }
 

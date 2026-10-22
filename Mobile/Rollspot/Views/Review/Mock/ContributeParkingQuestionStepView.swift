@@ -20,38 +20,42 @@ struct ContributeParkingQuestionStepView: View {
             .zIndex(1)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Image("Basement Asset")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 180)
+                VStack(alignment: .leading, spacing: 0) {
+                    RampLoopVideoCard(
+                        resourceName: "PARKING_ACCESSIBLE_PARKING",
+                        infoTitle: "Accessible Parking",
+                        infoSections: Self.infoSections,
+                        infoVideoName: "PARKING_ACCESSIBLE_PARKING"
+                    )
+                    .padding(.top, 14)
 
-                    Text("Is there accessible parking?".localized)
-                        .font(.title2.bold())
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    ContributeQuestionHeading(title: "Is there accessible parking?")
+                        .padding(.top, 34)
 
                     Button {
                         showInfo = true
                     } label: {
-                        HStack(spacing: 8) {
+                        HStack(spacing: 6) {
                             Image(systemName: "info.circle.fill")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.system(size: 12, weight: .semibold))
                             Text("Learn more about accessible parking".localized)
-                                .font(.subheadline.weight(.semibold))
+                                .font(.system(size: 13, weight: .medium))
                                 .underline()
                         }
                         .foregroundStyle(ContributePalette.blue)
                     }
                     .buttonStyle(.plain)
+                    .padding(.top, 8)
 
-                    VStack(spacing: 12) {
+                    VStack(spacing: ContributeQuestionMetrics.optionSpacing) {
                         ForEach(Self.options, id: \.self) { option in
-                            optionRow(option)
+                            ContributeOptionRow(title: option, isSelected: selection == option) { selection = option }
                         }
                     }
+                    .padding(.top, 18)
                 }
-                .padding(20)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 16)
             }
 
             ContributeContinueButton(isEnabled: selection != nil, action: onContinue)
@@ -62,26 +66,10 @@ struct ContributeParkingQuestionStepView: View {
         }
     }
 
-    private func optionRow(_ option: String) -> some View {
-        let isSelected = selection == option
-        return Button {
-            selection = option
-        } label: {
-            Text(option.localized)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(isSelected ? ContributePalette.blue : .primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 16)
-                .background(Color(.secondarySystemBackground), in: Capsule())
-                .overlay {
-                    Capsule()
-                        .strokeBorder(isSelected ? ContributePalette.blue : Color.clear, lineWidth: 1.5)
-                }
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
-    }
+    static let infoSections: [(title: String, body: String)] = [
+        ("Space", "Wider than a standard spot, with designated access aisle for a wheelchair to unload."),
+        ("Distance", "Ideally located on the shortest, most direct route to the entrance, not the far end of the lot."),
+    ]
 
     static let options = ["Yes", "No", "Not sure"]
 }

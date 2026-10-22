@@ -34,44 +34,50 @@ struct ContributeEntranceLocationStepView: View {
             PhotoFlowHeader(title: "Entrances".localized, onBack: onBack)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    Image("Lobby Asset")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: .infinity)
-                        .scaleEffect(1.05)
-                        .frame(height: 180)
+                VStack(alignment: .leading, spacing: 0) {
+                    ContributeIllustration(name: "Lobby Asset")
+                        .padding(.top, 26)
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(alignment: .top, spacing: 12) {
-                            Text("Where can you find the accessible entrances?".localized)
-                                .font(.title2.bold())
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            Button {
-                                showEntranceInfo = true
-                            } label: {
-                                Image(systemName: "info")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundStyle(Color(.systemGray))
-                                    .frame(width: 28, height: 28)
-                                    .background(Color(.systemGray5), in: Circle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Accessible entrance info")
+                    ContributeQuestionHeading(
+                        title: "Where can you find the accessible entrances?",
+                        subtitle: "You can select multiple places"
+                    ) {
+                        Button {
+                            showEntranceInfo = true
+                        } label: {
+                            Image(systemName: "info")
+                                .font(.system(size: 9, weight: .heavy))
+                                .foregroundStyle(.white)
+                                .frame(width: 18, height: 18)
+                                .background(Color(designHex: 0xA8ABB0), in: Circle())
+                                .frame(width: 36, height: 36)
+                                .contentShape(Rectangle())
                         }
-                        Text("You can select multiple places".localized)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                        .buttonStyle(.plain)
+                        .padding(.top, -8)
+                        .accessibilityLabel("Accessible entrance info".localized)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 40)
 
-                    VStack(spacing: 12) {
+                    VStack(spacing: ContributeQuestionMetrics.optionSpacing) {
                         ForEach(EntranceLocation.allCases) { location in
-                            entranceRow(location)
+                            ContributeOptionRow(
+                                title: location.displayLabel,
+                                isSelected: selection.contains(location),
+                                leadingSymbol: "door.left.hand.open",
+                                showsRadio: true
+                            ) {
+                                if selection.contains(location) {
+                                    selection.remove(location)
+                                } else {
+                                    selection.insert(location)
+                                }
+                            }
                         }
                     }
+                    .padding(.top, 18)
                 }
-                .padding(20)
+                .padding(.horizontal, 20)
             }
 
             ContributeContinueButton(isEnabled: !selection.isEmpty, action: onContinue)
@@ -80,44 +86,6 @@ struct ContributeEntranceLocationStepView: View {
         .sheet(isPresented: $showEntranceInfo) {
             AccessibleEntranceInfoSheet()
         }
-    }
-
-    private func entranceRow(_ location: EntranceLocation) -> some View {
-        let isSelected = selection.contains(location)
-        return Button {
-            withAnimation(.snappy(duration: 0.2)) {
-                if isSelected {
-                    selection.remove(location)
-                } else {
-                    selection.insert(location)
-                }
-            }
-        } label: {
-            HStack(spacing: 14) {
-                Image(systemName: "door.right.hand.open")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(isSelected ? ContributePalette.blue : .primary)
-                    .frame(width: 24)
-
-                Text(location.displayLabel)
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(isSelected ? ContributePalette.blue : .primary)
-
-                Spacer()
-
-                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 20))
-                    .foregroundStyle(isSelected ? ContributePalette.blue : Color(.tertiaryLabel))
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 16)
-            .background(Color(.secondarySystemBackground), in: Capsule())
-            .overlay {
-                Capsule()
-                    .strokeBorder(isSelected ? ContributePalette.blue : Color.clear, lineWidth: 1.5)
-            }
-        }
-        .buttonStyle(.plain)
     }
 }
 
@@ -199,44 +167,31 @@ struct ContributeFacilityQuestionStepView: View {
             .zIndex(1)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    if let assetName = illustrationAssetName {
-                        Image(assetName)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(maxWidth: .infinity)
-                            .scaleEffect(1.05)
-                            .frame(height: 180)
-                    } else {
-                        ContributeFacilityIllustration(kind: kind)
+                VStack(alignment: .leading, spacing: 0) {
+                    Group {
+                        if let assetName = illustrationAssetName {
+                            ContributeIllustration(name: assetName)
+                        } else {
+                            ContributeFacilityIllustration(kind: kind)
+                        }
                     }
+                    .padding(.top, 26)
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(questionTitle.localized)
-                            .font(.title2.bold())
-                        Text("You can select multiple answers".localized)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    ContributeQuestionHeading(title: questionTitle, subtitle: "You can select multiple answers")
+                        .padding(.top, 40)
 
-                    // Own chip row rather than MultiSelectPills: the mockup's
-                    // chips carry a leading SF Symbol and mark selection with
-                    // a blue outline + blue label (white fill kept), where
-                    // MultiSelectPills is text-only with a solid blue fill.
-                    FlowRow(spacing: 10) {
+                    // Icon chips; picked ones turn white with a blue outline (Figma "What does the lobby have?").
+                    FlowRow(spacing: 8) {
                         ForEach(options) { option in
-                            ContributeTagChip(
-                                option: option,
-                                isSelected: selection.contains(option)
-                            ) {
+                            ContributeTagChip(option: option, isSelected: selection.contains(option)) {
                                 toggle(option)
                             }
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 18)
                 }
-                .padding(20)
+                .padding(.horizontal, 20)
             }
 
             ContributeContinueButton(isEnabled: !selection.isEmpty, action: onContinue)
@@ -267,22 +222,19 @@ struct ContributeTagChip: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 tagIcon
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                 Text(option.label.localized.capitalized)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: 13, weight: .medium))
             }
-            .foregroundStyle(isSelected ? ContributePalette.blue : .primary)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(
-                Capsule().fill(isSelected ? ContributePalette.blue.opacity(0.08) : Color(.secondarySystemBackground))
-            )
-            .overlay(
-                Capsule().strokeBorder(isSelected ? ContributePalette.blue : .clear, lineWidth: 1.5)
-            )
+            .foregroundStyle(isSelected ? ContributePalette.blue : Color(designHex: 0x3E4042))
+            .padding(.horizontal, 12)
+            .frame(height: 34)
+            .background(Capsule().fill(isSelected ? Color.white : ContributePalette.fill))
+            .overlay(Capsule().strokeBorder(ContributePalette.blue.opacity(isSelected ? 1 : 0), lineWidth: 1.5))
             .contentShape(Capsule())
+            .animation(.easeOut(duration: 0.15), value: isSelected)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle())
         .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
     }
 
@@ -295,7 +247,7 @@ struct ContributeTagChip: View {
                 .renderingMode(.template)
                 .resizable()
                 .scaledToFit()
-                .frame(width: 12, height: 12)
+                .frame(width: 11, height: 11)
         }
     }
 }
@@ -319,9 +271,8 @@ struct ContributeFacilityIllustration: View {
         Image(assetName)
             .resizable()
             .aspectRatio(contentMode: .fit)
+            .frame(height: ContributeQuestionMetrics.illustrationHeight)
             .frame(maxWidth: .infinity)
-            .scaleEffect(1.05)
-            .frame(height: 180)
     }
 }
 
