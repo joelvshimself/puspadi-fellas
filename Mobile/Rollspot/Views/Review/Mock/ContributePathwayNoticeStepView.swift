@@ -1,3 +1,4 @@
+import Shared
 import SwiftUI
 
 /// "What did you notice along the pathway?" — multi-select capsules.
@@ -21,32 +22,34 @@ struct ContributePathwayNoticeStepView: View {
             .zIndex(1)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("What did you notice along the pathway?".localized)
-                        .font(.title2.bold())
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 0) {
+                    ContributeQuestionHeading(title: "What did you notice along the pathway?")
+                        .padding(.top, 26)
 
                     Button {
                         showInfo = true
                     } label: {
-                        HStack(spacing: 8) {
+                        HStack(spacing: 6) {
                             Image(systemName: "info.circle.fill")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.system(size: 12, weight: .semibold))
                             Text("Learn more about accessible pathways".localized)
-                                .font(.subheadline.weight(.semibold))
+                                .font(.system(size: 13, weight: .medium))
                                 .underline()
                         }
                         .foregroundStyle(ContributePalette.blue)
                     }
                     .buttonStyle(.plain)
+                    .padding(.top, 8)
 
-                    VStack(spacing: 12) {
+                    VStack(spacing: ContributeQuestionMetrics.optionSpacing) {
                         ForEach(Self.options, id: \.self) { option in
-                            noticeRow(option)
+                            ContributeOptionRow(title: option, isSelected: selection.contains(option)) { toggle(option) }
                         }
                     }
+                    .padding(.top, 18)
                 }
-                .padding(20)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 16)
             }
 
             ContributeContinueButton(isEnabled: !selection.isEmpty, action: onContinue)
@@ -55,29 +58,6 @@ struct ContributePathwayNoticeStepView: View {
         .sheet(isPresented: $showInfo) {
             PathwayInfoSheet()
         }
-    }
-
-    private func noticeRow(_ option: String) -> some View {
-        let isSelected = selection.contains(option)
-        return Button {
-            withAnimation(.snappy(duration: 0.2)) {
-                toggle(option)
-            }
-        } label: {
-            Text(option.localized)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(isSelected ? ContributePalette.blue : .primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 16)
-                .background(Color(.secondarySystemBackground), in: Capsule())
-                .overlay {
-                    Capsule()
-                        .strokeBorder(isSelected ? ContributePalette.blue : Color.clear, lineWidth: 1.5)
-                }
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
     }
 
     private func toggle(_ option: String) {
@@ -109,116 +89,97 @@ struct ContributePathwayNoticeStepView: View {
     ]
 }
 
-/// Mirrors `PathwayInfoCatalog` in the shared module.
-struct PathwayInfoPage: Identifiable {
-    let id: String
-    let chip: String
-    let title: String
-    let body: String
-    let avoid: [(lead: String, rest: String)]
-    let videoName: String
-
-    static let all: [PathwayInfoPage] = [
-        PathwayInfoPage(
-            id: "surfaces",
-            chip: "SURFACES",
-            title: "Surfaces",
-            body: "For wheelchairs and people with limited mobility, firm and smooth surfaces provide more support and balance.",
-            avoid: [
-                ("Loose material like gravel or sand", " lets wheels sink and shifts under the foot."),
-                ("Rough or uneven surfaces", " such as broken ground, cracked surfaces, and tree roots will get caught in wheels."),
-            ],
-            videoName: "PATHWAYS_SURFACES"
-        ),
-        PathwayInfoPage(
-            id: "width",
-            chip: "WIDTH",
-            title: "Width",
-            body: "Wide, unobstructed pathways allow people on wheels, strollers, and mobility aids to pass through comfortably.",
-            avoid: [
-                ("Narrow pathways", " would let wheelchairs ride off the edge."),
-                ("Tight gaps", " between obstacles."),
-            ],
-            videoName: "PATHWAYS_WIDTH"
-        ),
-        PathwayInfoPage(
-            id: "obstructions",
-            chip: "OBSTRUCTIONS",
-            title: "Obstructions",
-            body: "Curbs and steps without a ramp block wheelchairs and strollers.",
-            avoid: [
-                ("Curbs or steps with no ramp", " stop a wheelchair at the edge."),
-                ("Objects blocking the path", " force a detour or a turn-around."),
-            ],
-            videoName: "PATHWAYS_OBSTRUCTIONS"
-        ),
-    ]
+/// The pathway pages come from the shared `PathwayInfoCatalog` (same copy on Android); only the
+/// video file names are iOS's.
+private extension Shared.PathwayInfoPage {
+    var videoName: String { "PATHWAYS_\(videoKey.uppercased())" }
 }
 
+/// "Learn more about accessible pathways" (Figma): grey sheet, swipeable white video card,
+/// SURFACES / WIDTH / OBSTRUCTIONS tabs, then the page copy and "What to avoid".
 struct PathwayInfoSheet: View {
     @State private var page = 0
+    private let pages = PathwayInfoCatalog.shared.pages
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                PathwayVideoCarousel(page: $page)
+            VStack(alignment: .leading, spacing: 14) {
+                PathwayVideoCarousel(page: $page, videos: pages.map(\.videoName))
+                    .padding(.bottom, 2)
 
-                HStack(spacing: 8) {
-                    ForEach(Array(PathwayInfoPage.all.enumerated()), id: \.offset) { index, item in
-                        chip(item.chip, selected: page == index) {
-                            withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
-                                page = index
-                            }
+                HStack(spacing: 6) {
+                    ForEach(Array(pages.enumerated()), id: \.offset) { index, item in
+                        tab(item.chip, selected: page == index) {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) { page = index }
                         }
                     }
                 }
-                .frame(maxWidth: .infinity)
 
-                pageCopy(PathwayInfoPage.all[page])
+                pageCopy(pages[page])
                     .id(page)
                     .transition(.asymmetric(
                         insertion: .move(edge: .trailing).combined(with: .opacity),
                         removal: .move(edge: .leading).combined(with: .opacity)
                     ))
             }
-            .padding(20)
+            .padding(.horizontal, 14)
+            .padding(.top, 20)
+            .padding(.bottom, 24)
         }
-        .background(Color(.systemGroupedBackground))
+        .presentationBackground(Color(designHex: 0xE8E8E8))
+        .presentationCornerRadius(34)
         .presentationDragIndicator(.visible)
         .presentationDetents([.large])
     }
 
-    private func chip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+    private func tab(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(title)
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(selected ? Color.white : .primary)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(selected ? ContributePalette.blue : Color(.systemBackground), in: Capsule())
+            Text(title.localized)
+                .font(.system(size: 11, weight: .semibold))
+                .tracking(0.3)
+                .foregroundStyle(selected ? Color.white : Color(designHex: 0x3F3F3F))
+                .padding(.horizontal, 11)
+                .padding(.vertical, 8)
+                .background(selected ? ContributePalette.blue : Color.white, in: Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
 
-    private func pageCopy(_ item: PathwayInfoPage) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(item.title)
-                .font(.title.bold())
-            Text(item.body)
-                .font(.body)
-                .foregroundStyle(.primary)
-            Label("What to avoid:", systemImage: "exclamationmark.triangle.fill")
-                .font(.headline)
-                .foregroundStyle(.primary)
-                .labelStyle(.titleAndIcon)
-                .tint(.red)
-            VStack(alignment: .leading, spacing: 8) {
+    private func pageCopy(_ item: Shared.PathwayInfoPage) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(item.title.localized)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(ContributePalette.text)
+            item.bodyRuns.reduce(Text("")) { text, run in
+                text + Text(run.text.localized)
+                    .fontWeight(run.bold ? .semibold : .regular)
+                    .foregroundColor(run.bold ? Color(designHex: 0x4A4A4A) : Color(designHex: 0x666666))
+            }
+            .font(.system(size: 13))
+            .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 5) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color(designHex: 0xD9534F))
+                Text("What to avoid:".localized)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color(designHex: 0x5E5E5E))
+            }
+            .padding(.top, 8)
+
+            VStack(alignment: .leading, spacing: 4) {
                 ForEach(Array(item.avoid.enumerated()), id: \.offset) { _, point in
-                    (Text("•  ").foregroundStyle(.primary)
-                        + Text(point.lead).bold()
-                        + Text(point.rest))
-                        .font(.body)
-                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text("•")
+                        (Text(point.lead.localized).fontWeight(.semibold).foregroundColor(Color(designHex: 0x4A4A4A))
+                            + Text(point.rest.localized))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color(designHex: 0x5D5D5D))
+                    .padding(.leading, 4)
                 }
             }
         }
@@ -228,12 +189,13 @@ struct PathwayInfoSheet: View {
 
 private struct PathwayVideoCarousel: View {
     @Binding var page: Int
+    let videos: [String]
 
     var body: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 12) {
-                ForEach(Array(PathwayInfoPage.all.enumerated()), id: \.offset) { index, item in
-                    PathwayVideoCard(resourceName: item.videoName, isActive: page == index)
+                ForEach(Array(videos.enumerated()), id: \.offset) { index, name in
+                    PathwayVideoCard(resourceName: name, isActive: page == index)
                         .containerRelativeFrame(.horizontal)
                         .id(index)
                 }
@@ -246,7 +208,7 @@ private struct PathwayVideoCarousel: View {
             set: { if let newValue = $0 { page = newValue } }
         ))
         .scrollIndicators(.hidden)
-        .frame(height: 210)
+        .frame(height: ContributeQuestionMetrics.cardHeight)
     }
 }
 
@@ -258,20 +220,11 @@ struct PathwayVideoCard: View {
     var body: some View {
         ZStack(alignment: .topTrailing) {
             LoopingPlayerView(player: model.player)
-            Button {
-                model.toggle()
-            } label: {
-                Image(systemName: model.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 32, height: 32)
-                    .background(Color(.systemGray6), in: Circle())
-            }
-            .buttonStyle(.plain)
-            .padding(10)
+            ContributeCardPauseButton(isPlaying: model.isPlaying) { model.toggle() }
+                .padding(4)
         }
-        .background(Color(.systemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: ContributeQuestionMetrics.cardRadius, style: .continuous))
         .onAppear {
             model.start(resource: resourceName)
             model.setActive(isActive)

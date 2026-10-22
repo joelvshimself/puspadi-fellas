@@ -2,14 +2,20 @@ package app.rollspot.shared.reviews
 
 data class PathwayAvoidPoint(val lead: String, val rest: String)
 
+/** A run of copy; [bold] runs are the design's emphasised phrases. */
+data class TextRun(val text: String, val bold: Boolean = false)
+
 data class PathwayInfoPage(
     val id: String,
     val chip: String,
     val title: String,
-    val body: String,
+    /** Plain copy, with the design's emphasised phrases in [bodyRuns]. */
+    val bodyRuns: List<TextRun>,
     val avoid: List<PathwayAvoidPoint>,
     val videoKey: String,
-)
+) {
+    val body: String get() = bodyRuns.joinToString("") { it.text }
+}
 
 object PathwayInfoCatalog {
     val pages: List<PathwayInfoPage> = listOf(
@@ -17,7 +23,11 @@ object PathwayInfoCatalog {
             id = "surfaces",
             chip = "SURFACES",
             title = "Surfaces",
-            body = "For wheelchairs and people with limited mobility, firm and smooth surfaces provide more support and balance.",
+            bodyRuns = listOf(
+                TextRun("For wheelchairs and people with limited mobility, "),
+                TextRun("firm and smooth surfaces", bold = true),
+                TextRun(" provide more support and balance."),
+            ),
             avoid = listOf(
                 PathwayAvoidPoint(
                     "Loose material like gravel or sand",
@@ -34,7 +44,10 @@ object PathwayInfoCatalog {
             id = "width",
             chip = "WIDTH",
             title = "Width",
-            body = "Wide, unobstructed pathways allow people on wheels, strollers, and mobility aids to pass through comfortably.",
+            bodyRuns = listOf(
+                TextRun("Wide, unobstructed pathways", bold = true),
+                TextRun(" allow people on wheels, strollers, and mobility aids to pass through comfortably."),
+            ),
             avoid = listOf(
                 PathwayAvoidPoint(
                     "Narrow pathways",
@@ -51,15 +64,17 @@ object PathwayInfoCatalog {
             id = "obstructions",
             chip = "OBSTRUCTIONS",
             title = "Obstructions",
-            body = "Curbs and steps without a ramp block wheelchairs and strollers.",
+            bodyRuns = listOf(
+                TextRun("An inclined path should behave like a ramp: gentle enough to climb not a sudden steep rise."),
+            ),
             avoid = listOf(
                 PathwayAvoidPoint(
-                    "Curbs or steps with no ramp",
-                    " stop a wheelchair at the edge.",
+                    "Steep sections",
+                    " will be dangerous for wheelchair users to navigate on their own.",
                 ),
                 PathwayAvoidPoint(
-                    "Objects blocking the path",
-                    " force a detour or a turn-around.",
+                    "Curb or steps with no ramps",
+                    " without any nearby alternatives.",
                 ),
             ),
             videoKey = "obstructions",

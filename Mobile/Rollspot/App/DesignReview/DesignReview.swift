@@ -25,6 +25,7 @@ enum DesignReview: String, CaseIterable {
     /// Question steps (Figma Entrance / Elevators / Toilets / Seating / Parking frames).
     case flowPhotos, flowQuestion, flowQuestionYes, flowQuestionNotSure, flowParking
     case flowLocation, flowTags, flowAnother, flowWhere
+    case flowPathwayPhotos, flowPathway, flowPathwayInfo
 
     static let current: DesignReview? = {
         let args = ProcessInfo.processInfo.arguments
@@ -94,7 +95,8 @@ struct DesignReviewRoot: View {
         case .contributeSubmitted:
             ContributeSubmittedView(onDone: {})
         case .flowPhotos, .flowQuestion, .flowQuestionYes, .flowQuestionNotSure, .flowParking,
-             .flowLocation, .flowTags, .flowAnother, .flowWhere:
+             .flowLocation, .flowTags, .flowAnother, .flowWhere,
+             .flowPathwayPhotos, .flowPathway, .flowPathwayInfo:
             DesignReviewFlowStep(screen: screen)
         case .editResponse, .editResponseLeave:
             signedIn { DesignReviewEditResponse() }
@@ -141,6 +143,8 @@ private struct DesignReviewFlowStep: View {
     @State private var locations: Set<EntranceLocation> = []
     @State private var tags: Set<ContributeTagOption> = []
     @State private var location = ""
+    @State private var notices: Set<String> = []
+    @State private var showSheet = false
 
     var body: some View {
         content.onAppear {
@@ -151,6 +155,9 @@ private struct DesignReviewFlowStep: View {
                 note.photos = [DesignReviewNotes.samplePhoto(), DesignReviewNotes.samplePhoto()]
             case .flowParking: answer = "Not sure"
             case .flowLocation: locations = [.lobby]
+            case .flowPathway: notices = ["Loose gravel or sand", "Rough or uneven surface"]
+            case .flowPathwayInfo:
+                Task { try? await Task.sleep(for: .milliseconds(400)); showSheet = true }
             case .flowTags: tags = Set(ContributeReviewTags.tags(forEntrance: .lobby).prefix(2))
             default: break
             }
@@ -192,6 +199,14 @@ private struct DesignReviewFlowStep: View {
                 photoRevealOption: "", selection: $answer, note: $note, advancesOnSelect: true,
                 onBack: {}, onContinue: {}
             )
+        case .flowPathwayPhotos:
+            ContributeEntrancePhotosStepView(
+                navTitle: "Outdoor Pathways", illustrationAssetName: "Toilet Survey Asset", stepNumber: 4,
+                progress: (1, 3), note: $note, onBack: {}, onContinue: {}
+            )
+        case .flowPathway, .flowPathwayInfo:
+            ContributePathwayNoticeStepView(progress: (2, 3), selection: $notices, onBack: {}, onContinue: {})
+                .sheet(isPresented: $showSheet) { PathwayInfoSheet() }
         default:
             ContributeToiletLocationStepView(
                 navTitle: "Elevators", question: "Where is the elevator located?",

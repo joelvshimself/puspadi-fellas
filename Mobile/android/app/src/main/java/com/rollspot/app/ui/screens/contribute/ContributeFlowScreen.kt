@@ -302,7 +302,7 @@ fun ContributeFlowScreen(
                 )
             }
 
-            Spacer(Modifier.height(if (hasCard) 34.dp else if (isPhotoStep) 50.dp else 40.dp))
+            Spacer(Modifier.height(if (hasCard) 34.dp else if (isPhotoStep) 50.dp else if (hero == ContributeHeroAsset.None) 26.dp else 40.dp))
             ContributeQuestionBlock(
                 eyebrow = ContributeStepPresentation.eyebrow(step),
                 title = ContributeStepPresentation.questionTitle(step, ui.persona),

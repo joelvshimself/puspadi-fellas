@@ -92,9 +92,13 @@ fun DesignReviewRoot(screen: String, email: String? = null, password: String? = 
         )
         "contributeNotes", "contributeNotesFilled", "contributeCaption" -> ReviewNotes(screen)
         "flowPhotos", "flowQuestion", "flowQuestionYes", "flowQuestionNotSure", "flowParking",
-        "flowLocation", "flowTags", "flowAnother", "flowWhere" -> ContributeFlowScreen(
+        "flowLocation", "flowTags", "flowAnother", "flowWhere", "flowPathwayPhotos", "flowPathway" -> ContributeFlowScreen(
             placeId = "design-review-$screen", onFinished = {}, preview = flowPreview(screen),
         )
+        "flowPathwayInfo" -> {
+            ContributeFlowScreen(placeId = "design-review-$screen", onFinished = {}, preview = flowPreview("flowPathway"))
+            com.rollspot.app.ui.screens.contribute.components.PathwayInfoSheet(onDismiss = {})
+        }
         "contributeSubmitted" -> ContributeSubmittedScreen(onDone = {}, modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding())
         "editResponse", "editResponseLeave" -> SignedIn(email, password) {
             val mine = rollspotSdk().myReviews
@@ -181,6 +185,10 @@ private fun flowPreview(screen: String): ContributeFlowState {
                 elevatorAnswers = mapOf(ElevatorQuestion.WideEntrance to "Not Sure"),
                 elevatorEvidence = mapOf("wideEntrance" to listOf(LocalReviewPhoto("e1", sample), LocalReviewPhoto("e2", sample))),
             )
+        }
+        "flowPathwayPhotos" -> at(ContributeReviewCategory.OutdoorPathways, ContributeStep.PathwayPhotos)
+        "flowPathway" -> at(ContributeReviewCategory.OutdoorPathways, ContributeStep.PathwayNotice) {
+            copy(pathwayNotices = setOf("Loose gravel or sand", "Rough or uneven surface"))
         }
         "flowParking" -> at(ContributeReviewCategory.Parking, ContributeStep.ParkingQuestion) { copy(parkingAnswer = "Not sure") }
         "flowLocation" -> at(ContributeReviewCategory.Entrance, ContributeStep.EntranceLocationPick) { copy(entranceLocations = setOf(EntranceLocation.Lobby)) }

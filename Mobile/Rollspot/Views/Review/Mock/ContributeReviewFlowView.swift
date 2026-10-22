@@ -360,7 +360,7 @@ struct ContributeReviewFlowView: View {
         case .pathwayPhotos:
             ContributeEntrancePhotosStepView(
                 navTitle: "Outdoor Pathways",
-                illustrationAssetName: "pathwayicon",
+                illustrationAssetName: "Toilet Survey Asset",
                 stepNumber: 4,
                 progress: progress(for: screen),
                 subStepProgress: subProgress(for: screen),

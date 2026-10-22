@@ -1,6 +1,7 @@
 package com.rollspot.app.ui.screens.contribute.components
 
 import androidx.compose.material.icons.filled.RadioButtonChecked
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.Dp
 import androidx.compose.animation.animateColorAsState
@@ -593,44 +594,46 @@ fun PathwayInfoSheet(onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        // Opens full height, like iOS (.large) and the design.
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = Color(0xFFE8E8E8),
+        shape = RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp),
     ) {
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
+                .padding(horizontal = 14.dp)
                 .padding(bottom = 32.dp)
                 .navigationBarsPadding(),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             HorizontalPager(
                 state = pagerState,
                 pageSpacing = 12.dp,
-                modifier = Modifier.fillMaxWidth().height(210.dp),
+                modifier = Modifier.fillMaxWidth().height(262.dp),
             ) { index ->
                 PathwayCarouselVideo(
                     rawRes = pathwayVideoRes(pages[index].videoKey),
                     active = pagerState.currentPage == index,
                 )
             }
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-            ) {
+            // Tabs: white chips, the current one blue (Figma pathway info sheet).
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 pages.forEachIndexed { index, page ->
                     val selected = pagerState.currentPage == index
+                    val fill by animateColorAsState(if (selected) ContributeColors.Blue else Color.White, tween(200), label = "tab")
                     Text(
                         page.chip,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(if (selected) RollspotBlue else Color.White)
-                            .clickable {
-                                scope.launch { pagerState.animateScrollToPage(index) }
-                            }
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                        color = if (selected) Color.White else Color.Black,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
+                            .clip(CircleShape)
+                            .background(fill)
+                            .clickable { scope.launch { pagerState.animateScrollToPage(index) } }
+                            .semantics { this.selected = selected }
+                            .padding(horizontal = 11.dp, vertical = 8.dp),
+                        color = if (selected) Color.White else Color(0xFF3F3F3F),
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 11.sp,
+                        letterSpacing = 0.3.sp,
                     )
                 }
             }
@@ -653,52 +656,58 @@ fun PathwayInfoSheet(onDismiss: () -> Unit) {
 fun ParkingInfoSheet(onDismiss: () -> Unit) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        containerColor = Color(0xFFE8E8E8),
+        shape = RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp),
     ) {
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
+                .padding(horizontal = 14.dp)
                 .padding(bottom = 32.dp)
                 .navigationBarsPadding(),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Box(Modifier.fillMaxWidth().height(210.dp)) {
+            Box(Modifier.fillMaxWidth().height(262.dp).padding(bottom = 6.dp)) {
                 PathwayCarouselVideo(rawRes = R.raw.parking_accessible_parking, active = true)
             }
-            Text(ParkingInfo.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            ParkingInfo.sections.forEach { section ->
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(section.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        section.body,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+            Text(ParkingInfo.title, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = ContributeColors.Text)
+            ParkingInfo.sections.forEach { section -> RampInfoBlock(section.title, section.body) }
         }
     }
 }
 
 @Composable
 private fun PathwayInfoCopy(page: PathwayInfoPage) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(page.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text(page.body, style = MaterialTheme.typography.bodyLarge)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Icon(Icons.Filled.Warning, contentDescription = null, tint = Color(0xFFE53935), modifier = Modifier.size(18.dp))
-            Text("What to avoid:", fontWeight = FontWeight.SemiBold)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(page.title, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = ContributeColors.Text)
+        Text(
+            buildAnnotatedString {
+                page.bodyRuns.forEach { run ->
+                    if (run.bold) withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = Color(0xFF4A4A4A))) { append(run.text) }
+                    else append(run.text)
+                }
+            },
+            fontSize = 13.sp, lineHeight = 18.sp, color = Color(0xFF666666),
+        )
+        Row(
+            Modifier.padding(top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Icon(Icons.Outlined.WarningAmber, contentDescription = null, tint = Color(0xFFD9534F), modifier = Modifier.size(13.dp))
+            Text("What to avoid:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF5E5E5E))
         }
         page.avoid.forEach { point ->
-            Text(
-                buildAnnotatedString {
-                    append("•  ")
-                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(point.lead) }
-                    append(point.rest)
-                },
-                style = MaterialTheme.typography.bodyLarge,
-            )
+            Row(Modifier.padding(start = 4.dp)) {
+                Text("•", fontSize = 12.sp, color = Color(0xFF5D5D5D), modifier = Modifier.width(12.dp))
+                Text(
+                    buildAnnotatedString {
+                        withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = Color(0xFF4A4A4A))) { append(point.lead) }
+                        append(point.rest)
+                    },
+                    fontSize = 12.sp, lineHeight = 17.sp, color = Color(0xFF5D5D5D),
+                )
+            }
         }
     }
 }
@@ -734,7 +743,7 @@ private fun PathwayCarouselVideo(@RawRes rawRes: Int, active: Boolean) {
     Box(
         Modifier
             .fillMaxSize()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(Color.White),
     ) {
         AndroidView(factory = { videoView }, modifier = Modifier.fillMaxSize())

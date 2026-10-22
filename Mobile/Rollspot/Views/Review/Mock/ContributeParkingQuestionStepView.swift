@@ -1,3 +1,4 @@
+import Shared
 import SwiftUI
 
 /// "Is there accessible parking?" — single-select Yes / No / Not sure.
@@ -74,41 +75,38 @@ struct ContributeParkingQuestionStepView: View {
     static let options = ["Yes", "No", "Not sure"]
 }
 
+/// "Learn more about accessible parking": same grey sheet as the card's "i" (copy from shared `ParkingInfo`).
 struct ParkingInfoSheet: View {
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 14) {
                 PathwayVideoCard(resourceName: "PARKING_ACCESSIBLE_PARKING", isActive: true)
-                    .frame(height: 210)
+                    .frame(height: ContributeQuestionMetrics.cardHeight)
+                    .padding(.bottom, 6)
 
-                Text("Accessible Parking")
-                    .font(.title.bold())
+                Text(ParkingInfo.shared.title.localized)
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(ContributePalette.text)
 
-                section(
-                    title: "Space",
-                    body: "Wider than a standard spot, with designated access aisle for a wheelchair to unload."
-                )
-                section(
-                    title: "Distance",
-                    body: "Ideally located on the shortest, most direct route to the entrance, not the far end of the lot."
-                )
+                ForEach(ParkingInfo.shared.sections, id: \.title) { section in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(section.title.localized)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Color(designHex: 0x575757))
+                        Text(section.body.localized)
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color(designHex: 0x5D5D5D))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
-            .padding(20)
+            .padding(.horizontal, 14)
+            .padding(.top, 20)
+            .padding(.bottom, 24)
         }
-        .background(Color(.systemGroupedBackground))
+        .presentationBackground(Color(designHex: 0xE8E8E8))
+        .presentationCornerRadius(34)
         .presentationDragIndicator(.visible)
         .presentationDetents([.medium, .large])
-    }
-
-    private func section(title: String, body: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.headline)
-            Text(body)
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
