@@ -5,6 +5,7 @@ import app.rollspot.shared.auth.AuthModel
 import app.rollspot.shared.auth.TokenStore
 import app.rollspot.shared.map.PlaceSearchProvider
 import app.rollspot.shared.map.RepositoryPlaceSearchProvider
+import app.rollspot.shared.place.PlaceDetailModel
 import app.rollspot.shared.places.PlaceRepository
 import io.ktor.client.engine.HttpClientEngine
 
@@ -26,6 +27,9 @@ class RollspotSdk(
 
     /** What [app.rollspot.shared.map.MapModel] reads places from. */
     val placeSearch: PlaceSearchProvider = RepositoryPlaceSearchProvider(places)
+
+    /** One per place page; call `close()` when the page goes away. */
+    fun placeDetailModel(placeKey: String) = PlaceDetailModel(api, placeKey)
 
     companion object {
         const val PRODUCTION_URL = "https://api.rollspot.app"

@@ -205,9 +205,8 @@ struct FacilityReviewsList: View {
         let reviewerIsPseudonym: Bool
         let reviews: [PlaceFacilityReview]
 
-        var latest: PlaceFacilityReview {
-            reviews.sorted(by: PlaceFacilityReview.isNewerFirst)[0]
-        }
+        /// The shared list is newest-first, and grouping keeps that order.
+        let latest: PlaceFacilityReview
     }
 
     /// Distinct tags across the reviews, most common first, with counts.
@@ -238,26 +237,35 @@ struct FacilityReviewsList: View {
     /// `filtered`, grouped by person so one contributor's evidence across
     /// facilities renders as a single row instead of repeating their name,
     /// avatar, and date for each facility they reviewed.
-    private var groupedFiltered: [ContributorGroup] {
-        let groups = Dictionary(grouping: filtered) { review in
-            let name = review.bylineName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            // Old anonymous rows have no reliable person identity, so keep
-            // them separate instead of implying that they came from one visit.
-            return name.isEmpty ? "review-\(review.reviewId.uuidString)" : name
-        }
+    private func groupKey(_ review: PlaceFacilityReview) -> String {
+        let name = review.bylineName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // Old anonymous rows have no reliable person identity, so keep
+        // them separate instead of implying that they came from one visit.
+        return name.isEmpty ? "review-\(review.reviewId.uuidString)" : name
+    }
 
-        return groups.map { key, rows in
-            let latest = rows.sorted(by: PlaceFacilityReview.isNewerFirst)[0]
+    private var groupedFiltered: [ContributorGroup] {
+        let groups = Dictionary(grouping: filtered, by: groupKey)
+
+        // Groups in order of each person's newest review: `filtered` is already
+        // newest-first from the shared module, so the first row seen is the latest.
+        var order: [String] = []
+        for review in filtered {
+            let key = groupKey(review)
+            if !order.contains(key) { order.append(key) }
+        }
+        return order.compactMap { key -> ContributorGroup? in
+            guard let rows = groups[key], let latest = rows.first else { return nil }
             return ContributorGroup(
                 id: key,
                 reviewerName: latest.bylineName,
                 reviewerRole: latest.reviewerRole,
                 reviewerAvatarURL: latest.reviewerAvatarURL,
                 reviewerIsPseudonym: latest.reviewerIsPseudonym,
-                reviews: rows.sorted { Self.facilityRank($0.kind) < Self.facilityRank($1.kind) }
+                reviews: rows.sorted { Self.facilityRank($0.kind) < Self.facilityRank($1.kind) },
+                latest: latest
             )
         }
-        .sorted { PlaceFacilityReview.isNewerFirst($0.latest, $1.latest) }
     }
 
     var body: some View {

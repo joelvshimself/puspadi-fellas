@@ -1,16 +1,26 @@
 import Foundation
+import Shared
 
-/// The detail screen's source of truth. Each load reads current community data
-/// once; there is no second persistence cache to invalidate or reconcile.
+/// The detail screen's source of truth. Loading, review mapping and the facility
+/// rules all live in the shared `PlaceDetailModel`; this class only republishes
+/// its result as Swift view types, so Android renders exactly the same data.
+/// Which version of the page to show, straight from the shared `PlaceDetailState`.
+enum PlaceDetailPhase: Equatable {
+    case loading
+    case loaded
+    /// Shared `Empty`: no reviews and no community photos.
+    case notReviewedYet
+    /// The first load failed; nothing to show but a retry.
+    case failed(String)
+}
+
 @MainActor
 final class PlaceReviewStore: ObservableObject {
+    @Published private(set) var phase: PlaceDetailPhase = .loading
     @Published private(set) var featureGrades: [AccessibilityFeatureGrade] = []
-    @Published private(set) var facilityReviews: [PlaceFacilityReview] = [] {
-        didSet { rebuildAllFacilityPhotos() }
-    }
-    @Published private(set) var reviewPhotos: [ReviewPhoto] = [] {
-        didSet { rebuildAllFacilityPhotos() }
-    }
+    /// Newest first, one verdict per person per facility (decided in shared).
+    @Published private(set) var facilityReviews: [PlaceFacilityReview] = []
+    @Published private(set) var reviewPhotos: [ReviewPhoto] = []
     @Published private(set) var allFacilityPhotos: [FacilityPhoto] = []
     @Published private(set) var streetImageURL: URL?
     @Published private(set) var imageAttribution: String?
@@ -24,16 +34,22 @@ final class PlaceReviewStore: ObservableObject {
 
     let place: Place
     private(set) var placeId: String
+    private let model: Shared.PlaceDetailModel
+    private var detail: Shared.PlaceDetail?
     private var reloadRequested = false
 
     init(place: Place) {
         self.place = place
         self.placeId = place.reviewPlaceId
+        self.model = RollspotServices.sdk.placeDetailModel(placeKey: place.reviewPlaceId)
     }
+
+    deinit { model.close() }
 
     func adoptPlaceId(_ canonicalId: String) {
         guard !canonicalId.isEmpty else { return }
         placeId = canonicalId
+        model.adoptPlaceKey(canonical: canonicalId)
     }
 
     func load() async {
@@ -59,49 +75,44 @@ final class PlaceReviewStore: ObservableObject {
             reviewsAttempted = true
         }
 
-        async let gradeResult = try? AccessibilityService.shared.enrich(placeId: placeId)
-        async let reviewResult = loadFacilityReviews()
-        async let photoResult = loadReviewPhotos()
-        async let venueResult = PlacePhotoService.shared.photos(for: placeId)
-
-        let gradeResponse = await gradeResult
-        let reviews = await reviewResult
-        let photos = await photoResult
-        let venue = await venueResult
-        featureGrades = gradeResponse?.grade ?? []
-        facilityReviews = reviews ?? []
-        reviewsResolved = reviews != nil
-        if let photos {
-            reviewPhotos = photos.photos
+        let state: Shared.PlaceDetailState
+        do {
+            state = try await model.reload()
+        } catch {
+            return
         }
-        venuePhotos = venue
+        switch onEnum(of: state) {
+        case .loaded(let loaded):
+            apply(loaded.detail)
+            phase = .loaded
+        case .empty(let empty):
+            apply(empty.detail)
+            phase = .notReviewedYet
+        case .error(let failure):
+            // The shared model keeps earlier content instead of erroring, so this
+            // only happens when there is nothing to show yet: never "not reviewed".
+            phase = .failed(failure.message)
+        case .loading:
+            break
+        }
+    }
+
+    private func apply(_ detail: Shared.PlaceDetail) {
+        self.detail = detail
+        featureGrades = detail.grades.map {
+            AccessibilityFeatureGrade(feature: $0.feature, bestValue: $0.bestValue, confidence: $0.confidence)
+        }
+        facilityReviews = detail.reviews.map { PlaceFacilityReview(shared: $0) }
+        reviewsResolved = true
+        reviewPhotosLoadFailed = detail.reviewPhotosLoadFailed
+        if !detail.reviewPhotosLoadFailed {
+            reviewPhotos = detail.reviewPhotos.map { ReviewPhoto(shared: $0) }
+        }
+        venuePhotos = detail.photos.map { PlacePhoto(shared: $0) }
+        allFacilityPhotos = galleryPhotos(detail.gallery)
         streetImageURL = nil
         imageAttribution = nil
-        aiSummary = await PlaceAISummaryService.shared.summary(
-            for: place,
-            featureGrades: featureGrades,
-            serverSummary: nil
-        )
-    }
-
-    private func loadFacilityReviews() async -> [PlaceFacilityReview]? {
-        do {
-            return try await ReviewService.shared.fetchPlaceReviews(placeId: placeId)
-        } catch {
-            if !Task.isCancelled { print("[PlaceReviewStore] Reviews failed: \(error)") }
-            return nil
-        }
-    }
-
-    private func loadReviewPhotos() async -> PlaceReviewPhotosResponse? {
-        do {
-            let response = try await ReviewService.shared.fetchReviewPhotos(placeId: placeId)
-            reviewPhotosLoadFailed = false
-            return response
-        } catch {
-            reviewPhotosLoadFailed = true
-            return nil
-        }
+        aiSummary = PlaceAISummaryService.shared.summary(serverSummary: nil)
     }
 
     /// Cloudflare requests are refreshed explicitly after a local submission.
@@ -109,9 +120,7 @@ final class PlaceReviewStore: ObservableObject {
     func startWatching() {}
 
     func reviews(for kind: FacilityKind) -> [PlaceFacilityReview] {
-        facilityReviews
-            .filter { $0.kind == kind }
-            .sorted { PlaceFacilityReview.isNewerFirst($0, $1) }
+        facilityReviews.filter { $0.kind == kind }
     }
 
     func hasReviews(for kind: FacilityKind) -> Bool { !reviews(for: kind).isEmpty }
@@ -124,41 +133,33 @@ final class PlaceReviewStore: ObservableObject {
     }
 
     func isUnavailable(_ kind: FacilityKind) -> Bool {
-        switch kind {
-        case .elevator, .toilet:
-            facilityReviews.contains { row in
-                row.kind == kind && row.providedTags.contains("NOT AVAILABLE")
-            }
-        case .entrance:
-            false
-        }
+        detail?.isUnavailable(kind: kind.shared) ?? false
     }
 
     func noteSnippets(for kind: FacilityKind, limit: Int = 3) -> [String] {
-        reviews(for: kind)
-            .filter(\.hasBodyText)
-            .prefix(limit)
-            .map(\.firstSentence)
-            .filter { !$0.isEmpty }
+        detail?.noteSnippets(kind: kind.shared, limit: Int32(limit)) ?? []
     }
 
     func photos(for kind: FacilityKind) -> [ReviewPhoto] {
-        reviewPhotos.filter { photo in
-            switch kind {
-            case .entrance:
-                let facility = photo.facility.lowercased()
-                return facility.contains("lobby") || facility.contains("basement")
-                    || facility.contains("entrance") || facility.contains("exit")
-            case .elevator:
-                return photo.facility.lowercased().contains("elevator")
-            case .toilet:
-                return photo.facility.lowercased().contains("toilet")
-            }
+        (detail?.photosFor(kind: kind.shared) ?? []).map { ReviewPhoto(shared: $0) }
+    }
+
+    /// The Photos tab: the shared gallery (venue photos, then community photos), same as Android.
+    private func galleryPhotos(_ gallery: [Shared.GalleryPhoto]) -> [FacilityPhoto] {
+        gallery.enumerated().compactMap { index, photo in
+            guard let url = URL(string: photo.url) else { return nil }
+            return FacilityPhoto(
+                id: .stable(from: "\(index)|\(photo.url)"),
+                source: .remote(url),
+                reviewId: facilityReviews.first { $0.photoURLs.contains(photo.url) }?.reviewId,
+                caption: photo.caption
+            )
         }
     }
 
-    private func rebuildAllFacilityPhotos() {
-        allFacilityPhotos = facilityPhotos(from: reviewPhotos)
+    /// Tags the community confirmed for a facility, newest first, each once (shared rule).
+    func providedTags(for kind: FacilityKind) -> [String] {
+        detail?.providedTagsFor(kind: kind.shared) ?? []
     }
 
     func facilityPhotos(for kind: FacilityKind) -> [FacilityPhoto] {
@@ -182,8 +183,9 @@ final class PlaceReviewStore: ObservableObject {
             }
     }
 
+    /// The shared overall grade for the place page; nil until it has loaded. No Swift-only fallback,
+    /// so iOS never shows a grade Android doesn't.
     var overallGrade: OverallAccessibility? {
-        let collapsed = collapseAccessibility(featureGrades)
-        return collapsed == .noData ? (place.grade ?? .noData) : collapsed
+        detail.map { OverallAccessibility($0.overall) }
     }
 }

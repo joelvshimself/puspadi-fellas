@@ -1,4 +1,5 @@
 import Foundation
+import Shared
 
 /// One community review photo returned by `place-review-photos`.
 struct ReviewPhoto: Decodable, Identifiable, Hashable {
@@ -18,8 +19,8 @@ struct ReviewPhoto: Decodable, Identifiable, Hashable {
     }
 }
 
-struct PlaceReviewPhotosResponse: Decodable {
-    let status: String
-    let placeId: String
-    let photos: [ReviewPhoto]
+extension ReviewPhoto {
+    init(shared photo: Shared.ReviewPhoto) {
+        self.init(url: photo.url, facility: photo.facility, label: photo.label, caption: photo.caption)
+    }
 }

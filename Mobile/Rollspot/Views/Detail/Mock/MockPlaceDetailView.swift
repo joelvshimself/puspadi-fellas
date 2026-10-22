@@ -150,10 +150,10 @@ struct MockPlaceDetailView: View {
             }
         }
         .overlay(alignment: .bottom) {
-            // The empty state carries its own filled Contribute button; a
-            // floating pill on top of it would be the same CTA twice. And no
-            // pill over the loading skeleton — it may resolve into that state.
-            if !isEmptyState && !isInitialLoading {
+            // The floating pill is the one Contribute CTA in every settled
+            // state, the empty one included (Figma "Empty"). Not shown over the
+            // loading skeleton — it may resolve into the empty state.
+            if !isInitialLoading {
                 ZStack(alignment: .bottom) {
                     ContributeGlow()
                     ContributeFloatingButton {
@@ -493,11 +493,24 @@ struct MockPlaceDetailView: View {
     /// place?" ask (frame "Empty") instead of three tabs of empty cards; the
     /// banner above still shows whatever grade enrichment derived.
     private var isEmptyState: Bool {
-        !isInitialLoading
-            && store.enrichResolved
-            && store.reviewsResolved
-            && !store.hasAnyReviews()
-            && store.reviewPhotos.isEmpty
+        store.phase == .notReviewedYet
+    }
+
+    /// The first load failed (offline, server down). Never shown as "not reviewed yet".
+    private func loadFailedContent(_ message: String) -> some View {
+        VStack(spacing: 12) {
+            Text("Couldn't load this place.".localized)
+                .font(.headline)
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button("Try again".localized) {
+                Task { await store.load() }
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private var contentSection: some View {
@@ -511,6 +524,11 @@ struct MockPlaceDetailView: View {
                     .padding(.horizontal, 22)
                     .padding(.top, 24)
                     .padding(.bottom, 96)
+            } else if case .failed(let message) = store.phase {
+                loadFailedContent(message)
+                    .padding(.horizontal, 22)
+                    .padding(.top, 26)
+                    .padding(.bottom, 40)
             } else if isEmptyState {
                 emptyStateContent
                     .padding(.horizontal, 22)
@@ -570,33 +588,41 @@ struct MockPlaceDetailView: View {
     }
 
     private var emptyStateContent: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(spacing: 20) {
             if let aiSummary = store.aiSummary {
                 AIAccessibilitySummaryCard(summary: aiSummary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.bottom, 6)
             }
 
             // Hairline between the action pills and the ask, per the design.
             Divider()
-                .padding(.bottom, 4)
+                .padding(.bottom, 24)
 
-            Text("Know something about the place?".localized)
-                .font(.system(size: 17, weight: .semibold))
+            Image("Empty Thinking Person")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 150)
+                .accessibilityHidden(true)
 
-            Button { startReview() } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 17, weight: .semibold))
-                    Text("Contribute Information".localized)
-                        .font(.system(size: 17, weight: .semibold))
-                }
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 48)
-                .background(Color.accentColor, in: Capsule())
-            }
-            .buttonStyle(.plain)
+            (Text("Be the ".localized)
+                + Text("first to contribute".localized).foregroundColor(PhotoPalette.brandBlue)
+                + Text(" and help others know about the place!!".localized))
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+
+            // Dashed arrow leading down to the floating Contribute pill (Figma "Empty").
+            Image("Empty Arrow")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 21, height: 123)
+                .padding(.top, 8)
+                .accessibilityHidden(true)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.bottom, 80)
     }
 
     private var facilityReviews: [PlaceFacilityReview] {
@@ -606,17 +632,15 @@ struct MockPlaceDetailView: View {
     /// The Reviews tab lists every facility's reviews together (the design's
     /// count is the place total, not the selected facility's).
     private var allReviews: [PlaceFacilityReview] {
-        store.facilityReviews.sorted { PlaceFacilityReview.isNewerFirst($0, $1) }
+        // Already newest-first from the shared module.
+        store.facilityReviews
     }
 
     /// Every tag the community confirmed for this facility, newest review
     /// first — not just the latest review's, so one thin review does not hide
     /// what earlier reviewers reported.
     private var providedTags: [String] {
-        var seen = Set<String>()
-        return facilityReviews
-            .flatMap(\.providedTags)
-            .filter { $0 != "NOT AVAILABLE" && seen.insert($0).inserted }
+        store.providedTags(for: selectedFacility)
     }
 
     @ViewBuilder
