@@ -17,7 +17,6 @@ import com.rollspot.app.ui.screens.contribute.ContributeScreen
 import com.rollspot.app.ui.screens.profile.AboutScreen
 import com.rollspot.app.ui.screens.profile.MyAccountScreen
 import com.rollspot.app.ui.screens.profile.ProfileScreen
-import com.rollspot.app.ui.screens.profile.ProfileSettingsScreen
 import com.rollspot.app.ui.screens.profile.SavedPlacesScreen
 import com.rollspot.app.ui.screens.auth.AuthFlowScreen
 
@@ -82,14 +81,9 @@ fun RollspotApp(review: String? = null) {
         composable("me") {
             ProfileScreen(
                 onBack = { navController.popBackStack() },
-                onOpenSettings = { navController.navigate("settings") },
                 onOpenPlace = { navController.navigate("place/$it") },
-            )
-        }
-        composable("settings") {
-            ProfileSettingsScreen(
-                onBack = { navController.popBackStack() },
-                onNavigate = { navController.navigate(it) },
+                onOpenMyAccount = { navController.navigate("my-account") },
+                onOpenAbout = { navController.navigate("about") },
                 onSignedOut = { navController.popBackStack("home", inclusive = false) },
             )
         }

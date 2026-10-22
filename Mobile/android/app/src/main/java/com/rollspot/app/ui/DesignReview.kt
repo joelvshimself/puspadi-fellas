@@ -1,10 +1,18 @@
 package com.rollspot.app.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import app.rollspot.shared.auth.AuthStep
 import com.rollspot.app.BuildConfig
 import com.rollspot.app.ui.screens.auth.AuthFlowScreen
 import com.rollspot.app.ui.screens.auth.AuthPreview
+import com.rollspot.app.ui.screens.profile.MyAccountScreen
+import com.rollspot.app.ui.screens.profile.ProfileScreen
+import com.rollspot.app.ui.screens.profile.ProfileTab
 import com.rollspot.app.ui.screens.splash.SplashScreen
 
 /**
@@ -14,6 +22,9 @@ import com.rollspot.app.ui.screens.splash.SplashScreen
  */
 object DesignReview {
     const val EXTRA = "designReview"
+    /** Signed-in screens: a local test account, passed as extras so it's never committed. */
+    const val EMAIL_EXTRA = "designReviewEmail"
+    const val PASSWORD_EXTRA = "designReviewPassword"
     private const val EMAIL = "name@gmail.com"
 
     fun isEnabled(screen: String?) = BuildConfig.DEBUG && !screen.isNullOrBlank()
@@ -37,10 +48,33 @@ object DesignReview {
 }
 
 @Composable
-fun DesignReviewRoot(screen: String) {
+fun DesignReviewRoot(screen: String, email: String? = null, password: String? = null) {
     when (screen) {
         "splash" -> SplashScreen()
         "home", "homeFilter", "homeFilterChosen", "homeSearch", "homeSearchQuery" -> RollspotApp(review = screen)
+        "profile", "profileDeleteReview", "profilePhotos", "profileSettings", "profileLanguage" -> SignedIn(email, password) {
+            val tab = when (screen) {
+                "profilePhotos" -> ProfileTab.Photos
+                "profileSettings", "profileLanguage" -> ProfileTab.Settings
+                else -> ProfileTab.Reviews
+            }
+            ProfileScreen({}, {}, {}, {}, {}, initialTab = tab, review = screen)
+        }
+        "myAccount", "mobilityProfile", "deleteAccount", "accountDeleted" -> SignedIn(email, password) {
+            MyAccountScreen(onBack = {}, onAccountDeleted = {}, review = screen)
+        }
         else -> DesignReview.authPreview(screen)?.let { AuthFlowScreen(onDone = {}, onCancel = {}, preview = it) }
     }
+}
+
+/** Signs in with the account from the launch extras, then shows the screen. */
+@Composable
+private fun SignedIn(email: String?, password: String?, content: @Composable () -> Unit) {
+    val auth = rollspotSdk().auth
+    var ready by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (!auth.isSignedIn && email != null && password != null) runCatching { auth.signIn(email, password) }
+        ready = true
+    }
+    if (ready) content()
 }

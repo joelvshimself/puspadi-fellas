@@ -1,3 +1,4 @@
+import Shared
 import CoreLocation
 import SwiftUI
 
@@ -159,6 +160,12 @@ struct ProfileReviewsView: View {
             }
             self.resolvedPlaces = places
             self.reviews = items
+            #if DEBUG
+            if DesignReview.is(.profileDeleteReview) {
+                reviewToDelete = items.first
+                showDeleteConfirmation = true
+            }
+            #endif
         } catch {
             print("ProfileReviewsView: Failed to fetch reviews: \(error)")
         }
@@ -276,16 +283,10 @@ struct ProfileReviewsView: View {
         )
     }
 
+    /// `[Elevator] Lift by the food court` → **Elevator** Lift by the food court (shared ReviewNotes).
     private func formattedNotesText(_ notes: String) -> Text {
-        let lines = notes.components(separatedBy: "\n")
-        guard !lines.isEmpty else {
-            return Text(notes)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-
         var combined = Text("")
-        for (index, line) in lines.enumerated() {
+        for (index, line) in ReviewNotes.shared.lines(notes: notes).enumerated() {
             if index > 0 {
                 combined = combined + Text("\n")
             }
@@ -294,40 +295,15 @@ struct ProfileReviewsView: View {
         return combined
     }
 
-    /// Turns `[entrance:lobby] It has stairs` into **lobby** It has stairs.
-    private func formattedNoteLine(_ line: String) -> Text {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
-        guard trimmed.first == "[",
-              let closeBracket = trimmed.firstIndex(of: "]")
-        else {
-            return Text(trimmed)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-
-        let inner = trimmed[trimmed.index(after: trimmed.startIndex)..<closeBracket]
-        let remainderStart = trimmed.index(after: closeBracket)
-        let remainder = remainderStart < trimmed.endIndex
-            ? String(trimmed[remainderStart...]).trimmingCharacters(in: .whitespaces)
-            : ""
-
-        let label: String
-        if let colon = inner.lastIndex(of: ":") {
-            label = String(inner[inner.index(after: colon)...])
-        } else {
-            label = String(inner)
-        }
-
+    private func formattedNoteLine(_ line: NoteLine) -> Text {
+        let body = Text(line.body)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+        guard let label = line.label else { return body }
         let labelText = Text(label)
             .font(.subheadline.weight(.bold))
             .foregroundStyle(.secondary)
-
-        guard !remainder.isEmpty else { return labelText }
-
-        return labelText
-            + Text(" \(remainder)")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+        return line.body.isEmpty ? labelText : labelText + Text(" ") + body
     }
 
     @ViewBuilder

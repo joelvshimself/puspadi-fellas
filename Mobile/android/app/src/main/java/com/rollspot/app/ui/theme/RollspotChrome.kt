@@ -1,8 +1,16 @@
 package com.rollspot.app.ui.theme
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -23,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -52,6 +61,10 @@ object Rollspot {
     val GradientTop = Color(0xFFB8E0FF)
     val Secondary = Color(0x993C3C43) // iOS .secondary label
     val Disabled = Color(0x59808080) // iOS Color.gray.opacity(0.35)
+    val SectionBackground = Color(0xFFF2F4F7) // iOS mockSectionBackground
+    val Danger = Color(0xFFB8292E) // "Sign Out" / "Delete Account" text
+    val DangerFill = Color(0x24FF3B30) // iOS Color.red.opacity(0.14)
+    val Tertiary = Color(0x4D3C3C43) // iOS .tertiary label
 
     // iOS Dynamic Type default sizes.
     val Title = TextStyle(fontSize = 28.sp, fontWeight = FontWeight.Bold, lineHeight = 34.sp)
@@ -144,11 +157,11 @@ fun FieldBox(focused: Boolean, error: Boolean, modifier: Modifier = Modifier, co
 
 /** 36dp translucent circle with a chevron (iOS AuthBackButton). */
 @Composable
-fun BackCircleButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun BackCircleButton(onClick: () -> Unit, modifier: Modifier = Modifier, size: Dp = 36.dp) {
     val interaction = remember { MutableInteractionSource() }
     Box(
         modifier
-            .size(36.dp)
+            .size(size)
             .pressScale(interaction)
             .clip(CircleShape)
             .background(Color.White.copy(alpha = 0.7f))
@@ -214,4 +227,98 @@ fun Modifier.glass(shape: Shape, tint: Float = 0.55f, blur: Dp = 24.dp): Modifie
         base.background(Color.White.copy(alpha = 0.92f))
     }
     surface.border(BorderStroke(0.5.dp, Color.White.copy(alpha = 0.6f)), shape)
+}
+
+/** iOS sheet spring (response 0.3, damping 0.8) used for sheets on both platforms. */
+private val SheetSpring = spring<androidx.compose.ui.unit.IntOffset>(dampingRatio = 0.8f, stiffness = 440f)
+
+/**
+ * A floating glass sheet over a dimmed screen, the Android twin of the iOS partial-height sheets
+ * (Liquid Glass, inset from the edges, grabber on top). Tapping outside or Back dismisses it.
+ */
+@Composable
+fun GlassSheet(visible: Boolean, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    BackHandler(enabled = visible, onBack = onDismiss)
+    Box(Modifier.fillMaxSize()) {
+        AnimatedVisibility(visible, enter = fadeIn(tween(200)), exit = fadeOut(tween(200))) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.25f))
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
+            )
+        }
+        AnimatedVisibility(
+            visible,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter = slideInVertically(SheetSpring) { it },
+            exit = slideOutVertically(tween(200, easing = Rollspot.EaseOut)) { it },
+        ) {
+            Column(
+                Modifier
+                    .navigationBarsPadding()
+                    .padding(8.dp)
+                    .fillMaxWidth()
+                    .shadow(24.dp, SheetShape, ambientColor = Color.Black.copy(alpha = 0.2f))
+                    .glass(SheetShape, tint = 0.82f, blur = 30.dp)
+                    // Swallow taps so they don't reach the scrim.
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
+                    .padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
+            ) {
+                Box(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(36.dp, 5.dp).clip(CircleShape).background(Color(0x4D3C3C43)))
+                }
+                content()
+            }
+        }
+    }
+}
+
+/** 34 top / 44 bottom, as the iOS sheets (bottom follows the screen corners). */
+private val SheetShape = RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp, bottomStart = 44.dp, bottomEnd = 44.dp)
+
+/** Sheet title + body copy (iOS title3 bold / subheadline secondary). */
+@Composable
+fun SheetHeader(title: String, message: String? = null) {
+    Text(title, style = TextStyle(fontSize = 20.sp, fontWeight = FontWeight.Bold, lineHeight = 25.sp), color = Color.Black)
+    if (message != null) {
+        Spacer(Modifier.height(6.dp))
+        Text(message, style = Rollspot.Subheadline, color = Rollspot.Secondary)
+    }
+}
+
+/** "Cancel" + destructive "Delete" pill pair at the bottom of confirm sheets. */
+@Composable
+fun ConfirmButtons(confirmTitle: String, busy: Boolean = false, onCancel: () -> Unit, onConfirm: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        PillButton("Cancel", Rollspot.BrandBlue, Color.White, Modifier.weight(1f), border = true, enabled = !busy, onClick = onCancel)
+        PillButton(confirmTitle, Color(0xFFFF3B30), Color(0x26FF3B30), Modifier.weight(1f), busy = busy, enabled = !busy, onClick = onConfirm)
+    }
+}
+
+@Composable
+fun PillButton(
+    title: String,
+    textColor: Color,
+    fill: Color,
+    modifier: Modifier = Modifier,
+    border: Boolean = false,
+    busy: Boolean = false,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        modifier
+            .height(48.dp)
+            .pressScale(interaction)
+            .clip(CircleShape)
+            .background(fill)
+            .then(if (border) Modifier.border(1.dp, Color(0x33808080), CircleShape) else Modifier)
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (busy) CircularProgressIndicator(Modifier.size(18.dp), color = textColor, strokeWidth = 2.dp)
+        else Text(title, style = Rollspot.Body.copy(fontWeight = FontWeight.SemiBold), color = textColor)
+    }
 }

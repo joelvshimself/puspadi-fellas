@@ -29,7 +29,7 @@ class MainActivity : ComponentActivity() {
             RollspotTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     if (DesignReview.isEnabled(review)) {
-                        DesignReviewRoot(review!!)
+                        DesignReviewRoot(review!!, intent?.getStringExtra(DesignReview.EMAIL_EXTRA), intent?.getStringExtra(DesignReview.PASSWORD_EXTRA))
                     } else {
                         var showSplash by rememberSaveable { mutableStateOf(true) }
                         if (showSplash) SplashScreen(onFinished = { showSplash = false }) else RollspotApp()

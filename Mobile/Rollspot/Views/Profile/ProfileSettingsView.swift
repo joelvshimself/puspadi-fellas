@@ -69,31 +69,41 @@ struct ProfileSettingsView: View {
                     }
                     .buttonStyle(.plain)
                 }
-
-                Button {
-                    Task {
-                        await auth.signOut()
-                        dismiss()
-                        onBackToHome?()
-                    }
-                } label: {
-                    Text("Sign Out".localized)
-                        .font(.body.weight(.bold))
-                        .foregroundStyle(Color(red: 0.72, green: 0.16, blue: 0.18))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
-                        .background(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .fill(Color(uiColor: .systemBackground))
-                        )
-                }
-                .padding(.top, 8)
             }
             .padding(.horizontal, 20)
             .padding(.top, 16)
-            .padding(.bottom, 40)
+            .padding(.bottom, 24)
+        }
+        .safeAreaInset(edge: .bottom) {
+            Button {
+                Task {
+                    await auth.signOut()
+                    dismiss()
+                    onBackToHome?()
+                }
+            } label: {
+                Text("Sign Out".localized)
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(Color(red: 0.72, green: 0.16, blue: 0.18))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(Color(uiColor: .systemBackground))
+                    )
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 12)
         }
         .background(Color.mockSectionBackground)
+        #if DEBUG
+        .task {
+            if DesignReview.is(.profileLanguage) {
+                try? await Task.sleep(for: .milliseconds(600))
+                showLanguageSheet = true
+            }
+        }
+        #endif
         .sheet(isPresented: $showLanguageSheet) {
             languageSheet
                 .presentationDetents([.height(240)])
