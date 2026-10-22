@@ -12,31 +12,29 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import app.rollspot.shared.api.Place
-import app.rollspot.shared.places.distanceLabel
-import app.rollspot.shared.places.overallAccessibility
+import app.rollspot.shared.map.MapPin
 import com.rollspot.app.ui.theme.badgeBackground
 import com.rollspot.app.ui.theme.badgeForeground
 import com.rollspot.app.ui.theme.label
 
 @Composable
 fun PlaceList(
-    places: List<Place>,
-    fromLat: Double,
-    fromLng: Double,
-    onPlaceClick: (Place) -> Unit,
+    pins: List<MapPin>,
+    onPinClick: (MapPin) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(places, key = { it.id }) { place ->
-            PlaceListItem(place, place.distanceLabel(fromLat, fromLng), onClick = { onPlaceClick(place) })
+        items(pins, key = { it.id }) { pin ->
+            PlaceListItem(pin, onClick = { onPinClick(pin) })
         }
     }
 }
 
 @Composable
-private fun PlaceListItem(place: Place, distance: String, onClick: () -> Unit) {
-    val grade = place.overallAccessibility
+private fun PlaceListItem(pin: MapPin, onClick: () -> Unit) {
+    val place = pin.place
+    val grade = pin.grade
+    val distance = pin.distanceLabel
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)),

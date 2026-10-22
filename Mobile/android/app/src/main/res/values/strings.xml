@@ -27,4 +27,20 @@
     <string name="sign_out">Sign Out</string>
     <string name="cancel">Cancel</string>
     <string name="done">Done</string>
+    <string name="search_a_place">Search a place</string>
+    <string name="search_nearby">Search nearby</string>
+    <string name="nearby_malls">Nearby Malls</string>
+    <string name="no_places_nearby">No places in this area yet. Move the map to explore.</string>
+    <string name="no_places_found">No places found for \"%1$s\" near here.</string>
+    <string name="close_search">Close search</string>
+    <string name="filter_accessibility">Filter by accessibility</string>
+    <string name="partially_accessible">Partially Accessible</string>
+    <string name="tap_to_retry">%1$s Tap to retry.</string>
+    <string name="saved_places">Saved places</string>
+    <string-array name="search_phrases">
+        <item>Search a place...</item>
+        <item>Search Malls in around you...</item>
+        <item>Discover accessible spots...</item>
+        <item>Search shopping centers...</item>
+    </string-array>
 </resources>

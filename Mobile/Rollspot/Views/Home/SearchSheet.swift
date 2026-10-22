@@ -202,7 +202,8 @@ struct SearchSheet: View {
     /// hierarchy that declares it, and a sheet is a separate presentation host,
     /// so focus changes were unreliable in both directions.
     @FocusState private var isFieldFocused: Bool
-    let searchRegion: MKCoordinateRegion
+    /// Search is run by the shared MapModel behind this store; the sheet only shows its state.
+    @ObservedObject var store: MapStore
     /// HomeMapView's pins, reused as the empty-query "Nearby" list. The sheet
     /// used to run its own search for the same region — every settled
     /// pan cost two identical nearby queries, and each re-presentation of the
@@ -210,11 +211,6 @@ struct SearchSheet: View {
     let nearbyPlaces: [Place]
     let onSelectPlace: (Place) -> Void
     let onCancelSearch: () -> Void
-
-    @State private var results: [Place] = []
-    @State private var isLoading = false
-    @State private var errorMessage: String?
-    @State private var searchTask: Task<Void, Never>?
 
     private var query: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -225,7 +221,10 @@ struct SearchSheet: View {
             searchContent
         }
         .frame(maxWidth: .infinity, alignment: .top)
-        .onChange(of: searchText) { _, value in scheduleSearch(for: value) }
+        .onChange(of: searchText) { _, value in
+            if !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !isExpanded { isExpanded = true }
+            store.queryChanged(value)
+        }
         .onChange(of: isFieldFocused) { _, focused in
             // Taking focus is what opens the sheet.
             if focused, !isExpanded {
@@ -337,28 +336,39 @@ struct SearchSheet: View {
     private var sheetBody: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: SheetMetrics.rowSpacing) {
-                if query.isEmpty {
+                // A one-letter query isn't a search yet (shared minimum length): keep showing Nearby.
+                if !store.isSearchActive {
                     sectionHeader("Nearby".localized)
-                    if nearbyPlaces.isEmpty {
+                    if nearbyPlaces.isEmpty && store.hasLoadedOnce {
+                        message("No places in this area yet. Move the map to explore.".localized)
+                    } else if nearbyPlaces.isEmpty {
                         ProgressView()
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 24)
                     } else {
                         ForEach(nearbyPlaces) { place in
-                            resultRow(place)
+                            resultRow(place, icon: "magnifyingglass")
                         }
                     }
-                } else if isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 24)
-                } else if let errorMessage {
-                    message(errorMessage)
-                } else if results.isEmpty {
-                    message("No places found for \"\(query)\" near here.")
                 } else {
-                    ForEach(results) { place in
-                        resultRow(place)
+                    // Design order: recent places (clock), the "search nearby"
+                    // action, then results (pin).
+                    ForEach(store.recents) { place in
+                        resultRow(place, icon: "clock.fill", iconColor: .secondary)
+                    }
+                    searchNearbyRow
+                    if store.isSearching {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 24)
+                    } else if let errorMessage = store.errorMessage {
+                        message(errorMessage)
+                    } else if store.results.isEmpty && store.recents.isEmpty {
+                        message(String(format: "No places found for \"%@\" near here.".localized, query))
+                    } else {
+                        ForEach(store.results) { place in
+                            resultRow(place, icon: "mappin")
+                        }
                     }
                 }
             }
@@ -376,14 +386,44 @@ struct SearchSheet: View {
             .padding(.bottom, SheetMetrics.rowSpacing)
     }
 
-    private func resultRow(_ place: Place) -> some View {
+    /// "<query> · Search nearby": the design's action row. The results are already
+    /// listed below, so it just puts the keyboard away to read them.
+    private var searchNearbyRow: some View {
+        Button {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        } label: {
+            HStack(spacing: 16) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(SheetPalette.accentBlue)
+                    .frame(width: SheetMetrics.rowIconWidth)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(query)
+                        .font(.system(size: SheetMetrics.rowTitleSize, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text("Search nearby".localized)
+                        .font(.system(size: SheetMetrics.rowSubtitleSize))
+                        .foregroundStyle(.primary.opacity(0.7))
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(card)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func resultRow(_ place: Place, icon: String, iconColor: Color = SheetPalette.accentBlue) -> some View {
         Button {
             onSelectPlace(place)
         } label: {
             HStack(spacing: 16) {
-                Image(systemName: "mappin.circle.fill")
+                Image(systemName: icon)
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(SheetPalette.accentBlue)
+                    .foregroundStyle(iconColor)
                     .frame(width: SheetMetrics.rowIconWidth)
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -433,45 +473,6 @@ struct SearchSheet: View {
         let parts = [place.distance, place.address].filter { !$0.isEmpty }
         return parts.isEmpty ? (place.category.isEmpty ? nil : place.category)
                              : parts.joined(separator: " • ")
-    }
-
-    // MARK: Search
-
-    private func scheduleSearch(for text: String) {
-        searchTask?.cancel()
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard !trimmed.isEmpty else {
-            results = []
-            isLoading = false
-            errorMessage = nil
-            return
-        }
-
-        if !isExpanded { isExpanded = true }
-        isLoading = true
-        errorMessage = nil
-
-        searchTask = Task {
-            // Debounce so a fast typist sends one query per pause, not per keystroke.
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            guard !Task.isCancelled else { return }
-            await performSearch(trimmed)
-        }
-    }
-
-    private func performSearch(_ text: String) async {
-        do {
-            let places = try await NearbyPlacesService.search(text: text, near: searchRegion.center)
-            guard !Task.isCancelled else { return }
-            results = places
-            isLoading = false
-        } catch {
-            guard !Task.isCancelled else { return }
-            results = []
-            isLoading = false
-            errorMessage = (error as NSError).localizedDescription
-        }
     }
 }
 

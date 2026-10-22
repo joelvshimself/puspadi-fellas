@@ -77,6 +77,8 @@ dependencies {
     implementation(libs.credentials.play.services)
     implementation(libs.googleid)
 
+    implementation(libs.maplibre)
+
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
 }
