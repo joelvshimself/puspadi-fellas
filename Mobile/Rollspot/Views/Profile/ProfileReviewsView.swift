@@ -1,3 +1,4 @@
+import Shared
 import CoreLocation
 import SwiftUI
 
@@ -9,6 +10,7 @@ struct ProfileReviewItem: Identifiable, Equatable, Hashable {
     var dateLabel: String
     var placeId: String
     var placeName: String
+    var editable: Bool = false
     var notes: String
     var providedTags: [String]
     var photoURLs: [URL]
@@ -25,9 +27,13 @@ struct ProfileReviewsView: View {
     @State private var reviews: [ProfileReviewItem] = []
     @State private var reviewToDelete: ProfileReviewItem? = nil
     @State private var reviewToOpen: ProfileReviewItem? = nil
+    @State private var reviewToEdit: ProfileReviewItem? = nil
+    @ObservedObject private var drafts = ContributeDraftsStore.shared
+    @State private var resumePlace: Place?
     @State private var showDeleteConfirmation = false
     @State private var isDeleting = false
     @State private var showSuccessToast = false
+    @State private var showUpdatedToast = false
     @State private var deleteError: String?
     @State private var resolvedPlaces: [String: Place] = [:]
 
@@ -42,6 +48,19 @@ struct ProfileReviewsView: View {
                         .foregroundStyle(.primary)
                         .padding(.horizontal, 20)
                         .padding(.top, 16)
+
+                    // Design "Ongoing Review": the folded Home banner lives here too.
+                    if let waiting = drafts.waiting {
+                        ContinueSurveyBanner(contribution: waiting) {
+                            resumePlace = drafts.place(for: waiting)
+                        }
+                        .background(
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .fill(Color(uiColor: .systemBackground))
+                                .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
+                        )
+                        .padding(.horizontal, 20)
+                    }
 
                     if reviews.isEmpty {
                         VStack(spacing: 12) {
@@ -66,39 +85,9 @@ struct ProfileReviewsView: View {
             }
 
             if showSuccessToast {
-                HStack(spacing: 10) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(Color.green)
-
-                    Text("Review successfully removed".localized)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(Color.primary)
-
-                    Spacer()
-
-                    Button {
-                        withAnimation { showSuccessToast = false }
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color.green.opacity(0.12))
-                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Color.green.opacity(0.3), lineWidth: 1)
-                )
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
-                .transition(.move(edge: .top).combined(with: .opacity))
+                successToast("Review successfully removed".localized) { showSuccessToast = false }
+            } else if showUpdatedToast {
+                successToast("Review successfully updated".localized) { showUpdatedToast = false }
             }
         }
         .task(id: auth.userId) {
@@ -109,6 +98,22 @@ struct ProfileReviewsView: View {
                 .presentationDetents([.height(240)])
                 .presentationCornerRadius(28)
                 .presentationDragIndicator(.visible)
+        }
+        .fullScreenCover(item: $resumePlace) { place in
+            ContributeReviewFlowView(
+                place: place,
+                initialScreenIndex: UnfinishedReviewStore.snapshot(for: place)?.screenIndex ?? 0
+            ) {
+                resumePlace = nil
+                Task { await loadReviews() }
+            }
+            .environmentObject(auth)
+        }
+        .navigationDestination(item: $reviewToEdit) { review in
+            EditResponseView(reviewId: review.id.uuidString.lowercased()) {
+                Task { await loadReviews() }
+                withAnimation { showUpdatedToast = true }
+            }
         }
         .navigationDestination(item: $reviewToOpen) { review in
             MockMyReviewView(
@@ -124,6 +129,42 @@ struct ProfileReviewsView: View {
             )
             .enableSwipeBack()
         }
+    }
+
+    private func successToast(_ text: String, onClose: @escaping () -> Void) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Color.green)
+
+            Text(text)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(Color.primary)
+
+            Spacer()
+
+            Button {
+                withAnimation { onClose() }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.green.opacity(0.12))
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.green.opacity(0.3), lineWidth: 1)
+        )
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+        .transition(.move(edge: .top).combined(with: .opacity))
     }
 
     private func loadReviews() async {
@@ -152,6 +193,7 @@ struct ProfileReviewsView: View {
                     dateLabel: row.dateLabel,
                     placeId: row.placeId,
                     placeName: resolved?.name ?? row.placeName,
+                    editable: row.editable,
                     notes: row.reviewText,
                     providedTags: row.providedFeatures,
                     photoURLs: row.photoURLs
@@ -159,6 +201,12 @@ struct ProfileReviewsView: View {
             }
             self.resolvedPlaces = places
             self.reviews = items
+            #if DEBUG
+            if DesignReview.is(.profileDeleteReview) {
+                reviewToDelete = items.first
+                showDeleteConfirmation = true
+            }
+            #endif
         } catch {
             print("ProfileReviewsView: Failed to fetch reviews: \(error)")
         }
@@ -253,7 +301,12 @@ struct ProfileReviewsView: View {
                 }
 
                 Button {
-                    reviewToOpen = review
+                    // Structured reviews open Edit Response; older ones show the review and its wizard.
+                    if review.editable {
+                        reviewToEdit = review
+                    } else {
+                        reviewToOpen = review
+                    }
                 } label: {
                     Text("Update Review".localized)
                         .font(.subheadline.weight(.semibold))
@@ -276,16 +329,10 @@ struct ProfileReviewsView: View {
         )
     }
 
+    /// `[Elevator] Lift by the food court` → **Elevator** Lift by the food court (shared ReviewNotes).
     private func formattedNotesText(_ notes: String) -> Text {
-        let lines = notes.components(separatedBy: "\n")
-        guard !lines.isEmpty else {
-            return Text(notes)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-
         var combined = Text("")
-        for (index, line) in lines.enumerated() {
+        for (index, line) in ReviewNotes.shared.lines(notes: notes).enumerated() {
             if index > 0 {
                 combined = combined + Text("\n")
             }
@@ -294,40 +341,15 @@ struct ProfileReviewsView: View {
         return combined
     }
 
-    /// Turns `[entrance:lobby] It has stairs` into **lobby** It has stairs.
-    private func formattedNoteLine(_ line: String) -> Text {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
-        guard trimmed.first == "[",
-              let closeBracket = trimmed.firstIndex(of: "]")
-        else {
-            return Text(trimmed)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-
-        let inner = trimmed[trimmed.index(after: trimmed.startIndex)..<closeBracket]
-        let remainderStart = trimmed.index(after: closeBracket)
-        let remainder = remainderStart < trimmed.endIndex
-            ? String(trimmed[remainderStart...]).trimmingCharacters(in: .whitespaces)
-            : ""
-
-        let label: String
-        if let colon = inner.lastIndex(of: ":") {
-            label = String(inner[inner.index(after: colon)...])
-        } else {
-            label = String(inner)
-        }
-
+    private func formattedNoteLine(_ line: NoteLine) -> Text {
+        let body = Text(line.body)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+        guard let label = line.label else { return body }
         let labelText = Text(label)
             .font(.subheadline.weight(.bold))
             .foregroundStyle(.secondary)
-
-        guard !remainder.isEmpty else { return labelText }
-
-        return labelText
-            + Text(" \(remainder)")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+        return line.body.isEmpty ? labelText : labelText + Text(" ") + body
     }
 
     @ViewBuilder

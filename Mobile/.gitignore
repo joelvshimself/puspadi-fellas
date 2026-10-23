@@ -30,3 +30,4 @@ signing.properties
 # Local configuration (credentials)
 local.properties
 .kotlin/
+e2e/out/

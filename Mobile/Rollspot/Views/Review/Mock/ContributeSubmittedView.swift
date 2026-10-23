@@ -1,68 +1,64 @@
 import SwiftUI
 
-/// "Contribution Submitted" screen — matches the mockup's green checkmark
-/// + "Review Submitted! Thank you for helping out!" + close-X + "Okey". Distinct from the real `ReviewSubmittedView` (different copy/
-/// layout) per the decision to build this flow's UI fresh.
+/// "Contribution Submitted" (Figma): the thank-you illustration, "Review Submitted!",
+/// "Thank you for helping out!" and a "Back to Home" button, on white.
 struct ContributeSubmittedView: View {
     let onDone: () -> Void
 
     @State private var isHovering = false
+    @State private var appeared = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        VStack {
-            Spacer()
+        VStack(spacing: 0) {
+            // Design: the block sits a little above centre (3 : 2 space above vs below).
+            Spacer(minLength: 0)
+            Spacer(minLength: 0)
+            Spacer(minLength: 0)
 
             Image("Thank You Asset")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(maxWidth: .infinity)
-                .scaleEffect(1.08)
-                .offset(y: isHovering ? -8 : 6)
-                .frame(height: 245)
-                .onAppear {
-                    withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
-                        isHovering = true
-                    }
-                }
+                .frame(width: 380)
+                .offset(y: isHovering ? -6 : 4)
+                .scaleEffect(appeared ? 1 : 0.94)
+                .opacity(appeared ? 1 : 0)
 
             Text("Review Submitted!".localized)
-                .font(.system(size: 26, weight: .bold))
-                .padding(.top, 24)
+                .font(.system(size: 28, weight: .bold))
+                .foregroundStyle(ContributePalette.text)
+                // The illustration's glow has a soft margin; the design's title tucks into it.
+                .padding(.top, -10)
 
             Text("Thank you for helping out!".localized)
                 .font(.system(size: 16))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(ContributePalette.secondaryText)
                 .padding(.top, 8)
 
-            Spacer()
+            Spacer(minLength: 0)
+            Spacer(minLength: 0)
 
             Button(action: onDone) {
-                Text("Okey".localized)
+                Text("Back to Home".localized)
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 52)
-                    .background(Color.accentColor, in: Capsule())
+                    .frame(height: 50)
+                    .background(ContributePalette.blue, in: Capsule())
             }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 20)
-            .padding(.bottom, 20)
+            .buttonStyle(PressableButtonStyle())
+            .padding(.horizontal, 22)
+            .padding(.bottom, 8)
         }
-        .background {
-            // Blue hue bleeding down from the status bar, fading to the
-            // page background well before the checkmark.
-            LinearGradient(
-                colors: [
-                    Color(red: 148 / 255, green: 202 / 255, blue: 247 / 255),
-                    Color(.systemBackground),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: 260)
-            .frame(maxHeight: .infinity, alignment: .top)
-            .background(Color(.systemBackground))
-            .ignoresSafeArea()
+        .frame(maxWidth: .infinity)
+        .background(Color(.systemBackground).ignoresSafeArea())
+        .onAppear {
+            // Entrance: a soft ease-out settle; then a slow float unless motion is reduced.
+            withAnimation(.easeOut(duration: 0.35)) { appeared = true }
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
+                isHovering = true
+            }
         }
     }
 }

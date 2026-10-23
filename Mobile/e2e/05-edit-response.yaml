@@ -1,0 +1,46 @@
+appId: ${APP_ID}
+---
+- launchApp:
+    arguments:
+      ROLLSPOT_API_BASE_URL: ${API}
+- extendedWaitUntil:
+    visible: "Search a place"
+    timeout: 20000
+- tapOn: "Profile"
+- extendedWaitUntil:
+    visible: "Update Review"
+    timeout: 15000
+- tapOn:
+    text: "Update Review"
+    index: 0
+- extendedWaitUntil:
+    visible: "Edit Response"
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: 05a-edit
+# Flip the seating answer, whichever it is now (only one branch runs).
+- evalScript: ${output.flipped = false}
+- runFlow:
+    when:
+      visible: "Yes"
+    commands:
+      - evalScript: ${output.flipped = true}
+      - tapOn: "Yes"
+      - waitForAnimationToEnd
+      - takeScreenshot: 05b-menu
+      - tapOn: "No"
+- runFlow:
+    when:
+      true: ${!output.flipped}
+    commands:
+      - tapOn: "No"
+      - waitForAnimationToEnd
+      - takeScreenshot: 05b-menu
+      - tapOn: "Yes"
+- waitForAnimationToEnd
+- takeScreenshot: 05c-changed
+- tapOn: "Save changes"
+- extendedWaitUntil:
+    visible: "Review successfully updated"
+    timeout: 20000
+- takeScreenshot: 05d-saved

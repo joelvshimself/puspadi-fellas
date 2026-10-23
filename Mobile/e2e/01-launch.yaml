@@ -1,0 +1,27 @@
+appId: ${APP_ID}
+---
+# Kuta, Bali: where the local directory has places.
+- setLocation:
+    latitude: -8.7180
+    longitude: 115.1700
+- launchApp:
+    clearState: true
+    permissions:
+      all: allow
+    arguments:
+      ROLLSPOT_API_BASE_URL: ${API}
+- takeScreenshot: 01a-splash
+- extendedWaitUntil:
+    visible: "Search a place|Explore Malls"
+    timeout: 20000
+- takeScreenshot: 01b-first-screen
+- runFlow:
+    when:
+      visible: "Explore Malls"
+    commands:
+      - tapOn: "Explore Malls"
+- extendedWaitUntil:
+    visible: "Search a place"
+    timeout: 10000
+- waitForAnimationToEnd
+- takeScreenshot: 01c-home

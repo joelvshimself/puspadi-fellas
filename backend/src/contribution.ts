@@ -523,12 +523,26 @@ function joinText(first: string | null, second: string | null): string | null {
   return parts.length ? parts.join("\n\n") : null;
 }
 
+/** Answer codes as people read them, for the review text (the codes stay in the structured columns). */
+const ANSWER_LABELS: Record<string, string> = {
+  yes: "Yes", no: "No", not_sure: "Not sure", none: "None",
+  with_push: "With a push", too_steep: "Too steep", with_effort: "With effort",
+  too_low: "Too low", too_high: "Too high", awkward: "Positioned awkwardly",
+  manual: "Manual", sliding: "Sliding", automatic: "Automatic",
+};
+const NOTICE_LABELS: Record<string, string> = {
+  loose_surface: "Loose gravel or sand", rough_surface: "Rough or uneven surface", tight_gap: "Tight gap",
+  narrow_path: "Narrow pathway", steep_section: "Steep section", curb_no_ramp: "Curb or step with no ramp",
+  nothing_notable: "Nothing notable",
+};
+export const answer = (code: string) => ANSWER_LABELS[code] ?? code;
+
 function elevatorLine(pass: ElevatorPass, index: number, all: ElevatorPass[]): string {
   const lines = [
     pass.location ? `Location: ${pass.location}` : null,
-    `Entrance Width: ${pass.wideEntrance}`,
-    pass.spaceToManeuver ? `Space to Maneuver: ${pass.spaceToManeuver}` : null,
-    pass.reachableButtons ? `Reachable Buttons: ${pass.reachableButtons}` : null,
+    `Entrance Width: ${answer(pass.wideEntrance)}`,
+    pass.spaceToManeuver ? `Space to Maneuver: ${answer(pass.spaceToManeuver)}` : null,
+    pass.reachableButtons ? `Reachable Buttons: ${answer(pass.reachableButtons)}` : null,
   ].filter((line): line is string => line != null);
   return all.length > 1 ? `[Elevator ${index + 1}]\n${lines.join("\n")}` : lines.join("\n");
 }
@@ -536,12 +550,12 @@ function elevatorLine(pass: ElevatorPass, index: number, all: ElevatorPass[]): s
 function toiletLine(pass: ToiletPass, index: number, all: ToiletPass[]): string {
   const lines = [
     pass.location ? `Location: ${pass.location}` : null,
-    `Doors: ${pass.door}`,
-    `Toilet Seat: ${pass.seat}`,
-    `Grab Bars: ${pass.grabBars}`,
-    `Space to Maneuver: ${pass.space}`,
-    `Sink: ${pass.sink}`,
-    `Emergency Aid: ${pass.emergency}`,
+    `Doors: ${answer(pass.door)}`,
+    `Toilet Seat: ${answer(pass.seat)}`,
+    `Grab Bars: ${answer(pass.grabBars)}`,
+    `Space to Maneuver: ${answer(pass.space)}`,
+    `Sink: ${answer(pass.sink)}`,
+    `Emergency Aid: ${answer(pass.emergency)}`,
   ].filter((line): line is string => line != null);
   return all.length > 1 ? `[Toilet ${index + 1}]\n${lines.join("\n")}` : lines.join("\n");
 }
@@ -552,9 +566,9 @@ function areaSummary(
   parking: { answer: string; notes: string | null } | null,
 ): string | null {
   const parts: string[] = [];
-  if (pathways) parts.push(joinText(`[Outdoor Pathways]\nNoticed: ${pathways.notices.join(", ")}`, pathways.notes)!);
-  if (seating) parts.push(joinText(`[Seating]\nWheelchair friendly seating: ${seating.answer}`, seating.notes)!);
-  if (parking) parts.push(joinText(`[Parking]\nAccessible parking: ${parking.answer}`, parking.notes)!);
+  if (pathways) parts.push(joinText(`[Outdoor Pathways]\nNoticed: ${pathways.notices.map((code) => NOTICE_LABELS[code] ?? code).join(", ")}`, pathways.notes)!);
+  if (seating) parts.push(joinText(`[Seating]\nWheelchair friendly seating: ${answer(seating.answer)}`, seating.notes)!);
+  if (parking) parts.push(joinText(`[Parking]\nAccessible parking: ${answer(parking.answer)}`, parking.notes)!);
   return parts.length ? parts.join("\n\n") : null;
 }
 

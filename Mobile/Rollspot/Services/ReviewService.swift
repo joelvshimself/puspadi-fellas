@@ -44,6 +44,8 @@ final class ReviewService {
         let id: UUID
         let placeId: String
         let placeName: String
+        /// Structured (v2) reviews can be changed on the Edit Response page.
+        let editable: Bool
         let createdAt: String
         /// Same date format as Android (shared).
         let dateLabel: String
@@ -112,11 +114,11 @@ final class ReviewService {
         defer { Task { await mutationGate.end(mutationKey) } }
         let jpegPhotos: [ReviewPhotoDraft] = localPhotos.compactMap { photo in
             guard case .local(let image) = photo.source,
-                  let data = image.jpegData(compressionQuality: ReviewNoteDraft.jpegQuality)
+                  let encoded = PhotoEncoder.encode(image)
             else { return nil }
             return ReviewPhotoDraft(
-                image: image,
-                jpegData: data,
+                image: encoded.image,
+                jpegData: encoded.jpeg,
                 caption: photo.caption ?? ""
             )
         }

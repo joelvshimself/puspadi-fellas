@@ -83,9 +83,16 @@ class AuthModelTest {
     }
 
     @Test
+    fun emptyPasswordIsCaughtBeforeTheNetwork() = runTest {
+        val error = assertFailsWith<AuthException> { model.signIn("known@rollspot.app", "") }
+        assertEquals("Enter your password.", error.message)
+        assertTrue(server.calls.isEmpty())
+    }
+
+    @Test
     fun wrongPasswordGetsFriendlyCopy() = runTest {
         val error = assertFailsWith<AuthException> { model.signIn("known@rollspot.app", "nope") }
-        assertEquals("That email and password don't match.", error.message)
+        assertEquals("Incorrect password. Try again.", error.message)
         assertFalse(model.isSignedIn)
     }
 
@@ -104,7 +111,7 @@ class AuthModelTest {
         assertEquals("EMAIL_NOT_VERIFIED", notYet.code)
 
         server.verified += "new@rollspot.app"
-        assertEquals(AuthStep.Done, model.completeVerifiedSignUp())
+        assertEquals(AuthStep.AllSet, model.completeVerifiedSignUp())
         assertTrue(model.isSignedIn)
         assertTrue(server.bodies["/v1/profile"]!!.contains("\"mobilityAids\":[\"Wheelchair\"]"))
     }
@@ -117,7 +124,7 @@ class AuthModelTest {
         assertTrue(server.calls.none { it.contains("sign-in/social") })
 
         model.chooseName("Made Wira")
-        assertEquals(AuthStep.Done, model.finishMobility(listOf("Crutches")))
+        assertEquals(AuthStep.AllSet, model.finishMobility(listOf("Crutches")))
         assertTrue(model.isSignedIn)
         assertTrue(server.bodies["/api/auth/sign-in/social"]!!.contains("\"nonce\":\"nonce\""))
     }
@@ -129,7 +136,7 @@ class AuthModelTest {
         assertEquals(AuthStep.Name("Kadek"), step)
         assertTrue(model.isSignedIn)
         model.chooseName("Kadek")
-        assertEquals(AuthStep.Done, model.finishMobility(listOf("No mobility aid")))
+        assertEquals(AuthStep.AllSet, model.finishMobility(listOf("No mobility aid")))
     }
 
     @Test

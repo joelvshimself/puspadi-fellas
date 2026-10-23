@@ -6,8 +6,11 @@ import SwiftUI
 struct MockMyReviewView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showReviewWizard = false
+    @State private var showEditResponse = false
 
     private let place: Place
+    /// Set for a real review: "Update Review" opens Edit Response instead of a new wizard.
+    private var reviewId: UUID?
     private let userName: String
     private let avatarURL: URL?
     private let userRole: String
@@ -50,6 +53,7 @@ struct MockMyReviewView: View {
         photoURLs: [URL]
     ) {
         self.place = place
+        self.reviewId = reviewId
         self.userName = userName
         self.avatarURL = avatarURL
         self.userRole = userRole
@@ -77,6 +81,11 @@ struct MockMyReviewView: View {
             .background(Color.mockSectionBackground)
         }
         .navigationBarHidden(true)
+        .navigationDestination(isPresented: $showEditResponse) {
+            if let reviewId {
+                EditResponseView(reviewId: reviewId.uuidString.lowercased())
+            }
+        }
         .fullScreenCover(isPresented: $showReviewWizard) {
             ContributeReviewFlowView(
                 place: place,
@@ -219,6 +228,10 @@ struct MockMyReviewView: View {
     }
 
     private func startUpdateReview() {
+        if reviewId != nil {
+            showEditResponse = true
+            return
+        }
         UnfinishedReviewStore.clear(for: place)
         showReviewWizard = true
     }

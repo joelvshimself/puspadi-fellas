@@ -1,4 +1,3 @@
-import PhotosUI
 import SwiftUI
 
 struct ProfilePhotosView: View {
@@ -7,8 +6,6 @@ struct ProfilePhotosView: View {
 
     @State private var photos: [FacilityPhoto] = []
     @State private var selectedPhoto: FacilityPhoto? = nil
-    @State private var selectedPhotoItems: [PhotosPickerItem] = []
-    @State private var isUploading = false
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -16,33 +13,11 @@ struct ProfilePhotosView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    HStack {
-                        Text("\("All Photos".localized) (\(photos.count))")
-                            .font(.title3.weight(.bold))
-                            .foregroundStyle(.primary)
-
-                        Spacer()
-
-                        PhotosPicker(selection: $selectedPhotoItems, matching: .images) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "photo.badge.plus")
-                                    .font(.system(size: 13, weight: .bold))
-                                Text("ADD PHOTOS".localized)
-                                    .font(.caption.weight(.bold))
-                            }
-                            .foregroundStyle(AuthPalette.brandBlue)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(
-                                Capsule()
-                                    .fill(Color(uiColor: .systemBackground))
-                                    .shadow(color: .black.opacity(0.06), radius: 4, y: 1)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 16)
+                    Text("\("All Photos".localized) (\(photos.count))")
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 16)
 
                     if photos.isEmpty {
                         VStack(spacing: 12) {

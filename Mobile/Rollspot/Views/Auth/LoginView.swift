@@ -6,9 +6,23 @@ struct LoginView: View {
     var onCancel: () -> Void
     var onExploreMalls: () -> Void
 
-    @State private var path: [AuthRoute] = []
+    @State private var path: [AuthRoute]
     @State private var displayName: String = ""
-    @State private var mobilityAids: Set<String> = []
+    @State private var mobilityAids: Set<String>
+
+    init(
+        onSuccess: @escaping () -> Void,
+        onCancel: @escaping () -> Void,
+        onExploreMalls: @escaping () -> Void,
+        initialPath: [AuthRoute] = [],
+        initialMobilityAids: Set<String> = []
+    ) {
+        self.onSuccess = onSuccess
+        self.onCancel = onCancel
+        self.onExploreMalls = onExploreMalls
+        _path = State(initialValue: initialPath)
+        _mobilityAids = State(initialValue: initialMobilityAids)
+    }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -23,11 +37,18 @@ struct LoginView: View {
             .navigationDestination(for: AuthRoute.self) { route in
                 switch route {
                 case .emailFound(let email):
-                    AuthEmailFoundView(email: email, onSuccess: onSuccess, path: $path, displayName: $displayName)
+                    AuthEmailFoundView(
+                        email: email,
+                        onSuccess: onSuccess,
+                        path: $path,
+                        displayName: $displayName,
+                        initialPassword: Self.reviewPassword,
+                        initialError: Self.reviewPasswordError
+                    )
                 case .createPassword(let email):
                     AuthCreatePasswordView(email: email, path: $path, displayName: $displayName)
                 case .verifyEmail(let email):
-                    AuthVerifyEmailView(email: email, onSuccess: onSuccess)
+                    AuthVerifyEmailView(email: email, path: $path, onSuccess: onSuccess)
                 case .name:
                     AuthNameView(displayName: $displayName, path: $path)
                 case .mobility:
@@ -38,6 +59,20 @@ struct LoginView: View {
             }
         }
     }
+}
+
+extension LoginView {
+    #if DEBUG
+    static var reviewPassword: String {
+        [.emailFoundFilled, .emailFoundError].contains(DesignReview.current) ? "password123" : ""
+    }
+    static var reviewPasswordError: String? {
+        DesignReview.current == .emailFoundError ? "Incorrect password. Try again." : nil
+    }
+    #else
+    static let reviewPassword = ""
+    static let reviewPasswordError: String? = nil
+    #endif
 }
 
 #Preview {
@@ -79,11 +114,8 @@ struct AuthWelcomeView: View {
                     .foregroundStyle(AuthPalette.subtitle)
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Email".localized)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                     AuthFieldBox(isFocused: emailFocused, isError: errorMessage != nil) {
-                        TextField("you@example.com", text: $email)
+                        TextField("Email Address".localized, text: $email)
                             .keyboardType(.emailAddress)
                             .textContentType(.emailAddress)
                             .textInputAutocapitalization(.never)
@@ -99,9 +131,9 @@ struct AuthWelcomeView: View {
                     }
                 }
 
+                // Always looks active (design); an invalid email gets the shared inline error instead.
                 AuthContinueButton(
-                    title: "Continue with Email".localized,
-                    enabled: AuthRules.shared.looksLikeEmail(value: email),
+                    title: "Continue".localized,
                     isLoading: isCheckingEmail
                 ) {
                     Task { await continueWithEmail() }
@@ -119,7 +151,7 @@ struct AuthWelcomeView: View {
     }
 
     private func continueWithEmail() async {
-        guard !isCheckingEmail, AuthRules.shared.looksLikeEmail(value: email) else { return }
+        guard !isCheckingEmail else { return }
         isCheckingEmail = true
         errorMessage = nil
         defer { isCheckingEmail = false }
