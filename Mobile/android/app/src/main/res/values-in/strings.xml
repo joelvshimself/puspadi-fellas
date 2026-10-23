@@ -2,7 +2,7 @@
 <resources>
     <string name="search_a_place">Cari tempat</string>
     <string name="search_nearby">Cari di sekitar</string>
-    <string name="nearby_malls">Mal Terdekat</string>
+    <string name="nearby_malls">Tempat Terdekat</string>
     <string name="no_places_nearby">Belum ada tempat di area ini. Geser peta untuk menjelajah.</string>
     <string name="no_places_found">Tidak ada tempat ditemukan untuk \"%1$s\" di sekitar sini.</string>
     <string name="close_search">Tutup pencarian</string>
@@ -33,4 +33,6 @@
         <item>Cari tempat aksesibel...</item>
         <item>Cari pusat perbelanjaan...</item>
     </string-array>
+    <string name="area_not_covered">Rollspot belum mencakup area ini</string>
+    <string name="go_to_region">Ke %1$s</string>
 </resources>

@@ -29,7 +29,7 @@
     <string name="done">Done</string>
     <string name="search_a_place">Search a place</string>
     <string name="search_nearby">Search nearby</string>
-    <string name="nearby_malls">Nearby Malls</string>
+    <string name="nearby_malls">Nearby Places</string>
     <string name="no_places_nearby">No places in this area yet. Move the map to explore.</string>
     <string name="no_places_found">No places found for \"%1$s\" near here.</string>
     <string name="close_search">Close search</string>
@@ -56,4 +56,6 @@
         <item>Discover accessible spots...</item>
         <item>Search shopping centers...</item>
     </string-array>
+    <string name="area_not_covered">Rollspot doesn\'t cover this area yet</string>
+    <string name="go_to_region">Go to %1$s</string>
 </resources>

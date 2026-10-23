@@ -1,5 +1,6 @@
 package app.rollspot.shared.map
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /** How big a found area is; decides how far the map zooms out to show it. */
@@ -45,9 +46,12 @@ data class CoverageRegion(
     val west: Double,
     val north: Double,
     val east: Double,
+    /** Where "Go to" lands: a busy spot. Falls back to the middle of the box. */
+    @SerialName("focus_lat") val focusLat: Double? = null,
+    @SerialName("focus_lng") val focusLng: Double? = null,
 ) {
-    val centerLat: Double get() = (south + north) / 2
-    val centerLng: Double get() = (west + east) / 2
+    val centerLat: Double get() = focusLat ?: ((south + north) / 2)
+    val centerLng: Double get() = focusLng ?: ((west + east) / 2)
 
     fun contains(lat: Double, lng: Double): Boolean = lat in south..north && lng in west..east
 }

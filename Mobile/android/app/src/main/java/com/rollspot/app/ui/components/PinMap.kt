@@ -175,9 +175,10 @@ fun PinMap(
         } else {
             val dLat = radius / 111_000.0
             val dLng = radius / (111_000.0 * kotlin.math.cos(Math.toRadians(target.lat)).coerceAtLeast(0.2))
+            // Regions and countries reach far: keep the box on the map (MapLibre rejects |lat| > 90).
             val bounds = LatLngBounds.Builder()
-                .include(LatLng(target.lat - dLat, target.lng - dLng))
-                .include(LatLng(target.lat + dLat, target.lng + dLng))
+                .include(LatLng((target.lat - dLat).coerceAtLeast(-85.0), (target.lng - dLng).coerceAtLeast(-180.0)))
+                .include(LatLng((target.lat + dLat).coerceAtMost(85.0), (target.lng + dLng).coerceAtMost(180.0)))
                 .build()
             CameraUpdateFactory.newLatLngBounds(bounds, 0)
         }

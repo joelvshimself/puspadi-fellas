@@ -1,5 +1,6 @@
 import MapKit
 import UIKit
+import Shared
 import SwiftUI
 
 enum HomeRoute: Hashable {
@@ -210,6 +211,8 @@ struct SearchSheet: View {
     /// sheet (returning from a place page) cost another.
     let nearbyPlaces: [Place]
     let onSelectPlace: (Place) -> Void
+    /// An address or area from Apple Maps: the map moves there and the search closes.
+    let onSelectArea: (AreaResult) -> Void
     let onCancelSearch: () -> Void
 
     private var query: String {
@@ -343,7 +346,7 @@ struct SearchSheet: View {
             LazyVStack(alignment: .leading, spacing: SheetMetrics.rowSpacing) {
                 // A one-letter query isn't a search yet (shared minimum length): keep showing Nearby.
                 if !store.isSearchActive {
-                    sectionHeader("Nearby Malls".localized)
+                    sectionHeader("Nearby Places".localized)
                     if nearbyPlaces.isEmpty && store.hasLoadedOnce {
                         message("No places in this area yet. Move the map to explore.".localized)
                     } else if nearbyPlaces.isEmpty {
@@ -368,11 +371,15 @@ struct SearchSheet: View {
                             .padding(.vertical, 24)
                     } else if let errorMessage = store.errorMessage {
                         message(errorMessage)
-                    } else if store.results.isEmpty && store.recents.isEmpty {
+                    } else if store.results.isEmpty && store.recents.isEmpty && store.areaResults.isEmpty {
                         message(String(format: "No places found for \"%@\" near here.".localized, query))
                     } else {
                         ForEach(store.results) { place in
                             resultRow(place, icon: "mappin")
+                        }
+                        // Addresses and areas anywhere: they only move the map.
+                        ForEach(Array(store.areaResults.enumerated()), id: \.offset) { _, area in
+                            areaRow(area)
                         }
                     }
                 }
@@ -453,6 +460,38 @@ struct SearchSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    private func areaRow(_ area: AreaResult) -> some View {
+        Button {
+            onSelectArea(area)
+        } label: {
+            HStack(spacing: 16) {
+                Image(systemName: "mappin.and.ellipse")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: SheetMetrics.rowIconWidth)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(area.title)
+                        .font(.system(size: SheetMetrics.rowTitleSize, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(area.subtitle.isEmpty ? "Go to this area".localized : area.subtitle)
+                        .font(.system(size: SheetMetrics.rowSubtitleSize))
+                        .foregroundStyle(.primary.opacity(0.7))
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(card)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Moves the map there".localized)
     }
 
     private var card: some View {
