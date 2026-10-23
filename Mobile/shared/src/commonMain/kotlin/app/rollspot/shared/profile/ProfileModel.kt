@@ -68,6 +68,18 @@ class ProfileModel(private val api: RollspotApi) {
         save(ProfileUpdate(mobilityAids = MobilityAids.options.filter { it in aids } + aids.filterNot { it in MobilityAids.options }))
     }
 
+    /** Saves one or more notification switches; null leaves a switch as it is. */
+    @Throws(Exception::class)
+    suspend fun updateNotifications(
+        savedPlaceReviews: Boolean? = null,
+        announcements: Boolean? = null,
+        reviewReminders: Boolean? = null,
+    ) = save(ProfileUpdate(
+        notifySavedPlaceReviews = savedPlaceReviews,
+        notifyAnnouncements = announcements,
+        notifyReviewReminders = reviewReminders,
+    ))
+
     /** [jpeg] is already compressed by the app. Returns the new avatar URL. */
     @OptIn(ExperimentalTime::class)
     @Throws(Exception::class)

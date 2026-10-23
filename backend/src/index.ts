@@ -5,6 +5,7 @@ import { handleMediaRead, handleMediaUpload } from "./media";
 import { handleNearby, handlePlace, handleSavedPlaces, handleSearch } from "./places";
 import { handleDeleteAccount } from "./account";
 import { handleProfile } from "./profile";
+import { handleAnnouncement, handleDevices, notifySavedPlaceReview } from "./push";
 import { handleAdminSync, syncDueTiles } from "./sync";
 import {
   handleMyReviews,
@@ -16,10 +17,10 @@ import {
 } from "./reviews";
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
       // Awaited so a rejected handler promise lands in the catch below.
-      return await route(request, env);
+      return await route(request, env, ctx);
     } catch (error) {
       if (error instanceof HttpError) {
         return json({ error: error.code, message: error.message }, error.status);
@@ -41,7 +42,7 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
-async function route(request: Request, env: Env): Promise<Response> {
+async function route(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url);
   const auth = createAuth(env);
 
@@ -76,7 +77,19 @@ async function route(request: Request, env: Env): Promise<Response> {
     return handleSavedPlaces(request, env, auth, url.pathname.slice("/v1/saved-places/".length));
   }
   if (url.pathname === "/v1/reviews") {
-    return handleReviewsRoot(request, env, auth);
+    const response = await handleReviewsRoot(request, env, auth);
+    // A new review (201, not a replayed submission): tell people who saved the place, after responding.
+    if (response.status === 201) {
+      const { reviewId } = await response.clone().json<{ reviewId: string }>();
+      ctx.waitUntil(notifySavedPlaceReview(env, reviewId).catch((error) => console.error("Push failed", error)));
+    }
+    return response;
+  }
+  if (url.pathname === "/v1/devices") {
+    return handleDevices(request, env, auth);
+  }
+  if (url.pathname.startsWith("/v1/devices/")) {
+    return handleDevices(request, env, auth, url.pathname.slice("/v1/devices/".length));
   }
   if (url.pathname === "/v1/me") {
     return handleDeleteAccount(request, env, auth);
@@ -101,6 +114,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
 
   if (url.pathname === "/v1/admin/sync-places") return handleAdminSync(request, env);
+  if (url.pathname === "/v1/admin/announcements") return handleAnnouncement(request, env);
   if (url.pathname === "/v1/places/nearby") return handleNearby(request, env, url);
   if (url.pathname === "/v1/places/search") return handleSearch(request, env, url);
   const place = url.pathname.match(/^\/v1\/places\/([^/]+)(?:\/(accessibility|photos|reviews|review-photos))?$/);

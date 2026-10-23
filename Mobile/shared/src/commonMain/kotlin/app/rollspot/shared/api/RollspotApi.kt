@@ -163,6 +163,19 @@ class RollspotApi(
             setBody(jpeg)
         }.url
 
+    // ---- Push notifications ----
+
+    /** Ties this phone's Firebase token to the signed-in user, so pushes for them reach it. */
+    @Throws(Exception::class)
+    suspend fun registerPushDevice(token: String, platform: String) {
+        send(HttpMethod.Put, listOf("v1", "devices"), auth = true) { jsonBody(PushDevice(token, platform)) }
+    }
+
+    @Throws(Exception::class)
+    suspend fun unregisterPushDevice(token: String) {
+        send(HttpMethod.Delete, listOf("v1", "devices", token), auth = true)
+    }
+
     // ---- Auth (Better Auth) ----
 
     @Throws(Exception::class)
