@@ -2,7 +2,7 @@ import { createAuth, requireUserId } from "./auth";
 import type { Env } from "./env";
 import { HttpError, json, methodNotAllowed, readJson } from "./http";
 import { handleMediaRead, handleMediaUpload } from "./media";
-import { handleNearby, handlePlace, handleSavedPlaces, handleSearch } from "./places";
+import { handleNearby, handlePlace, handleRegions, handleSavedPlaces, handleSearch } from "./places";
 import { handleDeleteAccount } from "./account";
 import { handleProfile } from "./profile";
 import { handleAnnouncement, handleDevices, notifySavedPlaceReview } from "./push";
@@ -117,6 +117,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   if (url.pathname === "/v1/admin/announcements") return handleAnnouncement(request, env);
   if (url.pathname === "/v1/places/nearby") return handleNearby(request, env, url);
   if (url.pathname === "/v1/places/search") return handleSearch(request, env, url);
+  if (url.pathname === "/v1/places/regions") return handleRegions(request, env);
   const place = url.pathname.match(/^\/v1\/places\/([^/]+)(?:\/(accessibility|photos|reviews|review-photos))?$/);
   if (place) {
     if (place[2] === "reviews") return handlePlaceReviews(request, env, place[1]!);

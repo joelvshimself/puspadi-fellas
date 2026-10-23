@@ -135,6 +135,18 @@ export function ftsQuery(input: string): string | null {
   return terms.length ? terms.slice(0, 8).map((term) => `"${term}"*`).join(" ") : null;
 }
 
+/**
+ * The areas the directory covers (active sync regions). Apps use it to tell "no places here yet"
+ * apart from "nothing matches", e.g. after moving the map to a city we don't cover.
+ */
+export async function handleRegions(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "GET") return methodNotAllowed("GET");
+  const rows = await env.DB.prepare(
+    `SELECT id, name, south, west, north, east FROM sync_regions WHERE active = 1 ORDER BY name`,
+  ).all<{ id: string; name: string; south: number; west: number; north: number; east: number }>();
+  return json({ status: "ok", regions: rows.results }, 200, { "cache-control": "public, max-age=3600" });
+}
+
 export async function handleSearch(request: Request, env: Env, url: URL): Promise<Response> {
   if (request.method !== "GET") return methodNotAllowed("GET");
   const query = url.searchParams.get("q")?.trim() ?? "";
