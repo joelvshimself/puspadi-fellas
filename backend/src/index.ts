@@ -5,7 +5,7 @@ import { handleMediaRead, handleMediaUpload } from "./media";
 import { handleNearby, handlePlace, handleSavedPlaces, handleSearch } from "./places";
 import { handleDeleteAccount } from "./account";
 import { handleProfile } from "./profile";
-import { handleAdminSync, syncAllRegions } from "./sync";
+import { handleAdminSync, syncDueTiles } from "./sync";
 import {
   handleMyReviews,
   handlePlaceReviews,
@@ -35,9 +35,9 @@ export default {
     }
   },
 
-  /** Weekly refresh of the place directory from OpenStreetMap (see wrangler.jsonc "triggers"). */
+  /** Every 10 minutes: refresh the most overdue tiles of the place directory (src/sync.ts). */
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(syncAllRegions(env).then((results) => console.log("Place sync", JSON.stringify(results))));
+    ctx.waitUntil(syncDueTiles(env).then((results) => console.log("Place sync", JSON.stringify(results))));
   },
 } satisfies ExportedHandler<Env>;
 

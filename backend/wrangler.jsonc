@@ -11,13 +11,14 @@
     "GOOGLE_ANDROID_CLIENT_ID": "replace-with-google-android-client-id",
     "EMAIL_FROM": "Rollspot <hello@rollspot.app>"
   },
-  // Mondays 03:00 UTC: refresh the place directory from OpenStreetMap (src/sync.ts).
-  "triggers": { "crons": ["0 3 * * 1"] },
+  // Every 10 minutes: sync the most overdue map tiles from OpenStreetMap (src/sync.ts).
+  // Each tile comes round about weekly; empty ones monthly.
+  "triggers": { "crons": ["*/10 * * * *"] },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "rollspot",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "b12d2b28-f2e6-434a-93ef-37c921fafb45",
       "migrations_dir": "migrations"
     }
   ],
