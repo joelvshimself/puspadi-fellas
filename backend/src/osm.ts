@@ -106,19 +106,24 @@ export class OverpassBusyError extends Error {}
 
 export type TileResult = { kind: "ok"; places: OsmPlace[] } | { kind: "too_big" };
 
-export function placeQuery(box: BoundingBox): string {
+/**
+ * With `since` (an ISO date), only places edited in OpenStreetMap after it:
+ * a tile that's already loaded usually answers with a handful instead of thousands.
+ */
+export function placeQuery(box: BoundingBox, since?: string): string {
+  const newer = since ? `(newer:"${since}")` : "";
   return `[out:json][timeout:180][bbox:${box.south},${box.west},${box.north},${box.east}];
 (
-${PLACE_STATEMENTS.map((statement) => `  ${statement};`).join("\n")}
+${PLACE_STATEMENTS.map((statement) => `  ${statement}${newer};`).join("\n")}
 );
 out center tags;`;
 }
 
-export async function fetchTilePlaces(box: BoundingBox): Promise<TileResult> {
+export async function fetchTilePlaces(box: BoundingBox, since?: string): Promise<TileResult> {
   const response = await fetch(OVERPASS_URL, {
     method: "POST",
     headers: { "user-agent": USER_AGENT, "content-type": "application/x-www-form-urlencoded" },
-    body: `data=${encodeURIComponent(placeQuery(box))}`,
+    body: `data=${encodeURIComponent(placeQuery(box, since))}`,
   });
   if ([429, 502, 503, 504].includes(response.status)) {
     throw new OverpassBusyError(`Overpass returned ${response.status}.`);
