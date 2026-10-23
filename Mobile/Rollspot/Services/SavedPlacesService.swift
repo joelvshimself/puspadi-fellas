@@ -54,7 +54,10 @@ final class SavedPlacesService: ObservableObject {
         // Only throws if cancelled; the model reports real failures as an outcome.
         guard let outcome = try? await model.toggle(place: shared) else { return .failed("Cancelled") }
         switch onEnum(of: outcome) {
-        case .saved: return .saved
+        case .saved:
+            // "New reviews at places you saved" makes the permission prompt self-explanatory here.
+            PushNotificationsService.shared.askAfterFirstSave()
+            return .saved
         case .removed: return .removed
         case .needsSignIn: return .needsSignIn
         case .failed(let failure): return .failed(failure.message)

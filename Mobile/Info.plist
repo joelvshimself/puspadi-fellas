@@ -10,6 +10,13 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
+	<!-- PushNotificationsService hands the APNs token to Firebase itself; no app-delegate swizzling. -->
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<false/>
 	<key>GOOGLE_IOS_CLIENT_ID</key>
 	<string>REPLACE_WITH_GOOGLE_IOS_CLIENT_ID</string>
 	<key>CFBundleURLTypes</key>

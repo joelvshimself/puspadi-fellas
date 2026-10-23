@@ -164,6 +164,26 @@ final class LanguageManager: ObservableObject {
         "Save": [.english: "Save", .indonesia: "Simpan"],
         "Language": [.english: "Language", .indonesia: "Bahasa"],
         "Notifications": [.english: "Notifications", .indonesia: "Notifikasi"],
+        "Reviews at places you saved": [.english: "Reviews at places you saved", .indonesia: "Ulasan di tempat yang kamu simpan"],
+        "When someone reviews a place you saved": [.english: "When someone reviews a place you saved", .indonesia: "Saat seseorang mengulas tempat yang kamu simpan"],
+        "Review reminders": [.english: "Review reminders", .indonesia: "Pengingat ulasan"],
+        "A nudge to finish a review you started": [.english: "A nudge to finish a review you started", .indonesia: "Pengingat untuk menyelesaikan ulasan yang sudah kamu mulai"],
+        "News from Rollspot": [.english: "News from Rollspot", .indonesia: "Kabar dari Rollspot"],
+        "New places, cities and features": [.english: "New places, cities and features", .indonesia: "Tempat, kota, dan fitur baru"],
+        "Notifications are turned off for Rollspot in your phone's settings.": [
+            .english: "Notifications are turned off for Rollspot in your phone's settings.",
+            .indonesia: "Notifikasi Rollspot dimatikan di pengaturan ponselmu."
+        ],
+        "Open Settings": [.english: "Open Settings", .indonesia: "Buka Pengaturan"],
+        "Couldn't save that. Check your connection and try again.": [
+            .english: "Couldn't save that. Check your connection and try again.",
+            .indonesia: "Gagal menyimpan. Periksa koneksimu dan coba lagi."
+        ],
+        "Finish your review": [.english: "Finish your review", .indonesia: "Selesaikan ulasanmu"],
+        "You're part-way through reviewing %@. It only takes a minute.": [
+            .english: "You're part-way through reviewing %@. It only takes a minute.",
+            .indonesia: "Kamu belum selesai mengulas %@. Hanya butuh semenit."
+        ],
         "About App": [.english: "About App", .indonesia: "Tentang Aplikasi"],
         "What is Rollspot?": [.english: "What is Rollspot?", .indonesia: "Apa itu Rollspot?"],
         "About Rollspot summary": [

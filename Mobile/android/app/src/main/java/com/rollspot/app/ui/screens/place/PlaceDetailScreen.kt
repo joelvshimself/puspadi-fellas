@@ -5,6 +5,7 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import app.rollspot.shared.api.Place
 import app.rollspot.shared.saved.SaveOutcome
+import com.rollspot.app.notifications.rememberNotificationPermissionRequest
 import kotlinx.coroutines.launch
 import android.content.Context
 import android.content.Intent
@@ -252,6 +253,8 @@ private fun SaveButton(place: Place, onNeedsSignIn: () -> Unit, modifier: Modifi
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val isSaved = state.isSaved(place.id)
+    // The first save is a natural moment to ask: "tell me when someone reviews this place".
+    val askNotificationPermission = rememberNotificationPermissionRequest()
     Surface(
         shape = CircleShape,
         color = Color.White,
@@ -264,6 +267,7 @@ private fun SaveButton(place: Place, onNeedsSignIn: () -> Unit, modifier: Modifi
                     when (val outcome = saved.toggle(place)) {
                         SaveOutcome.NeedsSignIn -> onNeedsSignIn()
                         is SaveOutcome.Failed -> Toast.makeText(context, outcome.message, Toast.LENGTH_SHORT).show()
+                        SaveOutcome.Saved -> askNotificationPermission()
                         else -> Unit
                     }
                 }

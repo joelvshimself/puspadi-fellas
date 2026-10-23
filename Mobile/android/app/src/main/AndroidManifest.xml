@@ -4,6 +4,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Android 13+: asked for when a Notifications switch is turned on or a place is first saved. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".RollspotApplication"
@@ -46,6 +48,33 @@
                     android:host="place" />
             </intent-filter>
         </activity>
+
+        <!-- Push notifications (Firebase Cloud Messaging). Started by hand in Push.start once
+             Firebase options are configured, so nothing runs without them. -->
+        <service
+            android:name=".notifications.RollspotMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        <meta-data
+            android:name="firebase_messaging_auto_init_enabled"
+            android:value="false" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/notification_accent" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="reviews" />
+
+        <!-- The unfinished-review reminder (an alarm set by Push.Reminder). -->
+        <receiver
+            android:name=".notifications.ReminderReceiver"
+            android:exported="false" />
 
         <!-- "Take New Photo": the camera app writes the picture through this provider. -->
         <provider

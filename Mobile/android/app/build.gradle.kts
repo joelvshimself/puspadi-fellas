@@ -10,6 +10,7 @@ plugins {
 // Per-developer overrides live in Mobile/local.properties (gitignored), e.g.
 //   rollspot.apiBaseUrl=http://10.0.2.2:8787      (local `npm run dev` from the emulator)
 //   rollspot.googleWebClientId=....apps.googleusercontent.com
+//   rollspot.firebase.apiKey / .appId / .projectId / .senderId   (push; see android/README.md)
 val localProperties = Properties().apply {
     rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
@@ -30,6 +31,11 @@ android {
 
         buildConfigField("String", "API_BASE_URL", "\"${local("rollspot.apiBaseUrl", "https://api.rollspot.app")}\"")
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${local("rollspot.googleWebClientId", "")}\"")
+        // Firebase Cloud Messaging, set by hand instead of google-services.json; push is off while empty.
+        buildConfigField("String", "FIREBASE_API_KEY", "\"${local("rollspot.firebase.apiKey", "")}\"")
+        buildConfigField("String", "FIREBASE_APP_ID", "\"${local("rollspot.firebase.appId", "")}\"")
+        buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${local("rollspot.firebase.projectId", "")}\"")
+        buildConfigField("String", "FIREBASE_SENDER_ID", "\"${local("rollspot.firebase.senderId", "")}\"")
     }
 
     compileOptions {
@@ -81,6 +87,10 @@ dependencies {
 
     // Backdrop blur for glass buttons and sheets (Android has no native Liquid Glass).
     implementation(libs.haze)
+
+    // Push notifications (no google-services plugin: options come from local.properties)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
 
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)

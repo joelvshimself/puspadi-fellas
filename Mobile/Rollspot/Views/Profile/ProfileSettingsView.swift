@@ -1,4 +1,3 @@
-import UserNotifications
 import SwiftUI
 
 struct ProfileSettingsView: View {
@@ -8,9 +7,7 @@ struct ProfileSettingsView: View {
     @EnvironmentObject private var auth: AuthSessionStore
 
     @State private var showLanguageSheet = false
-    /// Whether iOS lets Rollspot show notifications (Settings → Notifications → Rollspot).
-    @State private var notificationsOn: Bool?
-    @Environment(\.scenePhase) private var scenePhase
+    @ObservedObject private var notifications = PushNotificationsService.shared
 
     private static let testFlightURL = URL(string: "https://testflight.apple.com/join/BkzVVnrt")!
 
@@ -57,16 +54,16 @@ struct ProfileSettingsView: View {
                     }
                     Divider().padding(.leading, 52)
 
-                    settingsRow(
-                        icon: "bell.fill",
-                        title: "Notifications".localized,
-                        value: notificationsOn.map { ($0 ? "On" : "Off").localized }
-                    ) {
-                        // The system page is where notifications are switched on or off.
-                        if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
-                            openURL(url)
-                        }
+                    NavigationLink {
+                        NotificationsSettingsView()
+                    } label: {
+                        settingsRowLabel(
+                            icon: "bell.fill",
+                            title: "Notifications".localized,
+                            value: notificationsValue
+                        )
                     }
+                    .buttonStyle(.plain)
                     Divider().padding(.leading, 52)
 
                     NavigationLink {
@@ -120,7 +117,6 @@ struct ProfileSettingsView: View {
             }
         }
         #endif
-        .task(id: scenePhase) { await refreshNotificationStatus() }
         .sheet(isPresented: $showLanguageSheet) {
             languageSheet
                 .presentationDetents([.height(240)])
@@ -129,9 +125,13 @@ struct ProfileSettingsView: View {
         }
     }
 
-    private func refreshNotificationStatus() async {
-        let settings = await UNUserNotificationCenter.current().notificationSettings()
-        notificationsOn = [.authorized, .provisional, .ephemeral].contains(settings.authorizationStatus)
+    /// "Off" when iOS blocks Rollspot's notifications; nothing before iOS has asked.
+    private var notificationsValue: String? {
+        switch notifications.state.permission {
+        case .granted: "On".localized
+        case .denied: "Off".localized
+        default: nil
+        }
     }
 
     private func settingsCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {

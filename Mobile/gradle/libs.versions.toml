@@ -16,6 +16,7 @@ googleid = "1.2.1"
 coil = "3.3.0"
 haze = "1.7.2"
 maplibre = "13.6.1"
+firebase-bom = "34.0.0"
 
 [libraries]
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
@@ -50,6 +51,8 @@ maplibre = { module = "org.maplibre.gl:android-sdk", version.ref = "maplibre" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 haze = { module = "dev.chrisbanes.haze:haze", version.ref = "haze" }
+firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebase-bom" }
+firebase-messaging = { module = "com.google.firebase:firebase-messaging" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
