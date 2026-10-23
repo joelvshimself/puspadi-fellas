@@ -391,14 +391,14 @@ final class EditResponseStore: ObservableObject {
         try? await model.save()
     }
 
-    /// Same compression as the contribute flow's photos.
+    /// Same preparation as the contribute flow's photos.
     func addPhotos(_ items: [PhotosPickerItem], to sectionId: String) async {
         for item in items {
             guard let data = try? await item.loadTransferable(type: Data.self),
                   let image = UIImage(data: data),
-                  let jpeg = image.jpegData(compressionQuality: ReviewNoteDraft.jpegQuality)
+                  let encoded = PhotoEncoder.encode(image)
             else { continue }
-            if !model.addPhoto(sectionId: sectionId, jpeg: jpeg.asKotlinByteArray(), caption: "") { break }
+            if !model.addPhoto(sectionId: sectionId, jpeg: encoded.jpeg.asKotlinByteArray(), caption: "") { break }
         }
     }
 
