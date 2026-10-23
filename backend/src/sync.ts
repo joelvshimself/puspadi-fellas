@@ -10,6 +10,7 @@ interface TileRow extends BoundingBox {
   id: string;
   region_id: string;
   last_count: number | null;
+  loaded_at: string | null;
 }
 
 /** Regions are cut into tiles this many degrees wide; busy tiles split further. */
@@ -23,6 +24,8 @@ const PAUSE_MS = 2_000;
 const RESYNC_DAYS = 7;
 /** Sea and empty land: check again monthly instead of weekly. */
 const EMPTY_RESYNC_DAYS = 28;
+/** Incremental syncs reach back this far before the last load, so Overpass's replication lag can't drop an edit. */
+const OVERLAP_MS = 24 * 60 * 60 * 1000;
 
 const NOW = `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`;
 
@@ -119,12 +122,14 @@ async function splitTile(env: Env, tile: TileRow): Promise<void> {
   ]);
 }
 
-async function recordTile(env: Env, tile: TileRow, status: string, count: number | null, resyncDays: number) {
+/** `count` is the tile's total after a full load, null otherwise (keeps the last total). */
+async function recordTile(env: Env, tile: TileRow, status: string, count: number | null, resyncDays: number, loaded = false) {
   await env.DB.batch([
     env.DB.prepare(
       `UPDATE sync_tiles SET last_status = ?, last_count = COALESCE(?, last_count), last_synced_at = ${NOW},
+       loaded_at = CASE WHEN ? THEN ${NOW} ELSE loaded_at END,
        next_sync_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?) WHERE id = ?`,
-    ).bind(status, count, `+${resyncDays} days`, tile.id),
+    ).bind(status, count, loaded ? 1 : 0, `+${resyncDays} days`, tile.id),
     env.DB.prepare(
       `UPDATE sync_regions SET last_synced_at = ${NOW}, last_status = ?,
        last_count = (SELECT SUM(last_count) FROM sync_tiles WHERE region_id = ?) WHERE id = ?`,
@@ -134,7 +139,9 @@ async function recordTile(env: Env, tile: TileRow, status: string, count: number
 
 export interface TileOutcome {
   tile: string;
+  /** Places received: the whole tile, or only the edited ones when incremental. */
   places?: number;
+  incremental?: boolean;
   split?: boolean;
   error?: string;
 }
@@ -147,7 +154,7 @@ export interface TileOutcome {
 export async function syncDueTiles(env: Env, limit = TILES_PER_RUN, regionId?: string): Promise<TileOutcome[]> {
   await seedTiles(env);
   const due = await env.DB.prepare(
-    `SELECT id, region_id, south, west, north, east, last_count FROM sync_tiles
+    `SELECT id, region_id, south, west, north, east, last_count, loaded_at FROM sync_tiles
      WHERE (next_sync_at IS NULL OR next_sync_at <= ${NOW}) AND (?1 IS NULL OR region_id = ?1)
        AND region_id IN (SELECT id FROM sync_regions WHERE active = 1)
      ORDER BY next_sync_at IS NOT NULL, next_sync_at
@@ -158,7 +165,11 @@ export async function syncDueTiles(env: Env, limit = TILES_PER_RUN, regionId?: s
   for (const [index, tile] of due.results.entries()) {
     if (index > 0) await new Promise((resolve) => setTimeout(resolve, PAUSE_MS));
     try {
-      const result = await fetchTilePlaces(tile);
+      // A loaded tile only needs what was edited since; a new or split one needs everything.
+      const since = tile.loaded_at
+        ? new Date(Date.parse(tile.loaded_at) - OVERLAP_MS).toISOString().replace(/\.\d+Z$/, "Z")
+        : undefined;
+      const result = await fetchTilePlaces(tile, since);
       if (result.kind === "too_big") {
         if (tile.north - tile.south > MIN_TILE_DEGREES) {
           await splitTile(env, tile);
@@ -171,8 +182,9 @@ export async function syncDueTiles(env: Env, limit = TILES_PER_RUN, regionId?: s
       }
       await upsertPlaces(env, result.places);
       const count = result.places.length;
-      await recordTile(env, tile, "ok", count, count === 0 ? EMPTY_RESYNC_DAYS : RESYNC_DAYS);
-      outcomes.push({ tile: tile.id, places: count });
+      const total = since ? tile.last_count : count;
+      await recordTile(env, tile, "ok", since ? null : count, total === 0 ? EMPTY_RESYNC_DAYS : RESYNC_DAYS, true);
+      outcomes.push({ tile: tile.id, places: count, incremental: Boolean(since) });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`Place sync failed for tile ${tile.id}`, error);

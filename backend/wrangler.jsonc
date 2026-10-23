@@ -18,7 +18,7 @@
     {
       "binding": "DB",
       "database_name": "rollspot",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "b12d2b28-f2e6-434a-93ef-37c921fafb45",
       "migrations_dir": "migrations"
     }
   ],
