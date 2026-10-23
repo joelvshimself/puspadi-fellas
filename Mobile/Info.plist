@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>ROLLSPOT_API_BASE_URL</key>
-	<string>https://api.rollspot.app</string>
+	<string>https://rollspot-api.joecast208.workers.dev</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<!-- Lets debug builds reach a local `wrangler dev`; does not relax HTTPS for the internet. -->

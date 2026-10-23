@@ -28,7 +28,7 @@ android {
         versionCode = 1
         versionName = "1.1.0"
 
-        buildConfigField("String", "API_BASE_URL", "\"${local("rollspot.apiBaseUrl", "https://api.rollspot.app")}\"")
+        buildConfigField("String", "API_BASE_URL", "\"${local("rollspot.apiBaseUrl", "https://rollspot-api.joecast208.workers.dev")}\"")
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${local("rollspot.googleWebClientId", "")}\"")
     }
 

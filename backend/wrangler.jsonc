@@ -1,11 +1,14 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "rollspot-api",
+  // Joecast208's Cloudflare account: deploys can't land on another account by accident.
+  "account_id": "d721e55fdd3617e5e5a4bc68426c293e",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
-    "API_BASE_URL": "https://api.rollspot.app",
+    // No domain yet: the Worker's workers.dev address. Photo URLs and email links are built from this.
+    "API_BASE_URL": "https://rollspot-api.joecast208.workers.dev",
     "APPLE_CLIENT_ID": "com.puspadifellas.app",
     "GOOGLE_IOS_CLIENT_ID": "replace-with-google-ios-client-id",
     "GOOGLE_ANDROID_CLIENT_ID": "replace-with-google-android-client-id",

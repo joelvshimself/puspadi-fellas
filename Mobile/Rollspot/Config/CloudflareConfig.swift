@@ -15,7 +15,7 @@ enum CloudflareConfig {
            let url = URL(string: value), !value.isEmpty {
             return url
         }
-        return URL(string: "https://api.rollspot.app")!
+        return URL(string: "https://rollspot-api.joecast208.workers.dev")!
     }()
 
     static let googleClientID: String = {
