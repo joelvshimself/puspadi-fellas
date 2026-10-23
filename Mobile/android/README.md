@@ -34,4 +34,4 @@ rollspot.apiBaseUrl=http://10.0.2.2:8787
 rollspot.googleWebClientId=
 ```
 
-Without `rollspot.apiBaseUrl` the app talks to production (`https://api.rollspot.app`).
+Without `rollspot.apiBaseUrl` the app talks to production (`https://rollspot-api.joecast208.workers.dev`).
