@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 232" width="780" height="464" preserveAspectRatio="xMidYMid slice">
+                <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8EC5F7"/><stop offset="1" stop-color="#DCEEFD"/></linearGradient></defs>
+                <rect width="390" height="232" fill="url(#sky)"/>
+                <rect x="40" y="88" width="310" height="144" fill="#E9DCCB"/>
+                <rect x="40" y="80" width="310" height="14" fill="#B9542F"/>
+                <rect x="150" y="56" width="92" height="40" rx="4" fill="#C9653B"/>
+                <text x="196" y="82" text-anchor="middle" font-family="-apple-system,Helvetica,Arial" font-weight="800" font-size="17" fill="#fff">PARK23</text>
+                <g fill="#7FA9CF"><rect x="56" y="106" width="40" height="30" rx="3"/><rect x="104" y="106" width="40" height="30" rx="3"/><rect x="246" y="106" width="40" height="30" rx="3"/><rect x="294" y="106" width="40" height="30" rx="3"/><rect x="56" y="150" width="40" height="30" rx="3"/><rect x="294" y="150" width="40" height="30" rx="3"/></g>
+                <rect x="160" y="140" width="72" height="92" fill="#5E87AE"/><path d="M196 140v92" stroke="#E9DCCB" stroke-width="3"/>
+                <path d="M100 232l60-26h12v26z" fill="#BFC6CF"/>
+                <g><path d="M22 232c2-40 4-70 10-96" stroke="#6b4a2b" stroke-width="6" fill="none"/><path d="M32 136c-20-10-36-6-44 4M32 136c16-16 34-14 44-6M32 136c-4-18 4-30 14-34M32 136c-16-4-22-20-20-30" stroke="#2f9e5b" stroke-width="7" stroke-linecap="round" fill="none"/></g>
+                <g><path d="M366 232c-2-36-6-60-12-84" stroke="#6b4a2b" stroke-width="6" fill="none"/><path d="M354 148c18-10 32-4 38 6M354 148c-14-14-30-12-40-4M354 148c4-16-2-28-12-32" stroke="#2f9e5b" stroke-width="7" stroke-linecap="round" fill="none"/></g>
+              </svg>

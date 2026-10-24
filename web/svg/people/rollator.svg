@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 150" width="280" height="300" class="slow"><style>.legs-a{animation:swA 1.1s ease-in-out infinite}.legs-b{animation:swB 1.1s ease-in-out infinite}.slow .legs-a,.slow .legs-b{animation-duration:1.6s}@keyframes swA{0%,100%{transform:rotate(20deg)}50%{transform:rotate(-20deg)}}@keyframes swB{0%,100%{transform:rotate(-20deg)}50%{transform:rotate(20deg)}}.spin{transform-box:fill-box;transform-origin:center;animation:spin 1.8s linear infinite}.spin.fast{animation-duration:.9s}@keyframes spin{to{transform:rotate(360deg)}}.bob{animation:bob .55s ease-in-out infinite alternate}@keyframes bob{to{transform:translateY(-2px)}}.push{animation:push 1.8s ease-in-out infinite}@keyframes push{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(14deg)}}.crutch{animation:cr 1.3s ease-in-out infinite}@keyframes cr{0%,100%{transform:rotate(-9deg)}50%{transform:rotate(9deg)}}.sweep{animation:sw 1.1s ease-in-out infinite}@keyframes sw{0%,100%{transform:rotate(-7deg)}50%{transform:rotate(5deg)}}@media (prefers-reduced-motion:reduce){*{animation:none!important}}</style>
+          <g class="legs-b" style="transform-origin:46px 94px"><path d="M46 94v48h9" stroke="#6B3F5E" stroke-width="11" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+          <g class="legs-a" style="transform-origin:46px 94px"><path d="M46 94v48h9" stroke="#7E4C70" stroke-width="11" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+          <g class="bob">
+            <path d="M46 94l4-38" stroke="#FF7A6B" stroke-width="19" stroke-linecap="round"/>
+            <circle cx="54" cy="38" r="11" fill="#E0AC69"/>
+            <path d="M43 38c-1-8 5-13 11-13s11 4 11 9c-4-2-9-3-13 0-3 2-5 6-9 4z" fill="#C9CED6"/>
+            <path d="M52 62l14 14h12" stroke="#E0AC69" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </g>
+          <path d="M76 78h30M80 78l2 66M104 78l10 56M82 106h26" stroke="#DCE6F2" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+          <g class="spin fast"><circle cx="114" cy="138" r="7" fill="#0F2235" stroke="#DCE6F2" stroke-width="3"/></g>
+        </svg>

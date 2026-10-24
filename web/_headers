@@ -6,3 +6,16 @@
 /.well-known/apple-app-site-association
   Content-Type: application/json; charset=utf-8
   Content-Disposition: inline
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+# Bump the ?v= query on the <link>/<script> tags whenever CSS or JS changes;
+# the short max-age covers anyone who loads an unversioned URL.
+/css/*
+  Cache-Control: public, max-age=300
+/js/*
+  Cache-Control: public, max-age=300
+/svg/*
+  Cache-Control: public, max-age=604800
