@@ -145,6 +145,26 @@ class AuthModelTest {
         model.signOut()
         assertIs<AuthSession.SignedOut>(model.session.value)
         assertEquals(null, tokens.load())
+        assertEquals("{}", server.bodies["/api/auth/sign-out"], "Better Auth answers 415 without a JSON body")
+    }
+
+    @Test
+    fun signingInBeforeConfirmingLeadsToTheCheckEmailStep() = runTest {
+        server.registered += "late@rollspot.app"
+        server.profileAids = emptyList()
+        assertEquals(AuthStep.VerifyEmail("late@rollspot.app"), model.signIn("late@rollspot.app", "Passw0rd!"))
+        assertFalse(model.isSignedIn)
+
+        // The draft keeps the email, so resend works from here.
+        model.resendVerificationEmail()
+        assertTrue(server.bodies["/api/auth/send-verification-email"]!!.contains("late@rollspot.app"))
+
+        // Confirmed later: onboarding was never answered (it was lost with the first app session), so ask for it.
+        server.verified += "late@rollspot.app"
+        assertEquals(AuthStep.Name(""), model.completeVerifiedSignUp())
+        assertTrue(model.isSignedIn)
+        assertEquals(AuthStep.Mobility, model.chooseName("Late"))
+        assertEquals(AuthStep.AllSet, model.finishMobility(listOf("Cane")))
     }
 
     @Test

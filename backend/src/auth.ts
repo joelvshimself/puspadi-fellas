@@ -79,6 +79,8 @@ export function createAuth(env: Env) {
     },
     emailVerification: {
       sendOnSignUp: true,
+      // Signing in before confirming sends a fresh link, so a lost first email isn't a dead end.
+      sendOnSignIn: true,
       autoSignInAfterVerification: false,
       sendVerificationEmail: async ({ user, url }) => {
         await sendEmail(

@@ -199,7 +199,8 @@ extension AuthRoute {
 
 extension AuthStep {
     /// Name prefill carried by the step (e.g. the name Apple or Google shared).
-    var suggestedName: String? {
+    /// Not called `suggestedName`: on `AuthStepName` that would shadow the Kotlin property and recurse.
+    var namePrefill: String? {
         if case .name(let name) = onEnum(of: self) { return name.suggestedName }
         return nil
     }

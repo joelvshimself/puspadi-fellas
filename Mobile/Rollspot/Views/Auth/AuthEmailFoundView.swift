@@ -40,78 +40,83 @@ struct AuthEmailFoundView: View {
         ZStack {
             AuthGradientBackground()
 
-            VStack(alignment: .leading, spacing: 16) {
-                AuthBackButton { dismiss() }
-                    .padding(.top, 4)
+            // Scrolls so the keyboard can't push the header under the status bar.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    AuthBackButton { dismiss() }
+                        .padding(.top, 4)
 
-                Text("Welcome to Rollspot".localized)
-                    .font(.title.weight(.bold))
+                    Text("Welcome to Rollspot".localized)
+                        .font(.title.weight(.bold))
 
-                Text("Sign in or create an account to save places and contribute to the community.".localized)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Email".localized)
-                        .font(.caption)
+                    Text("Sign in or create an account to save places and contribute to the community.".localized)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    AuthFieldBox(isFocused: focusedField == .email) {
-                        TextField("Email Address".localized, text: $emailText)
-                            .textContentType(.emailAddress)
-                            .keyboardType(.emailAddress)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .focused($focusedField, equals: .email)
-                    }
-                }
+                        .fixedSize(horizontal: false, vertical: true)
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Password".localized)
-                        .font(.caption)
-                        .foregroundStyle(passwordError != nil ? AuthPalette.errorRed : .secondary)
-                    AuthFieldBox(isFocused: focusedField == .password, isError: passwordError != nil) {
-                        HStack {
-                            Group {
-                                if showPassword {
-                                    TextField("Password".localized, text: $password)
-                                } else {
-                                    SecureField("Password".localized, text: $password)
-                                }
-                            }
-                            .textContentType(.password)
-                            .textInputAutocapitalization(.never)
-                            .focused($focusedField, equals: .password)
-
-                            Button {
-                                showPassword.toggle()
-                            } label: {
-                                Image(systemName: showPassword ? "eye.slash" : "eye")
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Email".localized)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        AuthFieldBox(isFocused: focusedField == .email) {
+                            TextField("Email Address".localized, text: $emailText)
+                                .textContentType(.emailAddress)
+                                .keyboardType(.emailAddress)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .focused($focusedField, equals: .email)
                         }
                     }
-                    if let passwordError {
-                        Text(passwordError.localized)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Password".localized)
                             .font(.caption)
-                            .foregroundStyle(AuthPalette.errorRed)
+                            .foregroundStyle(passwordError != nil ? AuthPalette.errorRed : .secondary)
+                        AuthFieldBox(isFocused: focusedField == .password, isError: passwordError != nil) {
+                            HStack {
+                                Group {
+                                    if showPassword {
+                                        TextField("Password".localized, text: $password)
+                                    } else {
+                                        SecureField("Password".localized, text: $password)
+                                    }
+                                }
+                                .textContentType(.password)
+                                .textInputAutocapitalization(.never)
+                                .focused($focusedField, equals: .password)
+
+                                Button {
+                                    showPassword.toggle()
+                                } label: {
+                                    Image(systemName: showPassword ? "eye.slash" : "eye")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        if let passwordError {
+                            Text(passwordError.localized)
+                                .font(.caption)
+                                .foregroundStyle(AuthPalette.errorRed)
+                        }
                     }
+
+                    AuthContinueButton(
+                        title: "Continue".localized,
+                        isLoading: isLoading
+                    ) {
+                        Task { await submit() }
+                    }
+
+                    AuthSocialButtons(
+                        onStep: { advanceAuth(to: $0, path: $path, displayName: $displayName, onDone: onSuccess) }
+                    )
                 }
-
-                AuthContinueButton(
-                    title: "Continue".localized,
-                    isLoading: isLoading
-                ) {
-                    Task { await submit() }
-                }
-
-                AuthSocialButtons(
-                    onStep: { advanceAuth(to: $0, path: $path, displayName: $displayName, onDone: onSuccess) }
-                )
-
-                Spacer()
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
             }
-            .padding(.horizontal, 24)
+            .scrollDismissesKeyboard(.interactively)
+            .scrollBounceBehavior(.basedOnSize)
         }
         .navigationBarBackButtonHidden(true)
     }

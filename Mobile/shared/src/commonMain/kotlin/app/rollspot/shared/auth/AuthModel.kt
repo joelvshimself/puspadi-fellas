@@ -26,7 +26,8 @@ sealed interface AuthSession {
  * same order; only how each step looks differs.
  *
  * Email sign-up: Welcome → CreatePassword → Name → Mobility → VerifyEmail → AllSet → Done
- * Email sign-in: Welcome → EmailFound → Done (or Name → Mobility → AllSet if onboarding was never finished)
+ * Email sign-in: Welcome → EmailFound → Done (or Name → Mobility → AllSet if onboarding was never finished;
+ *                or VerifyEmail first if the email was never confirmed)
  * Apple/Google:  Welcome → Done (or Name → Mobility → AllSet for new accounts)
  */
 sealed interface AuthStep {
@@ -102,7 +103,15 @@ class AuthModel(private val api: RollspotApi) {
     suspend fun signIn(email: String, password: String): AuthStep = guarded {
         if (password.isEmpty()) throw AuthException("Enter your password.")
         val normalized = AuthRules.normalizeEmail(email)
-        val user = api.signInWithEmail(normalized, password)
+        val user = try {
+            api.signInWithEmail(normalized, password)
+        } catch (error: ApiException) {
+            if (error.code != "EMAIL_NOT_VERIFIED") throw error
+            // The server has just sent a fresh link; the check-email screen offers resend and "I've confirmed".
+            this.email = normalized
+            this.password = password
+            return@guarded AuthStep.VerifyEmail(normalized)
+        }
         accept(user)
         afterSignIn(suggestedName = user.name)
     }
@@ -151,13 +160,18 @@ class AuthModel(private val api: RollspotApi) {
         }
     }
 
-    /** "I've confirmed my email": signs in with the password from this sign-up and saves onboarding. */
+    /**
+     * "I've confirmed my email": signs in with the password entered earlier. After a sign-up it saves the
+     * onboarding answers; after a sign-in to an unconfirmed account it asks them if they're still missing.
+     */
     @Throws(Exception::class)
     suspend fun completeVerifiedSignUp(): AuthStep = guarded {
+        var user: AuthUser? = null
         if (!isSignedIn) {
             if (email.isEmpty() || password.isEmpty()) throw AuthException("Sign in with your email and password.")
-            accept(api.signInWithEmail(email, password))
+            user = api.signInWithEmail(email, password).also { accept(it) }
         }
+        if (mobilityAids.isEmpty()) return@guarded afterSignIn(suggestedName = user?.name)
         saveOnboarding()
         AuthStep.AllSet
     }

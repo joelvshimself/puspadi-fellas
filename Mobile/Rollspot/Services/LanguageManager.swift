@@ -80,6 +80,7 @@ final class LanguageManager: ObservableObject {
             .indonesia: "Kata sandi salah. Coba lagi."
         ],
         "Create a password": [.english: "Create a password", .indonesia: "Buat kata sandi"],
+        "Passwords don't match.": [.english: "Passwords don't match.", .indonesia: "Kata sandi tidak cocok."],
         "Confirm your email": [.english: "Confirm your email", .indonesia: "Konfirmasi email Anda"],
         "We sent a confirmation link to": [
             .english: "We sent a confirmation link to",

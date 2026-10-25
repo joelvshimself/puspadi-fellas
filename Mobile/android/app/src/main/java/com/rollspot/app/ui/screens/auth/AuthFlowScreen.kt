@@ -254,6 +254,7 @@ private fun ColumnScope.CreatePasswordStep(email: String, state: AuthUiState, vi
     var password by rememberSaveable { mutableStateOf("") }
     var confirm by rememberSaveable { mutableStateOf("") }
     val valid = AuthRules.isValidPassword(password)
+    val confirmError = AuthRules.confirmationError(password, confirm)
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         TopBar(viewModel)
         Heading("Create a password")
@@ -271,13 +272,14 @@ private fun ColumnScope.CreatePasswordStep(email: String, state: AuthUiState, vi
             )
         }
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            FieldLabel("Confirm Password")
-            InputField(confirm, { confirm = it }, "Confirm Password", secret = true)
+            FieldLabel("Confirm Password", error = confirmError != null)
+            InputField(confirm, { confirm = it }, "Confirm Password", error = confirmError != null, secret = true)
+            confirmError?.let { Text(it, style = Rollspot.Caption, color = Rollspot.ErrorRed) }
         }
         ErrorText(state)
     }
     Spacer(Modifier.weight(1f))
-    ContinueButton("Continue", Modifier.padding(bottom = 12.dp), enabled = valid && password == confirm) {
+    ContinueButton("Continue", Modifier.padding(bottom = 12.dp), enabled = AuthRules.canChoosePassword(password, confirm)) {
         viewModel.choosePassword(password)
     }
 }

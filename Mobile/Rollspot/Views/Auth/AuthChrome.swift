@@ -32,7 +32,7 @@ func advanceAuth(
     displayName: Binding<String>? = nil,
     onDone: () -> Void
 ) {
-    if let suggested = step.suggestedName { displayName?.wrappedValue = suggested }
+    if let suggested = step.namePrefill { displayName?.wrappedValue = suggested }
     if let route = AuthRoute(step) {
         path.wrappedValue.append(route)
     } else {

@@ -26,6 +26,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.io.IOException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 
 /**
  * The apps' one network boundary: one function per endpoint in backend/API.md.
@@ -247,7 +248,10 @@ class RollspotApi(
     @Throws(Exception::class)
     suspend fun signOut() {
         try {
-            if (tokens.load() != null) send(HttpMethod.Post, listOf("api", "auth", "sign-out"), auth = true)
+            // Better Auth rejects a POST without a JSON body (415), which left the session alive.
+            if (tokens.load() != null) send(HttpMethod.Post, listOf("api", "auth", "sign-out"), auth = true) {
+                jsonBody(JsonObject(emptyMap()))
+            }
         } catch (error: ApiException) {
             // The local session is cleared regardless; a dead server session expires on its own.
         } finally {

@@ -16,6 +16,16 @@ object AuthRules {
         password.length >= 8 &&
             password.any { it.isDigit() } &&
             password.any { !it.isLetterOrDigit() }
+
+    const val PASSWORDS_DIFFER = "Passwords don't match."
+
+    /** Shown under "Confirm Password"; quiet while the confirmation is still being typed. */
+    fun confirmationError(password: String, confirm: String): String? =
+        if (confirm.isEmpty() || confirm == password || password.startsWith(confirm)) null else PASSWORDS_DIFFER
+
+    /** Whether "Continue" on Create a password is enabled. */
+    fun canChoosePassword(password: String, confirm: String): Boolean =
+        isValidPassword(password) && password == confirm
 }
 
 /** The answers to "How do you usually get around?". These strings are stored in `profiles.mobility_aids`. */
