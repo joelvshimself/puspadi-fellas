@@ -114,11 +114,11 @@ final class ReviewService {
         defer { Task { await mutationGate.end(mutationKey) } }
         let jpegPhotos: [ReviewPhotoDraft] = localPhotos.compactMap { photo in
             guard case .local(let image) = photo.source,
-                  let data = image.jpegData(compressionQuality: ReviewNoteDraft.jpegQuality)
+                  let encoded = PhotoEncoder.encode(image)
             else { return nil }
             return ReviewPhotoDraft(
-                image: image,
-                jpegData: data,
+                image: encoded.image,
+                jpegData: encoded.jpeg,
                 caption: photo.caption ?? ""
             )
         }

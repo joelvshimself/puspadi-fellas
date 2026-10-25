@@ -151,7 +151,6 @@ struct ReviewPhotoDraft: Identifiable {
 
 struct ReviewNoteDraft {
     static let maxPhotos = 5
-    static let jpegQuality: CGFloat = 0.7
 
     /// Empty string is treated as "no text" (→ nil) at submit time, per contract.
     var text: String = ""
@@ -161,10 +160,8 @@ struct ReviewNoteDraft {
     var canAddMorePhotos: Bool { photos.count < Self.maxPhotos }
 
     mutating func addPhoto(from image: UIImage, limit: Int = maxPhotos) {
-        guard photos.count < limit,
-              let jpegData = image.jpegData(compressionQuality: Self.jpegQuality)
-        else { return }
-        photos.append(ReviewPhotoDraft(image: image, jpegData: jpegData))
+        guard photos.count < limit, let encoded = PhotoEncoder.encode(image) else { return }
+        photos.append(ReviewPhotoDraft(image: encoded.image, jpegData: encoded.jpeg))
     }
 
     mutating func removePhoto(id: UUID) {

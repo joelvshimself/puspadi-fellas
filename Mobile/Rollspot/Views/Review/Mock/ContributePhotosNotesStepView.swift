@@ -312,13 +312,12 @@ struct ContributePhotosNotesStepView: View {
     }
 
     private func addPhoto(from image: UIImage) {
-        guard effectiveCanAddMorePhotos,
-              let jpegData = image.jpegData(compressionQuality: ReviewNoteDraft.jpegQuality)
-        else { return }
+        guard effectiveCanAddMorePhotos else { return }
 
         withAnimation(.easeOut(duration: 0.2)) {
             if remainingPhotoSlots != nil {
-                photos.wrappedValue.photos.append(ReviewPhotoDraft(image: image, jpegData: jpegData))
+                guard let encoded = PhotoEncoder.encode(image) else { return }
+                photos.wrappedValue.photos.append(ReviewPhotoDraft(image: encoded.image, jpegData: encoded.jpeg))
             } else {
                 photos.wrappedValue.addPhoto(from: image)
             }

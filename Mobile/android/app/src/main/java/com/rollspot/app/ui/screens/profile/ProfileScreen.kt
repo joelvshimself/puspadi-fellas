@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.rollspot.shared.drafts.WaitingContribution
+import app.rollspot.shared.media.PhotoUpload
 import app.rollspot.shared.profile.MyPhoto
 import app.rollspot.shared.profile.MyReviewItem
 import app.rollspot.shared.profile.ReviewNotes
@@ -126,7 +127,7 @@ fun ProfileScreen(
     val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         scope.launch {
-            val jpeg = jpegForUpload(context, uri)
+            val jpeg = jpegForUpload(context, uri, PhotoUpload.Avatar)
             val result = if (jpeg == null) Result.failure(Exception("That photo couldn't be read. Try another one."))
             else runCatching { sdk.profile.uploadAvatar(jpeg) }
             result.exceptionOrNull()?.let { Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show() }
