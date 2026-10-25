@@ -19,7 +19,7 @@ docs/               Product spec (specs.md)
 | Lives in `Mobile/shared` (Kotlin, written once)          | Lives in each app (Swift / Kotlin, written twice)     |
 |----------------------------------------------------------|-------------------------------------------------------|
 | Every call to the Cloudflare API, plus the request/response models | Screens, components, navigation, animation       |
-| Auth session: sign in/up, token storage, refresh, sign out | Apple/Google sign-in *buttons* that return an ID token |
+| Auth session: Apple/Google sign-in, onboarding, token storage, sign out | Apple/Google sign-in *buttons* that return an ID token |
 | Form state machines: which step is next, validation, "can submit" | Text fields, toggles, buttons, sheets           |
 | Review submission: photo upload order, idempotency, retry, drafts | Camera / photo picker → hands bytes to shared   |
 | Accessibility grade rules (collapse grades → overall)    | Grade *colors and icons*                              |
@@ -84,7 +84,8 @@ xcodebuild -project Mobile/Rollspot.xcodeproj -scheme Rollspot \
 **Pointing the apps at a local backend** (`npm run dev`):
 - iOS (debug builds): Xcode scheme → Run → Environment Variables → `ROLLSPOT_API_BASE_URL=http://localhost:8787`
 - Android: add `rollspot.apiBaseUrl=http://10.0.2.2:8787` to `Mobile/local.properties`
-- Auth emails aren't sent locally; the verification link is printed in the `wrangler dev` output.
+- Sign-in is Apple or Google only (no email/password). Apple works on iOS with no keys (a simulator signed in to an Apple ID);
+  Google needs `GOOGLE_WEB_CLIENT_ID` in `.dev.vars` and the matching client IDs in the apps.
 - Copy `backend/.dev.vars.example` to `backend/.dev.vars` (keep `API_BASE_URL=http://localhost:8787` so links point at your machine).
 - Shared code against a running backend: `ROLLSPOT_LIVE_URL=http://localhost:8787 ./gradlew :shared:testDebugUnitTest --tests '*LiveBackendTest*' --rerun`
 

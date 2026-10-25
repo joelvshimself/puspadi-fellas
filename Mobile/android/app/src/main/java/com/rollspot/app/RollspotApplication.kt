@@ -8,7 +8,6 @@ import com.rollspot.app.notifications.Push
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
@@ -19,9 +18,6 @@ class RollspotApplication : Application() {
 
     /** App-lifetime work (session restore). */
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-
-    /** Fires when the email verification link (puspadi://auth/callback) opens the app. */
-    val authCallbacks = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
     /** A shared place link (puspadifellas://place?place_id=…) waiting to be opened. */
     val pendingPlaceLink = MutableStateFlow<String?>(null)

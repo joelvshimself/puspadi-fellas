@@ -18,14 +18,12 @@ struct AppSession: Equatable {
 @MainActor
 final class AuthSessionStore: ObservableObject {
     @Published private(set) var session: AppSession?
-    @Published private(set) var providers: Set<String> = []
 
     private let model = RollspotServices.sdk.auth
 
     var isSignedIn: Bool { session != nil }
     var userId: UUID? { session.flatMap { UUID(uuidString: $0.userId) } }
     var userEmail: String? { session?.email.trimmingCharacters(in: .whitespacesAndNewlines) }
-    var canChangePassword: Bool { providers.contains("credential") }
 
     init() {
         Task { await observeSession() }
@@ -38,10 +36,8 @@ final class AuthSessionStore: ObservableObject {
             switch onEnum(of: state) {
             case .signedIn(let signedIn):
                 session = AppSession(userId: signedIn.user.id, email: signedIn.user.email)
-                providers = signedIn.providers
             case .signedOut, .unknown:
                 session = nil
-                providers = []
             }
             if previous != session {
                 NotificationCenter.default.post(name: .rollspotAuthStateDidChange, object: nil)
@@ -51,38 +47,12 @@ final class AuthSessionStore: ObservableObject {
 
     // MARK: Flow steps (each returns the next screen)
 
-    func continueWithEmail(_ email: String) async throws -> AuthStep {
-        try await model.continueWithEmail(email: email)
-    }
-
-    func signIn(email: String, password: String) async throws -> AuthStep {
-        try await model.signIn(email: email, password: password)
-    }
-
-    func choosePassword(_ password: String) throws -> AuthStep {
-        try model.choosePassword(password: password)
-    }
-
     func chooseName(_ name: String) throws -> AuthStep {
         try model.chooseName(name: name)
     }
 
     func finishMobility(_ aids: [String]) async throws -> AuthStep {
         try await model.finishMobility(aids: aids)
-    }
-
-    func completeVerifiedSignUp() async throws -> AuthStep {
-        try await model.completeVerifiedSignUp()
-    }
-
-    func resendVerificationEmail() async throws {
-        try await model.resendVerificationEmail()
-    }
-
-    /// The verification email opens `puspadi://auth/callback`.
-    func handleAuthCallback(_ url: URL) async {
-        guard url.scheme == CloudflareConfig.authCallbackURL.scheme else { return }
-        try? await model.restore()
     }
 
     // MARK: Apple / Google (native sheets → shared token exchange)
@@ -124,10 +94,6 @@ final class AuthSessionStore: ObservableObject {
     }
 
     // MARK: Account
-
-    func updatePassword(currentPassword: String, newPassword: String) async throws {
-        try await model.changePassword(currentPassword: currentPassword, newPassword: newPassword)
-    }
 
     func updateMobilityProfile(_ profile: MobilityProfile) async throws {
         try await ProfileService.shared.updateMobilityProfile(profile)
@@ -187,11 +153,8 @@ extension AuthRoute {
     init?(_ step: AuthStep) {
         switch onEnum(of: step) {
         case .welcome, .done: return nil
-        case .emailFound(let found): self = .emailFound(found.email)
-        case .createPassword(let create): self = .createPassword(create.email)
         case .name: self = .name
         case .mobility: self = .mobility
-        case .verifyEmail(let verify): self = .verifyEmail(verify.email)
         case .allSet: self = .allSet
         }
     }

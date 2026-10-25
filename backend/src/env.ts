@@ -10,9 +10,7 @@ export interface Env {
   GOOGLE_IOS_CLIENT_ID: string;
   GOOGLE_ANDROID_CLIENT_ID?: string;
   GOOGLE_WEB_CLIENT_ID: string;
-  GOOGLE_CLIENT_SECRET: string;
-  EMAIL_FROM: string;
-  RESEND_API_KEY: string;
+  GOOGLE_CLIENT_SECRET?: string;
   /** Firebase service account JSON for push notifications (src/push.ts). Push is off without it. */
   FCM_SERVICE_ACCOUNT?: string;
   /** Bearer token for /v1/admin/* endpoints. */

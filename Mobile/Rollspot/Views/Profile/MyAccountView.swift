@@ -10,7 +10,6 @@ struct MyAccountView: View {
     @State private var mobilityProfile: MobilityProfile?
     @State private var showMobilitySheet = false
     @State private var showDeleteAccountSheet = false
-    @State private var showChangePassword = false
     @State private var isAccountDeleted = false
     @State private var feedbackText = ""
     @State private var isLoading = true
@@ -23,10 +22,6 @@ struct MyAccountView: View {
                     label: "Email".localized,
                     value: email.isEmpty ? "—" : email
                 )
-
-                if auth.canChangePassword {
-                    passwordField
-                }
 
                 mobilityField
             }
@@ -100,11 +95,6 @@ struct MyAccountView: View {
             .presentationDragIndicator(.visible)
             .modifier(MobilitySheetPresentationChrome())
         }
-        .sheet(isPresented: $showChangePassword) {
-            ChangePasswordSheet()
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-        }
         .sheet(isPresented: $showDeleteAccountSheet) {
             deleteAccountSheet
                 .presentationDetents([.height(240)])
@@ -118,40 +108,6 @@ struct MyAccountView: View {
             if isLoading {
                 ProgressView()
             }
-        }
-    }
-
-    /// "••••••••  Change": the password is never shown, only replaced.
-    private var passwordField: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Password".localized)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
-
-            HStack {
-                Text(verbatim: "••••••••")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button {
-                    showChangePassword = true
-                } label: {
-                    Text("Change".localized)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(AuthPalette.brandBlue)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Capsule().fill(Color.white))
-                }
-                .buttonStyle(PressableButtonStyle())
-            }
-            .padding(.leading, 16)
-            .padding(.trailing, 10)
-            .frame(height: 54)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(AuthPalette.fieldFill)
-            )
         }
     }
 

@@ -44,19 +44,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import app.rollspot.shared.auth.AuthRules
 import app.rollspot.shared.auth.AuthSession
 import app.rollspot.shared.auth.MobilityRole
 import com.rollspot.app.ui.rollspotSdk
 import com.rollspot.app.ui.theme.BackCircleButton
 import com.rollspot.app.ui.theme.ConfirmButtons
 import com.rollspot.app.ui.theme.ContinueButton
-import com.rollspot.app.ui.theme.FieldBox
 import com.rollspot.app.ui.theme.GlassSheet
 import com.rollspot.app.ui.theme.LocalHazeState
 import com.rollspot.app.ui.theme.Rollspot
@@ -201,7 +198,6 @@ fun MyAccountScreen(onBack: () -> Unit, onAccountDeleted: () -> Unit, review: St
     val scope = rememberCoroutineScope()
     val haze = remember { HazeState() }
     var mobilitySheet by remember { mutableStateOf(review == "mobilityProfile") }
-    var passwordSheet by remember { mutableStateOf(false) }
     var deleteSheet by remember { mutableStateOf(review == "deleteAccount") }
     var deleted by remember { mutableStateOf(review == "accountDeleted") }
     var deleting by remember { mutableStateOf(false) }
@@ -225,19 +221,6 @@ fun MyAccountScreen(onBack: () -> Unit, onAccountDeleted: () -> Unit, review: St
                     verticalArrangement = Arrangement.spacedBy(22.dp),
                 ) {
                     AccountField("Email") { Text(email ?: "—", style = Rollspot.Body, color = Rollspot.Secondary) }
-                    if (signedIn?.canChangePassword == true) {
-                        AccountField("Password") {
-                            Text("••••••••", Modifier.weight(1f), style = Rollspot.Body, color = Rollspot.Secondary)
-                            val interaction = remember { MutableInteractionSource() }
-                            Text(
-                                "Change",
-                                Modifier.pressScale(interaction).clip(CircleShape).background(Color.White)
-                                    .clickable(interactionSource = interaction, indication = null) { passwordSheet = true }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                                style = Rollspot.Caption.copy(fontWeight = FontWeight.Bold), color = Rollspot.BrandBlue,
-                            )
-                        }
-                    }
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         AccountField("Mobility Profile", onClick = { mobilitySheet = true }) {
                             val role = profile.mobilityRole
@@ -264,9 +247,6 @@ fun MyAccountScreen(onBack: () -> Unit, onAccountDeleted: () -> Unit, review: St
                             .onFailure { error = it.message }
                     }
                 }
-            }
-            GlassSheet(passwordSheet, onDismiss = { passwordSheet = false }) {
-                ChangePasswordSheetContent(onDone = { passwordSheet = false })
             }
             GlassSheet(deleteSheet, onDismiss = { if (!deleting) deleteSheet = false }) {
                 SheetHeader("Delete Account?", "Deleting your account will permanently remove it along with all your reviews. This action is irreversible.")
@@ -321,47 +301,6 @@ private fun MobilityProfileSheetContent(selected: MobilityRole?, saving: Boolean
                     Text(detail, fontSize = 13.sp, lineHeight = 17.sp, color = if (isSelected && role == MobilityRole.WHEELCHAIR_USER) Rollspot.BrandBlue.copy(alpha = 0.85f) else Rollspot.Secondary)
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun ChangePasswordSheetContent(onDone: () -> Unit) {
-    val auth = rollspotSdk().auth
-    val scope = rememberCoroutineScope()
-    var current by remember { mutableStateOf("") }
-    var new by remember { mutableStateOf("") }
-    var confirm by remember { mutableStateOf("") }
-    var saving by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    val canSave = current.isNotEmpty() && AuthRules.isValidPassword(new) && new == confirm
-
-    SheetHeader("Change Password")
-    Spacer(Modifier.height(16.dp))
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        PasswordField("Current Password", current) { current = it }
-        PasswordField("New Password", new) { new = it }
-        Text(AuthRules.PASSWORD_HINT, style = Rollspot.Caption, color = if (new.isEmpty() || AuthRules.isValidPassword(new)) Rollspot.Secondary else Rollspot.ErrorRed)
-        PasswordField("Confirm Password", confirm) { confirm = it }
-        error?.let { Text(it, style = Rollspot.Caption, color = Rollspot.ErrorRed) }
-        ContinueButton("Save", enabled = canSave, loading = saving) {
-            saving = true
-            scope.launch {
-                runCatching { auth.changePassword(current, new) }
-                    .onSuccess { onDone() }
-                    .onFailure { error = it.message }
-                saving = false
-            }
-        }
-    }
-}
-
-@Composable
-private fun PasswordField(placeholder: String, value: String, onChange: (String) -> Unit) {
-    FieldBox(focused = false, error = false) {
-        Box(Modifier.weight(1f)) {
-            if (value.isEmpty()) Text(placeholder, style = Rollspot.Body, color = Rollspot.Tertiary)
-            BasicTextField(value, onChange, singleLine = true, textStyle = Rollspot.Body, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().semantics { contentDescription = placeholder })
         }
     }
 }

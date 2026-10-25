@@ -1,6 +1,6 @@
 import { assertAuthConfigured, createAuth, requireUserId } from "./auth";
 import type { Env } from "./env";
-import { HttpError, json, methodNotAllowed, readJson } from "./http";
+import { HttpError, json } from "./http";
 import { handleMediaRead, handleMediaUpload } from "./media";
 import { handleNearby, handlePlace, handleRegions, handleSavedPlaces, handleSearch } from "./places";
 import { handleDeleteAccount } from "./account";
@@ -52,21 +52,6 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   }
   if (url.pathname === "/health") {
     return json({ status: "ok" });
-  }
-  if (url.pathname === "/v1/auth/email-registered") {
-    if (request.method !== "POST") return methodNotAllowed("POST");
-    const body = await readJson<{ email?: unknown }>(request);
-    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-    const user = email ? await env.DB.prepare(`SELECT id FROM "user" WHERE lower(email) = ?`).bind(email).first() : null;
-    return json({ registered: Boolean(user) });
-  }
-  if (url.pathname === "/v1/auth/providers") {
-    if (request.method !== "GET") return methodNotAllowed("GET");
-    const userId = await requireUserId(auth, request);
-    const rows = await env.DB.prepare(
-      `SELECT DISTINCT providerId FROM account WHERE userId = ?`,
-    ).bind(userId).all<{ providerId: string }>();
-    return json({ providers: rows.results.map((row) => row.providerId) });
   }
   if (url.pathname === "/v1/profile" || url.pathname.startsWith("/v1/profile/")) {
     return handleProfile(request, env, auth, url.pathname.slice("/v1/profile".length));

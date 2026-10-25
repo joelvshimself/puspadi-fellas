@@ -7,12 +7,11 @@
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
-    // No domain yet: the Worker's workers.dev address. Photo URLs and email links are built from this.
+    // No domain yet: the Worker's workers.dev address. Photo URLs are built from this.
     "API_BASE_URL": "https://rollspot-api.joecast208.workers.dev",
     "APPLE_CLIENT_ID": "com.puspadifellas.app",
     "GOOGLE_IOS_CLIENT_ID": "replace-with-google-ios-client-id",
     "GOOGLE_ANDROID_CLIENT_ID": "replace-with-google-android-client-id",
-    "EMAIL_FROM": "Rollspot <hello@rollspot.app>"
   },
   // Every 10 minutes: sync the most overdue map tiles from OpenStreetMap (src/sync.ts).
   // Each tile comes round about weekly; empty ones monthly.

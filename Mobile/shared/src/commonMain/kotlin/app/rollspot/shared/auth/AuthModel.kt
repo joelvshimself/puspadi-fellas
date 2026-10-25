@@ -1,6 +1,5 @@
 package app.rollspot.shared.auth
 
-import app.rollspot.shared.RollspotSdk
 import app.rollspot.shared.api.ApiException
 import app.rollspot.shared.api.AuthUser
 import app.rollspot.shared.api.ProfileUpdate
@@ -15,30 +14,22 @@ sealed interface AuthSession {
     /** Launch: the stored token hasn't been checked yet. */
     data object Unknown : AuthSession
     data object SignedOut : AuthSession
-    data class SignedIn(val user: AuthUser, val providers: Set<String>) : AuthSession {
-        /** Password change only makes sense for accounts that have a password. */
-        val canChangePassword: Boolean get() = "credential" in providers
-    }
+    data class SignedIn(val user: AuthUser) : AuthSession
 }
 
 /**
  * The screen the sign-in flow shows next. Both apps render the same steps in the
- * same order; only how each step looks differs.
+ * same order; only how each step looks differs. Sign-in is Apple or Google only.
  *
- * Email sign-up: Welcome → CreatePassword → Name → Mobility → VerifyEmail → AllSet → Done
- * Email sign-in: Welcome → EmailFound → Done (or Name → Mobility → AllSet if onboarding was never finished;
- *                or VerifyEmail first if the email was never confirmed)
- * Apple/Google:  Welcome → Done (or Name → Mobility → AllSet for new accounts)
+ * Returning user: Welcome → Done
+ * New account, or onboarding never finished: Welcome → Name → Mobility → AllSet → Done
  */
 sealed interface AuthStep {
     data object Welcome : AuthStep
-    data class EmailFound(val email: String) : AuthStep
-    data class CreatePassword(val email: String) : AuthStep
     /** [suggestedName] prefills the field, e.g. the name Apple or Google shared. */
     data class Name(val suggestedName: String) : AuthStep
     data object Mobility : AuthStep
-    data class VerifyEmail(val email: String) : AuthStep
-    /** "You're all set!" after onboarding; its button ("Explore Malls") finishes the flow. */
+    /** "You're all set!" after onboarding; its button finishes the flow. */
     data object AllSet : AuthStep
     data object Done : AuthStep
 }
@@ -48,7 +39,7 @@ class AuthException(override val message: String, val code: String? = null, caus
     Exception(message, cause)
 
 /**
- * Sign-in, sign-up and onboarding against Better Auth on the Worker. Views call
+ * Apple/Google sign-in and onboarding against Better Auth on the Worker. Views call
  * one action per button and show the [AuthStep] it returns; nothing about the
  * flow is decided in Swift or Compose.
  *
@@ -61,9 +52,7 @@ class AuthModel(private val api: RollspotApi) {
     /** One auth request at a time: a double tap must not create two accounts or two sessions. */
     private val inFlight = Mutex()
 
-    // What the user has entered so far in a multi-step sign-up. Memory only, never persisted.
-    private var email: String = ""
-    private var password: String = ""
+    // What the user has entered so far in onboarding. Memory only, never persisted.
     private var displayName: String = ""
     private var mobilityAids: List<String> = emptyList()
     private var deferredIdToken: DeferredIdToken? = null
@@ -72,7 +61,7 @@ class AuthModel(private val api: RollspotApi) {
 
     val isSignedIn: Boolean get() = _session.value is AuthSession.SignedIn
 
-    /** Call at launch and when the app is opened from the verification link. */
+    /** Call at launch. */
     @Throws(Exception::class)
     suspend fun restore() {
         val user = try {
@@ -86,100 +75,6 @@ class AuthModel(private val api: RollspotApi) {
             null
         }
         if (user == null) _session.value = AuthSession.SignedOut else accept(user)
-    }
-
-    // ---- Email ----
-
-    @Throws(Exception::class)
-    suspend fun continueWithEmail(email: String): AuthStep = guarded {
-        val normalized = AuthRules.normalizeEmail(email)
-        if (!AuthRules.looksLikeEmail(normalized)) throw AuthException("Enter a valid email address.")
-        resetDraft()
-        this.email = normalized
-        if (api.emailRegistered(normalized)) AuthStep.EmailFound(normalized) else AuthStep.CreatePassword(normalized)
-    }
-
-    @Throws(Exception::class)
-    suspend fun signIn(email: String, password: String): AuthStep = guarded {
-        if (password.isEmpty()) throw AuthException("Enter your password.")
-        val normalized = AuthRules.normalizeEmail(email)
-        val user = try {
-            api.signInWithEmail(normalized, password)
-        } catch (error: ApiException) {
-            if (error.code != "EMAIL_NOT_VERIFIED") throw error
-            // The server has just sent a fresh link; the check-email screen offers resend and "I've confirmed".
-            this.email = normalized
-            this.password = password
-            return@guarded AuthStep.VerifyEmail(normalized)
-        }
-        accept(user)
-        afterSignIn(suggestedName = user.name)
-    }
-
-    /** Validates locally; the account is only created once onboarding is answered. */
-    @Throws(AuthException::class)
-    fun choosePassword(password: String): AuthStep {
-        if (!AuthRules.isValidPassword(password)) throw AuthException(AuthRules.PASSWORD_HINT)
-        this.password = password
-        return AuthStep.Name(suggestedName = displayName)
-    }
-
-    @Throws(AuthException::class)
-    fun chooseName(name: String): AuthStep {
-        val trimmed = name.trim()
-        if (trimmed.isEmpty()) throw AuthException("Enter your name.")
-        displayName = trimmed
-        return AuthStep.Mobility
-    }
-
-    /**
-     * Last onboarding answer. Depending on how the user arrived this creates the
-     * email account (then asks them to verify), completes a deferred Apple/Google
-     * sign-up, or saves the profile of an already signed-in user.
-     */
-    @Throws(Exception::class)
-    suspend fun finishMobility(aids: List<String>): AuthStep = guarded {
-        if (aids.isEmpty()) throw AuthException("Choose at least one option.")
-        mobilityAids = aids.distinct()
-        val deferred = deferredIdToken
-        when {
-            deferred != null -> {
-                accept(api.signInWithIdToken(deferred.provider, deferred.idToken, deferred.nonce))
-                saveOnboarding()
-                AuthStep.AllSet
-            }
-            isSignedIn -> {
-                saveOnboarding()
-                AuthStep.AllSet
-            }
-            email.isNotEmpty() && password.isNotEmpty() -> {
-                api.signUpWithEmail(displayName.ifEmpty { "You" }, email, password, RollspotSdk.AUTH_CALLBACK_URL)
-                AuthStep.VerifyEmail(email)
-            }
-            else -> throw AuthException("Something went wrong. Start again.")
-        }
-    }
-
-    /**
-     * "I've confirmed my email": signs in with the password entered earlier. After a sign-up it saves the
-     * onboarding answers; after a sign-in to an unconfirmed account it asks them if they're still missing.
-     */
-    @Throws(Exception::class)
-    suspend fun completeVerifiedSignUp(): AuthStep = guarded {
-        var user: AuthUser? = null
-        if (!isSignedIn) {
-            if (email.isEmpty() || password.isEmpty()) throw AuthException("Sign in with your email and password.")
-            user = api.signInWithEmail(email, password).also { accept(it) }
-        }
-        if (mobilityAids.isEmpty()) return@guarded afterSignIn(suggestedName = user?.name)
-        saveOnboarding()
-        AuthStep.AllSet
-    }
-
-    @Throws(Exception::class)
-    suspend fun resendVerificationEmail() = guarded {
-        if (email.isEmpty()) throw AuthException("Start again with your email.")
-        api.sendVerificationEmail(email, RollspotSdk.AUTH_CALLBACK_URL)
     }
 
     // ---- Apple / Google ----
@@ -208,13 +103,31 @@ class AuthModel(private val api: RollspotApi) {
         afterSignIn(suggestedName = suggestedName ?: user.name)
     }
 
-    // ---- Account ----
+    // ---- Onboarding ----
 
-    @Throws(Exception::class)
-    suspend fun changePassword(currentPassword: String, newPassword: String) = guarded {
-        if (!AuthRules.isValidPassword(newPassword)) throw AuthException(AuthRules.PASSWORD_HINT)
-        api.changePassword(currentPassword, newPassword)
+    @Throws(AuthException::class)
+    fun chooseName(name: String): AuthStep {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) throw AuthException("Enter your name.")
+        displayName = trimmed
+        return AuthStep.Mobility
     }
+
+    /**
+     * Last onboarding answer. Completes a deferred Apple/Google sign-up, or saves
+     * the profile of an already signed-in user.
+     */
+    @Throws(Exception::class)
+    suspend fun finishMobility(aids: List<String>): AuthStep = guarded {
+        if (aids.isEmpty()) throw AuthException("Choose at least one option.")
+        mobilityAids = aids.distinct()
+        deferredIdToken?.let { accept(api.signInWithIdToken(it.provider, it.idToken, it.nonce)) }
+        if (!isSignedIn) throw AuthException("Something went wrong. Start again.")
+        saveOnboarding()
+        AuthStep.AllSet
+    }
+
+    // ---- Account ----
 
     /** Deletes the account for good (App Store requirement), then behaves like sign-out. */
     @Throws(Exception::class)
@@ -249,18 +162,11 @@ class AuthModel(private val api: RollspotApi) {
         resetDraft()
     }
 
-    private suspend fun accept(user: AuthUser) {
-        val providers = try {
-            api.linkedProviders().toSet()
-        } catch (error: ApiException) {
-            emptySet()
-        }
-        _session.value = AuthSession.SignedIn(user, providers)
+    private fun accept(user: AuthUser) {
+        _session.value = AuthSession.SignedIn(user)
     }
 
     private fun resetDraft() {
-        email = ""
-        password = ""
         displayName = ""
         mobilityAids = emptyList()
         deferredIdToken = null
@@ -284,12 +190,9 @@ class AuthModel(private val api: RollspotApi) {
     companion object {
         /** Better Auth error codes → what the user reads. Same words on both apps. */
         fun messageFor(error: ApiException): String = when (error.code) {
-            "EMAIL_NOT_VERIFIED" -> "Please tap the link in your email first, then try again."
-            "INVALID_EMAIL_OR_PASSWORD", "INVALID_PASSWORD" -> "Incorrect password. Try again."
-            "PASSWORD_TOO_SHORT", "PASSWORD_TOO_LONG" -> AuthRules.PASSWORD_HINT
-            "USER_ALREADY_EXISTS" -> "An account with this email already exists. Sign in instead."
             "INVALID_TOKEN", "ID_TOKEN_NOT_SUPPORTED", "PROVIDER_NOT_FOUND" ->
-                "That sign-in method isn't available right now. Try email instead."
+                "That sign-in method isn't available right now. Try the other one."
+            "auth_not_configured" -> "Sign in isn't available yet. Try again later."
             else -> error.message
         }
     }

@@ -90,7 +90,5 @@ class RollspotSdk(
 
     companion object {
         const val PRODUCTION_URL = "https://rollspot-api.joecast208.workers.dev"
-        /** Deep link the verification email opens; both apps register the `puspadi` scheme. */
-        const val AUTH_CALLBACK_URL = "puspadi://auth/callback"
     }
 }

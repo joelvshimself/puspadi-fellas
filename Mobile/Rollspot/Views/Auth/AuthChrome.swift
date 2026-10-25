@@ -16,9 +16,6 @@ enum AuthPalette {
 /// One screen per shared `AuthStep`. What the user typed so far is held by the
 /// shared AuthModel, so routes only carry what the screen displays.
 enum AuthRoute: Hashable {
-    case emailFound(String)
-    case createPassword(String)
-    case verifyEmail(String)
     case name
     case mobility
     case allSet
@@ -199,7 +196,7 @@ struct AuthSocialButtons: View {
             }
 
             if let errorMessage {
-                Text(errorMessage)
+                Text(errorMessage.localized)
                     .font(.caption)
                     .foregroundStyle(AuthPalette.errorRed)
             }
