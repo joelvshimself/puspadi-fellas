@@ -2,6 +2,7 @@ package app.rollspot.shared.places
 
 import app.rollspot.shared.api.Place
 import app.rollspot.shared.api.RollspotApi
+import app.rollspot.shared.map.CoverageRegion
 
 /**
  * Places come from Rollspot's own directory (OpenStreetMap data synced by the
@@ -21,6 +22,10 @@ class PlaceRepository(private val api: RollspotApi) {
         if (trimmed.length < MIN_QUERY_LENGTH) return emptyList()
         return api.searchPlaces(trimmed, nearLat, nearLng)
     }
+
+    /** Where the directory has places; empty when unknown. */
+    @Throws(Exception::class)
+    suspend fun coverage(): List<CoverageRegion> = api.coverageRegions()
 
     /** [key] is a Rollspot place ID or `osm:<type>/<id>`, e.g. from a deep link. */
     @Throws(Exception::class)

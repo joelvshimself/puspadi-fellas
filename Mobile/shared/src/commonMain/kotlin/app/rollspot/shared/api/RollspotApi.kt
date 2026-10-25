@@ -1,5 +1,6 @@
 package app.rollspot.shared.api
 
+import app.rollspot.shared.map.CoverageRegion
 import app.rollspot.shared.auth.TokenStore
 import io.ktor.client.HttpClient
 import io.ktor.client.HttpClientConfig
@@ -75,6 +76,11 @@ class RollspotApi(
                 url.parameters.append("lng", lng.toString())
             }
         }.places
+
+    /** The areas the place directory covers. */
+    @Throws(Exception::class)
+    suspend fun coverageRegions(): List<CoverageRegion> =
+        call<RegionsResponse>(HttpMethod.Get, listOf("v1", "places", "regions")).regions
 
     @Throws(Exception::class)
     suspend fun place(placeKey: String): Place =

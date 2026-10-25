@@ -8,6 +8,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -35,6 +36,10 @@ data class MapState(
     val query: String = "",
     /** Only meaningful while [isSearchActive]. */
     val results: List<MapPin> = emptyList(),
+    /** Addresses and areas from the phone's geocoder, listed after [results]; tapping one moves the map. */
+    val areaResults: List<AreaResult> = emptyList(),
+    /** Where the directory has places. Empty until loaded (or if it couldn't be). */
+    val coverage: List<CoverageRegion> = emptyList(),
     /** Places the user opened from the map or search, newest first (the clock rows in the design). */
     val recentPlaces: List<Place> = emptyList(),
     val selected: MapPin? = null,
@@ -59,6 +64,13 @@ data class MapState(
 
     /** [results] without the places already listed as recents. */
     val freshResults: List<MapPin> get() = results.filterNot { r -> matchingRecents.any { it.id == r.id } }
+
+    /** The map is somewhere the directory has no places yet: say so instead of showing an empty map. */
+    val isOutsideCoverage: Boolean get() = coverage.isNotEmpty() && coverage.none { it.contains(centerLat, centerLng) }
+
+    /** Where to send someone who's outside coverage: the covered region closest to the map center. */
+    val nearestCoveredRegion: CoverageRegion?
+        get() = coverage.minByOrNull { distanceMeters(centerLat, centerLng, it.centerLat, it.centerLng) }
 
     /** What the map draws: nothing by default, only places with the chosen grade once filtered. */
     val visiblePins: List<MapPin> get() = gradeFilter?.let { grade -> pins.filter { it.grade == grade } } ?: emptyList()
@@ -106,10 +118,26 @@ class MapModel(
     private val _state = MutableStateFlow(MapState())
     val state: StateFlow<MapState> = _state.asStateFlow()
 
+    /** The phone's geocoder for addresses and areas. Without one, search lists places only. */
+    var areaSearch: AreaSearchProvider? = null
+
     private var regionJob: Job? = null
     private var searchJob: Job? = null
     private var filterJob: Job? = null
     private var loaded: Triple<Double, Double, Int>? = null
+
+    init {
+        scope.launch {
+            try {
+                val regions = provider.coverage()
+                _state.update { it.copy(coverage = regions) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                // Unknown coverage just means the map never claims an area isn't covered.
+            }
+        }
+    }
 
     /**
      * The camera stopped at ([lat], [lng]) showing [latitudeDelta] × [longitudeDelta] degrees.
@@ -205,7 +233,7 @@ class MapModel(
         _state.update { it.copy(query = query) }
         val trimmed = query.trim()
         if (trimmed.length < PlaceRepository.MIN_QUERY_LENGTH) {
-            _state.update { it.copy(results = emptyList(), isSearching = false) }
+            _state.update { it.copy(results = emptyList(), areaResults = emptyList(), isSearching = false) }
             return
         }
         // Spinner from the first keystroke, so the debounce gap doesn't flash "no results".
@@ -213,15 +241,58 @@ class MapModel(
         searchJob = scope.launch {
             delay(searchDebounceMs)
             val center = _state.value
+            // Areas are a bonus: a geocoder failure never hides place results.
+            val areas = areaSearch?.let { geocoder ->
+                async {
+                    try {
+                        geocoder.search(trimmed, center.centerLat, center.centerLng)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        emptyList()
+                    }
+                }
+            }
             try {
                 val places = provider.search(trimmed, center.centerLat, center.centerLng)
-                _state.update { it.copy(results = toPins(places, center.centerLat, center.centerLng), isSearching = false) }
+                val found = areas?.await().orEmpty()
+                _state.update {
+                    it.copy(
+                        results = toPins(places, center.centerLat, center.centerLng),
+                        areaResults = distinctAreas(found, places),
+                        isSearching = false,
+                    )
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                _state.update { it.copy(results = emptyList(), isSearching = false, error = error.message ?: "Search failed") }
+                val found = areas?.await().orEmpty()
+                _state.update {
+                    it.copy(
+                        results = emptyList(),
+                        areaResults = distinctAreas(found, emptyList()),
+                        isSearching = false,
+                        // With areas to offer, a failed place search isn't worth an error.
+                        error = if (found.isEmpty()) error.message ?: "Search failed" else null,
+                    )
+                }
             }
         }
+    }
+
+    /**
+     * Moves the map to an address or area from the results: the camera flies there ([MapState.focus])
+     * and places around it load. The search closes.
+     */
+    fun goTo(area: AreaResult) = moveTo(area.lat, area.lng, area.radiusMeters)
+
+    /** "Go to Bali" from the not-covered notice. */
+    fun goTo(region: CoverageRegion) = moveTo(region.centerLat, region.centerLng, PlaceRepository.DEFAULT_RADIUS_METERS)
+
+    private fun moveTo(lat: Double, lng: Double, radiusMeters: Int) {
+        onQueryChanged("")
+        _state.update { it.copy(focus = MapFocus(lat, lng, radiusMeters, (it.focus?.nonce ?: 0) + 1)) }
+        onRegionChanged(lat, lng, radiusMeters)
     }
 
     /** Picks a place from the map or the results. Remembers the query that led to it. */
@@ -271,6 +342,7 @@ class MapModel(
         const val MIN_RADIUS_METERS = 500
         const val MAX_RADIUS_METERS = 20_000
         const val MAX_RECENT_PLACES = 5
+        const val MAX_AREA_RESULTS = 3
         const val MAX_FILTER_STEPS = 4
 
         /** Moving less than this share of the radius keeps the pins we have. */
@@ -279,6 +351,15 @@ class MapModel(
         /** Zooming by less than this factor keeps the pins we have. */
         const val RELOAD_ZOOM_FACTOR = 1.25
     }
+}
+
+/** At most [MapModel.MAX_AREA_RESULTS] areas, skipping repeats and anything already listed as a place. */
+internal fun distinctAreas(areas: List<AreaResult>, places: List<Place>): List<AreaResult> {
+    val placeNames = places.map { it.name.trim().lowercase() }.toSet()
+    return areas
+        .filterNot { it.title.trim().lowercase() in placeNames }
+        .distinctBy { it.title.trim().lowercase() to it.subtitle.trim().lowercase() }
+        .take(MapModel.MAX_AREA_RESULTS)
 }
 
 /** Newest first, one entry per place, capped. */

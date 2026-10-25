@@ -153,9 +153,14 @@ struct HomeMapView: View {
                                         removal: reduceMotion ? .opacity : .scale(scale: 0.15, anchor: .topTrailing).combined(with: .opacity)
                                     ))
                             }
+                            if let region = mapStore.uncoveredFallback, !isSearching, !showFilter {
+                                UncoveredAreaNotice(regionName: region.name) { mapStore.goTo(region) }
+                                    .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
+                            }
                         }
                         .padding(.horizontal, 16)
                         .safeAreaPadding(.top)
+                        .animation(.easeOut(duration: 0.25), value: mapStore.uncoveredFallback?.id)
                     }
                     .overlay(alignment: .topLeading) {
                         if showFilter {
@@ -212,6 +217,10 @@ struct HomeMapView: View {
                             store: mapStore,
                             nearbyPlaces: gradedPlaces,
                             onSelectPlace: openPlace,
+                            onSelectArea: { area in
+                                mapStore.goTo(area)
+                                dismissSearch()
+                            },
                             onCancelSearch: dismissSearch
                         )
                         .presentationDetents(
@@ -803,3 +812,39 @@ struct HomeMapView: View {
                 .environmentObject(LanguageManager.shared)
                 .environmentObject(AuthSessionStore())
         }
+
+/// Floats under the top bar while the map shows somewhere Rollspot has no places yet,
+/// so an empty map reads as "not here yet" rather than "nothing accessible".
+private struct UncoveredAreaNotice: View {
+    let regionName: String
+    let onGo: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "map")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(SheetPalette.accentBlue)
+            Text("Rollspot doesn't cover this area yet".localized)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            Button(action: onGo) {
+                Text(String(format: "Go to %@".localized, regionName))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .padding(.horizontal, 14)
+                    .frame(height: 34)
+                    .background(Capsule().fill(Color(designHex: 0x0099FE)))
+            }
+            .buttonStyle(PressableButtonStyle())
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, 8)
+        .padding(.vertical, 8)
+        .homeGlass(in: Capsule(), tint: .white.opacity(0.55))
+        .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+        .accessibilityElement(children: .contain)
+    }
+}

@@ -1,5 +1,6 @@
 package app.rollspot.shared.api
 
+import app.rollspot.shared.map.CoverageRegion
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
@@ -40,6 +41,9 @@ internal data class PlacesResponse(val places: List<Place>, val attribution: Str
 
 @Serializable
 internal data class PlaceResponse(val place: Place)
+
+@Serializable
+internal data class RegionsResponse(val regions: List<CoverageRegion>)
 
 @Serializable
 data class PlacePhoto(
