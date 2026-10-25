@@ -2,6 +2,7 @@ import { betterAuth } from "better-auth";
 import { bearer } from "better-auth/plugins";
 import { importPKCS8, SignJWT } from "jose";
 import type { Env } from "./env";
+import { HttpError } from "./http";
 
 async function appleClientSecret(env: Env): Promise<string> {
   const privateKey = env.APPLE_PRIVATE_KEY.replaceAll("\\n", "\n");
@@ -100,7 +101,18 @@ export function createAuth(env: Env) {
 
 export type Auth = ReturnType<typeof createAuth>;
 
+/**
+ * Without BETTER_AUTH_SECRET, Better Auth falls back to a public default secret. Refuse instead,
+ * so a missing `wrangler secret put` shows up as a clear error rather than weak sessions.
+ */
+export function assertAuthConfigured(auth: Auth) {
+  if (!auth.options.secret) {
+    throw new HttpError(503, "Sign in isn't available yet: the server has no BETTER_AUTH_SECRET.", "auth_not_configured");
+  }
+}
+
 export async function requireUserId(auth: Auth, request: Request): Promise<string> {
+  assertAuthConfigured(auth);
   const result = await auth.api.getSession({ headers: request.headers });
   if (!result?.user?.id) {
     const error = new Error("Sign in is required.") as Error & { status?: number };

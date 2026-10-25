@@ -9,7 +9,7 @@ import { methodNotAllowed } from "./http";
  *
  * Photo rows reference media_uploads with ON DELETE RESTRICT, so they are removed
  * before the uploads; deleting the user then cascades sessions, accounts, profile
- * and saved places.
+ * and saved places. The profile photo isn't a media upload, so it is removed by its own key.
  */
 export async function handleDeleteAccount(request: Request, env: Env, auth: Auth): Promise<Response> {
   if (request.method !== "DELETE") return methodNotAllowed("DELETE");
@@ -27,7 +27,7 @@ export async function handleDeleteAccount(request: Request, env: Env, auth: Auth
     env.DB.prepare(`DELETE FROM "user" WHERE id = ?`).bind(userId),
   ]);
   // R2 deletes take up to 1000 keys per call.
-  const keys = media.results.map((row) => row.object_key);
+  const keys = [...media.results.map((row) => row.object_key), `avatars/${userId}/avatar.jpg`];
   for (let start = 0; start < keys.length; start += 1000) {
     await env.MEDIA.delete(keys.slice(start, start + 1000));
   }

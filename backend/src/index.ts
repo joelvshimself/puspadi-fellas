@@ -1,4 +1,4 @@
-import { createAuth, requireUserId } from "./auth";
+import { assertAuthConfigured, createAuth, requireUserId } from "./auth";
 import type { Env } from "./env";
 import { HttpError, json, methodNotAllowed, readJson } from "./http";
 import { handleMediaRead, handleMediaUpload } from "./media";
@@ -47,6 +47,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   const auth = createAuth(env);
 
   if (url.pathname.startsWith("/api/auth/")) {
+    assertAuthConfigured(auth);
     return auth.handler(request);
   }
   if (url.pathname === "/health") {

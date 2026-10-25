@@ -11,6 +11,7 @@ plugins {
 //   rollspot.apiBaseUrl=http://10.0.2.2:8787      (local `npm run dev` from the emulator)
 //   rollspot.googleWebClientId=....apps.googleusercontent.com
 //   rollspot.firebase.apiKey / .appId / .projectId / .senderId   (push; see android/README.md)
+//   rollspot.release.storeFile / .storePassword / .keyAlias / .keyPassword  (Play upload key; see android/README.md)
 val localProperties = Properties().apply {
     rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
@@ -38,6 +39,19 @@ android {
         buildConfigField("String", "FIREBASE_SENDER_ID", "\"${local("rollspot.firebase.senderId", "")}\"")
     }
 
+    // Play upload key, only when it's set up on this machine; otherwise release builds stay unsigned.
+    val releaseStore = localProperties.getProperty("rollspot.release.storeFile")?.let(rootProject::file)
+    signingConfigs {
+        if (releaseStore != null) {
+            create("release") {
+                storeFile = releaseStore
+                storePassword = local("rollspot.release.storePassword", "")
+                keyAlias = local("rollspot.release.keyAlias", "upload")
+                keyPassword = local("rollspot.release.keyPassword", "")
+            }
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -46,6 +60,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

@@ -2,4 +2,5 @@
 <resources>
     <!-- Notification accent: the brand blue. -->
     <color name="notification_accent">#FF0099FE</color>
+    <color name="ic_launcher_background">#2779F2</color>
 </resources>
