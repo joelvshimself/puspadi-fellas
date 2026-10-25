@@ -48,7 +48,7 @@ struct LoginView: View {
                 case .createPassword(let email):
                     AuthCreatePasswordView(email: email, path: $path, displayName: $displayName)
                 case .verifyEmail(let email):
-                    AuthVerifyEmailView(email: email, path: $path, onSuccess: onSuccess)
+                    AuthVerifyEmailView(email: email, path: $path, displayName: $displayName, onSuccess: onSuccess)
                 case .name:
                     AuthNameView(displayName: $displayName, path: $path)
                 case .mobility:
