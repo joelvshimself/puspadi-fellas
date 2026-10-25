@@ -29,6 +29,7 @@ import com.rollspot.app.BuildConfig
 import com.rollspot.app.ui.screens.auth.AuthFlowScreen
 import com.rollspot.app.ui.screens.auth.AuthPreview
 import com.rollspot.app.ui.screens.profile.MyAccountScreen
+import com.rollspot.app.ui.screens.profile.NotificationsScreen
 import com.rollspot.app.ui.screens.profile.ProfileScreen
 import com.rollspot.app.ui.screens.profile.ProfileTab
 import com.rollspot.app.ui.screens.review.EditResponseScreen
@@ -109,6 +110,7 @@ fun DesignReviewRoot(screen: String, email: String? = null, password: String? = 
             }
             reviewId?.let { EditResponseScreen(it, onClose = {}, onSaved = {}, review = screen) }
         }
+        "notifications" -> SignedIn(email, password) { NotificationsScreen(onBack = {}) }
         "myAccount", "mobilityProfile", "deleteAccount", "accountDeleted" -> SignedIn(email, password) {
             MyAccountScreen(onBack = {}, onAccountDeleted = {}, review = screen)
         }

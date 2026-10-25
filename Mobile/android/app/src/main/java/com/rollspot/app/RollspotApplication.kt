@@ -4,6 +4,7 @@ import android.app.Application
 import app.rollspot.shared.RollspotSdk
 import app.rollspot.shared.drafts.FileDraftStorage
 import app.rollspot.shared.auth.AndroidTokenStore
+import com.rollspot.app.notifications.Push
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -33,5 +34,6 @@ class RollspotApplication : Application() {
             draftStorage = FileDraftStorage(java.io.File(filesDir, "drafts").path),
         )
         appScope.launch { runCatching { sdk.auth.restore() } }
+        Push.start(this)
     }
 }

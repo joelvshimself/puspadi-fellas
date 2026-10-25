@@ -9,3 +9,5 @@ GOOGLE_WEB_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 RESEND_API_KEY=
 ADMIN_TOKEN=
+# Push notifications: the Firebase service account JSON on one line (optional; push is off without it).
+FCM_SERVICE_ACCOUNT=

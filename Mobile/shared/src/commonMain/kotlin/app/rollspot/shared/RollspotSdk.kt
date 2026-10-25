@@ -9,6 +9,7 @@ import app.rollspot.shared.drafts.DraftStorage
 import app.rollspot.shared.drafts.InMemoryDraftStorage
 import app.rollspot.shared.map.PlaceSearchProvider
 import app.rollspot.shared.map.RepositoryPlaceSearchProvider
+import app.rollspot.shared.notifications.NotificationsModel
 import app.rollspot.shared.place.PlaceDetailModel
 import app.rollspot.shared.places.PlaceRepository
 import app.rollspot.shared.profile.MyReviewsModel
@@ -59,17 +60,25 @@ class RollspotSdk(
     /** Lives as long as the app: keeps per-user models in step with the session. */
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    /** Push token, permission, the Notifications switches and the unfinished-review reminder. */
+    val notifications = NotificationsModel(api, profile, drafts, appScope)
+
     init {
+        auth.beforeSignOut = { notifications.unregister() }
         appScope.launch {
             auth.session.distinctUntilChangedBy { (it as? AuthSession.SignedIn)?.user?.id }.collect { session ->
                 when (session) {
                     // Saved state drives the bookmark on every place page, so load it right away.
                     is AuthSession.SignedIn -> {
                         drafts.setUser(session.user.id)
+                        notifications.signedIn(session.user.id)
                         runCatching { saved.load() }
+                        // The switches (and whether reminders are on) live on the profile.
+                        runCatching { profile.load() }
                     }
                     else -> {
                         drafts.setUser(null)
+                        notifications.signedOut()
                         saved.clear()
                         profile.clear()
                         myReviews.clear()

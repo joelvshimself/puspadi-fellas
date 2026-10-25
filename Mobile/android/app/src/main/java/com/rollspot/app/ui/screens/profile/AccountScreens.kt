@@ -26,10 +26,9 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Notifications
-import android.content.Intent
-import android.provider.Settings
-import androidx.core.app.NotificationManagerCompat
-import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.compose.ui.res.stringResource
+import app.rollspot.shared.notifications.NotificationPermission
+import com.rollspot.app.R
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material3.HorizontalDivider
@@ -73,7 +72,13 @@ import java.util.Locale
 // ---------------------------------------------------------------------------------------------
 
 @Composable
-internal fun SettingsTab(onOpenMyAccount: () -> Unit, onOpenLanguage: () -> Unit, onOpenAbout: () -> Unit, onSignOut: () -> Unit) {
+internal fun SettingsTab(
+    onOpenMyAccount: () -> Unit,
+    onOpenLanguage: () -> Unit,
+    onOpenNotifications: () -> Unit,
+    onOpenAbout: () -> Unit,
+    onSignOut: () -> Unit,
+) {
     Column(Modifier.fillMaxSize()) {
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(top = 28.dp, bottom = 24.dp),
@@ -86,7 +91,7 @@ internal fun SettingsTab(onOpenMyAccount: () -> Unit, onOpenLanguage: () -> Unit
                     SettingsRow(Icons.Default.Language, "Language", value = currentLanguage().label, onClick = onOpenLanguage)
                     HorizontalDivider(Modifier.padding(start = 52.dp), color = Color(0x1F3C3C43))
                 }
-                NotificationsRow()
+                NotificationsRow(onOpenNotifications)
                 HorizontalDivider(Modifier.padding(start = 52.dp), color = Color(0x1F3C3C43))
                 SettingsRow(Icons.Default.Info, "About App", onClick = onOpenAbout)
             }
@@ -101,21 +106,17 @@ internal fun SettingsTab(onOpenMyAccount: () -> Unit, onOpenLanguage: () -> Unit
     }
 }
 
-/** Whether Android lets Rollspot notify; tapping opens the app's system notification settings. */
+/** Opens the Notifications screen; the value says whether the phone lets Rollspot notify at all. */
 @Composable
-private fun NotificationsRow() {
-    val context = LocalContext.current
-    var enabled by remember { mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled()) }
-    // Re-read when the user comes back from system settings.
-    LifecycleResumeEffect(Unit) {
-        enabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
-        onPauseOrDispose {}
-    }
-    SettingsRow(Icons.Default.Notifications, "Notifications", value = if (enabled) "On" else "Off") {
-        context.startActivity(
-            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
-        )
-    }
+private fun NotificationsRow(onClick: () -> Unit) {
+    val state by rollspotSdk().notifications.state.collectAsStateWithLifecycle()
+    val on = state.permission == NotificationPermission.Granted
+    SettingsRow(
+        Icons.Default.Notifications,
+        stringResource(R.string.notifications_title),
+        value = stringResource(if (on) R.string.notif_on else R.string.notif_off),
+        onClick = onClick,
+    )
 }
 
 @Composable

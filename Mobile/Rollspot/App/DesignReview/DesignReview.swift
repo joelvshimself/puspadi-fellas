@@ -14,7 +14,7 @@ enum DesignReview: String, CaseIterable {
     case allSet
     case home, homeFilter, homeFilterChosen, homeSearch, homeSearchQuery
     // Signed in: pass `-designReviewEmail <email> -designReviewPassword <password>` (a local test account).
-    case profile, profileDeleteReview, profilePhotos, profileSettings, profileLanguage
+    case profile, profileDeleteReview, profilePhotos, profileSettings, profileLanguage, notifications
     case myAccount, mobilityProfile, deleteAccount, accountDeleted
     case editResponse, editResponseLeave
     /// Home with a waiting contribution (banner, then folded into the profile badge) and Profile's row.
@@ -75,6 +75,8 @@ struct DesignReviewRoot: View {
             signedIn { NavigationStack { ProfileView(initialTab: .photos) } }
         case .profileSettings, .profileLanguage:
             signedIn { NavigationStack { ProfileView(initialTab: .settings) } }
+        case .notifications:
+            signedIn { NavigationStack { NotificationsSettingsView() } }
         case .myAccount, .mobilityProfile, .deleteAccount, .accountDeleted:
             signedIn { NavigationStack { MyAccountView() } }
         case .homeContinueSurvey, .homeContinueSurveyFolded:

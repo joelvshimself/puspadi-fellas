@@ -3,6 +3,8 @@ import SwiftUI
 
 @main
 struct RollspotApp: App {
+    @UIApplicationDelegateAdaptor(RollspotAppDelegate.self) private var appDelegate
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var languageManager = LanguageManager.shared
     @StateObject private var authSession = AuthSessionStore()
     @State private var showSplash = true
@@ -26,6 +28,10 @@ struct RollspotApp: App {
                 if GIDSignIn.sharedInstance.handle(url) { return }
                 DeepLinkRouter.shared.handle(url)
                 Task { await authSession.handleAuthCallback(url) }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                // Notifications may have been switched on or off in iOS Settings meanwhile.
+                if phase == .active { Task { await PushNotificationsService.shared.refreshPermission() } }
             }
         }
     }

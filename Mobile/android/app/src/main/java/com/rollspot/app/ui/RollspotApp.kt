@@ -17,6 +17,7 @@ import com.rollspot.app.ui.screens.contribute.ContributePlaceSearchScreen
 import com.rollspot.app.ui.screens.contribute.ContributeScreen
 import com.rollspot.app.ui.screens.profile.AboutScreen
 import com.rollspot.app.ui.screens.profile.MyAccountScreen
+import com.rollspot.app.ui.screens.profile.NotificationsScreen
 import com.rollspot.app.ui.screens.profile.ProfileScreen
 import com.rollspot.app.ui.screens.profile.SavedPlacesScreen
 import com.rollspot.app.ui.screens.review.EditResponseScreen
@@ -106,6 +107,7 @@ fun RollspotApp(review: String? = null) {
                 onSignedOut = { navController.popBackStack("home", inclusive = false) },
                 onEditReview = { navController.navigate("review/$it/edit") },
                 onResumeContribution = { navController.navigate("contribute/flow/$it") },
+                onOpenNotifications = { navController.navigate("notifications") },
                 reviewUpdated = updated,
                 onUpdatedShown = { entry.savedStateHandle[REVIEW_UPDATED] = false },
             )
@@ -128,6 +130,9 @@ fun RollspotApp(review: String? = null) {
         }
         composable("about") {
             AboutScreen(onBack = { navController.popBackStack() })
+        }
+        composable("notifications") {
+            NotificationsScreen(onBack = { navController.popBackStack() })
         }
 
         composable("contribute") {
