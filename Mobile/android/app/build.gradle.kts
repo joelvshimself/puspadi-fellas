@@ -29,7 +29,7 @@ android {
         versionCode = 1
         versionName = "1.1.0"
 
-        buildConfigField("String", "API_BASE_URL", "\"${local("rollspot.apiBaseUrl", "https://api.rollspot.app")}\"")
+        buildConfigField("String", "API_BASE_URL", "\"${local("rollspot.apiBaseUrl", "https://rollspot-api.joecast208.workers.dev")}\"")
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${local("rollspot.googleWebClientId", "")}\"")
         // Firebase Cloud Messaging, set by hand instead of google-services.json; push is off while empty.
         buildConfigField("String", "FIREBASE_API_KEY", "\"${local("rollspot.firebase.apiKey", "")}\"")
