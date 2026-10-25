@@ -43,4 +43,4 @@ rollspot.firebase.senderId=
 Without the four `rollspot.firebase.*` values the app builds and runs normally, with push off
 (the Notifications switches still save, and review reminders still work: they're local).
 
-Without `rollspot.apiBaseUrl` the app talks to production (`https://api.rollspot.app`).
+Without `rollspot.apiBaseUrl` the app talks to production (`https://rollspot-api.joecast208.workers.dev`).
