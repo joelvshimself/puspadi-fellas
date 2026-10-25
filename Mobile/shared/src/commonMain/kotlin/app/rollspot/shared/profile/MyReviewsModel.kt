@@ -15,6 +15,8 @@ data class MyReviewItem(
     val id: String,
     val placeId: String,
     val placeName: String,
+    /** Offer "Update Review" only when true. */
+    val editable: Boolean,
     val createdAt: String,
     /** Same date format as the place page's review list. */
     val dateLabel: String,
@@ -91,6 +93,7 @@ class MyReviewsModel(private val api: RollspotApi) {
         id = review.id,
         placeId = review.placeId,
         placeName = review.placeName,
+        editable = review.editable,
         createdAt = review.createdAt,
         dateLabel = dateLabelOf(review.createdAt),
         text = review.reviewText,

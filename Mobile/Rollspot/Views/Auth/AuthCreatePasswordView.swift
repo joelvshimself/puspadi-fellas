@@ -62,6 +62,7 @@ struct AuthCreatePasswordView: View {
                                 Image(systemName: showPassword ? "eye.slash" : "eye")
                                     .foregroundStyle(.secondary)
                             }
+                            .buttonStyle(.plain)
                         }
                     }
                     Text(AuthRules.shared.PASSWORD_HINT.localized)
@@ -89,6 +90,7 @@ struct AuthCreatePasswordView: View {
                                 Image(systemName: showConfirm ? "eye.slash" : "eye")
                                     .foregroundStyle(.secondary)
                             }
+                            .buttonStyle(.plain)
                         }
                     }
                 }

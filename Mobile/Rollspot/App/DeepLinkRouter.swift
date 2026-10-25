@@ -68,8 +68,22 @@ final class DeepLinkRouter: ObservableObject {
             && (url.path == "/place" || url.path == "/place/")
         guard isSchemeLink || isUniversalLink,
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let items = components.queryItems,
-              let lat = items.first(where: { $0.name == "lat" })?.value.flatMap(Double.init),
+              let items = components.queryItems
+        else { return }
+
+        // The place ID alone is enough (Android, and links built from the directory): look the
+        // rest up in our place directory.
+        let hasCoordinates = items.contains { $0.name == "lat" } && items.contains { $0.name == "lng" }
+        if !hasCoordinates, let placeId = items.first(where: { $0.name == "place_id" })?.value, !placeId.isEmpty {
+            Task { @MainActor in
+                if let place = await NearbyPlacesService.place(key: placeId) {
+                    pendingPlace = place
+                }
+            }
+            return
+        }
+
+        guard let lat = items.first(where: { $0.name == "lat" })?.value.flatMap(Double.init),
               let lng = items.first(where: { $0.name == "lng" })?.value.flatMap(Double.init),
               CLLocationCoordinate2DIsValid(CLLocationCoordinate2D(latitude: lat, longitude: lng))
         else { return }

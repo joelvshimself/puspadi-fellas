@@ -79,6 +79,9 @@ dependencies {
 
     implementation(libs.maplibre)
 
+    // Backdrop blur for glass buttons and sheets (Android has no native Liquid Glass).
+    implementation(libs.haze)
+
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
 }

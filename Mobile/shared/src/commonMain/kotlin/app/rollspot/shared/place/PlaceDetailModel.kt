@@ -43,7 +43,8 @@ data class PlaceDetail(
     /** True when only the community photos failed to load; the rest of the page is still good. */
     val reviewPhotosLoadFailed: Boolean,
 ) {
-    val reviewCount: Int get() = reviews.size
+    /** Reviews people wrote, not facility verdicts: one review covering three facilities counts once. */
+    val reviewCount: Int get() = reviews.distinctBy { it.reviewId }.size
 
     /**
      * The Photos tab, identical on both apps: curated venue photos first, then community

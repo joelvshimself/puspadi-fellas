@@ -24,8 +24,11 @@ data class AuthUiState(
  * Only keeps the Android back stack and loading/error flags. Every decision
  * (validation, which step is next, error wording) comes from the shared AuthModel.
  */
-class AuthViewModel(private val auth: AuthModel) : ViewModel() {
-    private val _state = MutableStateFlow(AuthUiState())
+class AuthViewModel(
+    private val auth: AuthModel,
+    initialSteps: List<AuthStep> = listOf(AuthStep.Welcome),
+) : ViewModel() {
+    private val _state = MutableStateFlow(AuthUiState(steps = initialSteps))
     val state: StateFlow<AuthUiState> = _state.asStateFlow()
 
     fun continueWithEmail(email: String) = run { auth.continueWithEmail(email) }

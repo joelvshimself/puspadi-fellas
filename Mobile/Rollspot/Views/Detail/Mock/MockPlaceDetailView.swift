@@ -418,6 +418,7 @@ struct MockPlaceDetailView: View {
                         .font(.system(size: 20, weight: .medium))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Share place".localized)
 
                 Button {
                     Task { await toggleSave() }
@@ -426,6 +427,8 @@ struct MockPlaceDetailView: View {
                         .font(.system(size: 20, weight: .medium))
                 }
                 .buttonStyle(.plain)
+                // Same wording as Android.
+                .accessibilityLabel((isSaved ? "Remove from saved" : "Save place").localized)
             }
             .foregroundStyle(.black)
             .padding(.horizontal, 16)
@@ -537,7 +540,8 @@ struct MockPlaceDetailView: View {
             } else {
                 PlaceDetailTabBar(
                     selection: $selectedSection,
-                    reviewCount: allReviews.count
+                    // Whole reviews, not one per facility (same rule as shared PlaceDetail.reviewCount).
+                    reviewCount: Set(allReviews.map(\.reviewId)).count
                 )
                 .padding(.top, 18)
 

@@ -1,3 +1,4 @@
+import UserNotifications
 import SwiftUI
 
 struct ProfileSettingsView: View {
@@ -7,6 +8,9 @@ struct ProfileSettingsView: View {
     @EnvironmentObject private var auth: AuthSessionStore
 
     @State private var showLanguageSheet = false
+    /// Whether iOS lets Rollspot show notifications (Settings → Notifications → Rollspot).
+    @State private var notificationsOn: Bool?
+    @Environment(\.scenePhase) private var scenePhase
 
     private static let testFlightURL = URL(string: "https://testflight.apple.com/join/BkzVVnrt")!
 
@@ -53,6 +57,18 @@ struct ProfileSettingsView: View {
                     }
                     Divider().padding(.leading, 52)
 
+                    settingsRow(
+                        icon: "bell.fill",
+                        title: "Notifications".localized,
+                        value: notificationsOn.map { ($0 ? "On" : "Off").localized }
+                    ) {
+                        // The system page is where notifications are switched on or off.
+                        if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
+                            openURL(url)
+                        }
+                    }
+                    Divider().padding(.leading, 52)
+
                     NavigationLink {
                         AboutAppView()
                     } label: {
@@ -69,37 +85,53 @@ struct ProfileSettingsView: View {
                     }
                     .buttonStyle(.plain)
                 }
-
-                Button {
-                    Task {
-                        await auth.signOut()
-                        dismiss()
-                        onBackToHome?()
-                    }
-                } label: {
-                    Text("Sign Out".localized)
-                        .font(.body.weight(.bold))
-                        .foregroundStyle(Color(red: 0.72, green: 0.16, blue: 0.18))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
-                        .background(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .fill(Color(uiColor: .systemBackground))
-                        )
-                }
-                .padding(.top, 8)
             }
             .padding(.horizontal, 20)
             .padding(.top, 16)
-            .padding(.bottom, 40)
+            .padding(.bottom, 24)
+        }
+        .safeAreaInset(edge: .bottom) {
+            Button {
+                Task {
+                    await auth.signOut()
+                    dismiss()
+                    onBackToHome?()
+                }
+            } label: {
+                Text("Sign Out".localized)
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(Color(red: 0.72, green: 0.16, blue: 0.18))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(Color(uiColor: .systemBackground))
+                    )
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 12)
         }
         .background(Color.mockSectionBackground)
+        #if DEBUG
+        .task {
+            if DesignReview.is(.profileLanguage) {
+                try? await Task.sleep(for: .milliseconds(600))
+                showLanguageSheet = true
+            }
+        }
+        #endif
+        .task(id: scenePhase) { await refreshNotificationStatus() }
         .sheet(isPresented: $showLanguageSheet) {
             languageSheet
                 .presentationDetents([.height(240)])
                 .presentationCornerRadius(28)
                 .presentationDragIndicator(.visible)
         }
+    }
+
+    private func refreshNotificationStatus() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        notificationsOn = [.authorized, .provisional, .ephemeral].contains(settings.authorizationStatus)
     }
 
     private func settingsCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {

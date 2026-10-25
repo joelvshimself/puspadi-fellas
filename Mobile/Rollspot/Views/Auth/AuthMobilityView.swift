@@ -39,21 +39,26 @@ struct AuthMobilityView: View {
                     ForEach(options, id: \.self) { option in
                         let selected = mobilityAids.contains(option)
                         Button {
-                            if selected {
-                                mobilityAids.remove(option)
-                            } else {
-                                mobilityAids.insert(option)
+                            // Small state change, used a few times per sign-up: short ease-out.
+                            withAnimation(.easeOut(duration: 0.15)) {
+                                if selected {
+                                    mobilityAids.remove(option)
+                                } else {
+                                    mobilityAids.insert(option)
+                                }
                             }
                         } label: {
                             HStack {
                                 Text(option.localized)
                                     .font(.body.weight(.medium))
-                                    .foregroundStyle(.primary)
+                                    .foregroundStyle(selected ? AuthPalette.brandBlue : .primary)
                                 Spacer()
                                 if selected {
-                                    Image(systemName: "checkmark.circle.fill")
+                                    // Radio dot, as in the design (ring + filled centre).
+                                    Image(systemName: "largecircle.fill.circle")
                                         .foregroundStyle(AuthPalette.brandBlue)
                                         .font(.title3)
+                                        .transition(.scale(scale: 0.6).combined(with: .opacity))
                                 }
                             }
                             .padding(.horizontal, 16)

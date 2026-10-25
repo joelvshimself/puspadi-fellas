@@ -1,0 +1,80 @@
+appId: ${APP_ID}
+---
+- setLocation:
+    latitude: -8.7180
+    longitude: 115.1700
+- launchApp:
+    clearState: true
+    permissions:
+      all: allow
+    arguments:
+      ROLLSPOT_API_BASE_URL: ${API}
+- extendedWaitUntil:
+    visible: "Search a place|Explore Malls"
+    timeout: 20000
+- runFlow:
+    when:
+      visible: "Explore Malls"
+    commands:
+      - tapOn: "Explore Malls"
+- openLink: "puspadifellas://place?place_id=${PLACE}"
+- extendedWaitUntil:
+    visible: "CONTRIBUTE"
+    timeout: 15000
+- tapOn: "CONTRIBUTE"
+# Signed out: Contribute asks to sign in first.
+- runFlow:
+    when:
+      visible: "Welcome to Rollspot"
+    commands:
+      - takeScreenshot: 03a-signin
+      - tapOn: "Email Address"
+      - waitForAnimationToEnd
+      - inputText: "${EMAIL}"
+      - assertVisible: "${EMAIL}"
+      - tapOn: "Continue"
+      - extendedWaitUntil:
+          visible: "Password"
+          timeout: 10000
+      # The "Password" label sits above the field; the field is the second match.
+      - tapOn:
+          text: "Password"
+          index: 1
+      - waitForAnimationToEnd
+      - inputText: "${PASSWORD}"
+      - tapOn: "Continue"
+- extendedWaitUntil:
+    visible: "Help make every visit easier"
+    timeout: 20000
+- takeScreenshot: 03b-menu
+- tapOn: "SEATING"
+- extendedWaitUntil:
+    visible: "Take or upload a photo"
+    timeout: 10000
+- takeScreenshot: 03c-seating-photo
+- tapOn: "Continue"
+- extendedWaitUntil:
+    visible: "Are there wheelchair friendly seatings\\?"
+    timeout: 10000
+- tapOn: "Yes"
+- takeScreenshot: 03d-seating-yes
+- tapOn: "Continue"
+- extendedWaitUntil:
+    visible: "Anything else you want to share\\?"
+    timeout: 10000
+- tapOn: "Tell us more about your experience ..."
+- inputText: "E2E ${PLATFORM}: tables by the food court are wheelchair height."
+- takeScreenshot: 03e-notes
+- tapOn: "Continue"
+- extendedWaitUntil:
+    visible: "Submit"
+    timeout: 10000
+- takeScreenshot: 03f-menu-complete
+- tapOn: "Submit"
+- extendedWaitUntil:
+    visible: "Review Submitted!"
+    timeout: 30000
+- takeScreenshot: 03g-submitted
+- tapOn: "Back to Home"
+- waitForAnimationToEnd
+- takeScreenshot: 03h-after

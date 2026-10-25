@@ -255,15 +255,17 @@ struct PhotoCaptionEditorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            ContributeStepProgressBar(currentStep: 4)
             HStack {
                 Button(action: onDismiss) {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .frame(width: 40, height: 40)
-                        .background(Color(.secondarySystemBackground), in: Circle())
+                        .font(.system(size: 18, weight: .regular))
+                        .foregroundStyle(Color(designHex: 0x0F0F0F))
+                        .frame(width: 44, height: 44)
+                        .background(ContributePalette.circleButton, in: Circle())
+                        .shadow(color: .black.opacity(0.06), radius: 4, y: 1)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PressableButtonStyle())
                 .accessibilityLabel("Back")
 
                 Spacer()
@@ -272,20 +274,23 @@ struct PhotoCaptionEditorView: View {
                     onSave(captionText)
                     onDismiss()
                 } label: {
+                    // "Photo caption added, button activated": grey until there's a caption, then blue.
                     ZStack {
                         Circle()
-                            .fill(isModified ? Color.accentColor : Color(.secondarySystemBackground))
-                            .frame(width: 40, height: 40)
+                            .fill(isModified ? ContributePalette.blue : ContributePalette.circleButton)
+                            .frame(width: 44, height: 44)
+                            .shadow(color: .black.opacity(0.06), radius: 4, y: 1)
                         Image(systemName: "checkmark")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(isModified ? .white : Color(.tertiaryLabel))
+                            .font(.system(size: 18, weight: isModified ? .semibold : .regular))
+                            .foregroundStyle(isModified ? .white : Color(designHex: 0x9B9B9B))
                     }
+                    .animation(.easeOut(duration: 0.2), value: isModified)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PressableButtonStyle())
                 .accessibilityLabel("Save Caption")
             }
             .padding(.horizontal, 20)
-            .padding(.top, 12)
+            .padding(.top, 4)
 
             ZoomablePhotoContainer(image: photo.image, isZoomed: $isPhotoZoomed)
                 .padding(.vertical, 12)
@@ -300,21 +305,23 @@ struct PhotoCaptionEditorView: View {
     private var captionField: some View {
         TextField("Add a caption ...".localized, text: $captionText, axis: .vertical)
             .font(.system(size: 15))
+            .foregroundStyle(ContributePalette.text)
             .lineLimit(1...4)
             .focused($isCaptionFocused)
             .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            .padding(.vertical, 15)
             .background(
                 Capsule(style: .continuous)
-                    .fill(Color(.secondarySystemBackground))
+                    .fill(ContributePalette.fill)
             )
             .overlay {
                 Capsule(style: .continuous)
                     .strokeBorder(
-                        isCaptionFocused ? Color.accentColor : Color.clear,
-                        lineWidth: 1.5
+                        ContributePalette.blue.opacity(isCaptionFocused ? 0.5 : 0),
+                        lineWidth: 2
                     )
             }
+            .animation(.easeOut(duration: 0.15), value: isCaptionFocused)
             .padding(.horizontal, 20)
             .padding(.top, 8)
             .padding(.bottom, 12)

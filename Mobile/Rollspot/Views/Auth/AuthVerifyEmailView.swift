@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AuthVerifyEmailView: View {
     let email: String
+    @Binding var path: [AuthRoute]
     /// Signup is complete — the auth cover closes and HomeMapView takes over
     /// (showing the one-time onboarding intro sheet if it hasn't been seen).
     var onSuccess: () -> Void
@@ -90,8 +91,8 @@ struct AuthVerifyEmailView: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            _ = try await auth.completeVerifiedSignUp()
-            onSuccess()
+            let step = try await auth.completeVerifiedSignUp()
+            advanceAuth(to: step, path: $path, onDone: onSuccess)
         } catch {
             errorMessage = error.localizedDescription
         }

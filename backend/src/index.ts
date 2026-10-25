@@ -12,6 +12,7 @@ import {
   handleReviewById,
   handleReviewPhotos,
   handleReviewsRoot,
+  handleReviewForEdit,
 } from "./reviews";
 
 export default {
@@ -82,6 +83,10 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
   if (url.pathname === "/v1/me/reviews") {
     return handleMyReviews(request, env, auth);
+  }
+  const editReview = url.pathname.match(/^\/v1\/reviews\/([^/]+)\/edit$/);
+  if (editReview) {
+    return handleReviewForEdit(request, env, auth, editReview[1]!);
   }
   if (url.pathname.startsWith("/v1/reviews/")) {
     return handleReviewById(request, env, auth, url.pathname.slice("/v1/reviews/".length));

@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -17,13 +18,14 @@ import com.rollspot.app.ui.screens.contribute.ContributeScreen
 import com.rollspot.app.ui.screens.profile.AboutScreen
 import com.rollspot.app.ui.screens.profile.MyAccountScreen
 import com.rollspot.app.ui.screens.profile.ProfileScreen
-import com.rollspot.app.ui.screens.profile.ProfileSettingsScreen
 import com.rollspot.app.ui.screens.profile.SavedPlacesScreen
+import com.rollspot.app.ui.screens.review.EditResponseScreen
 import com.rollspot.app.ui.screens.auth.AuthFlowScreen
 
 @Composable
-fun RollspotApp() {
+fun RollspotApp(review: String? = null) {
     val navController = rememberNavController()
+    val sdk = rollspotSdk()
     val app = androidx.compose.ui.platform.LocalContext.current.applicationContext as com.rollspot.app.RollspotApplication
     val pendingPlace by app.pendingPlaceLink.collectAsState()
     LaunchedEffect(pendingPlace) {
@@ -38,7 +40,7 @@ fun RollspotApp() {
         startDestination = "home"
     ) {
         composable("home") {
-            HomeScreen(navController = navController)
+            HomeScreen(navController = navController, review = review)
         }
         
         composable(
@@ -51,7 +53,11 @@ fun RollspotApp() {
             PlaceDetailScreen(
                 placeId = placeId,
                 onNavigateBack = { navController.popBackStack() },
-                onContribute = { navController.navigate("contribute/flow/$placeId") },
+                // Like iOS: sign in first, then the form (never a sign-in prompt at Submit).
+                onContribute = {
+                    val flow = "contribute/flow/$placeId"
+                    navController.navigate(if (sdk.isSignedIn()) flow else authRoute(next = flow))
+                },
                 onNeedsSignIn = { navController.navigate("auth") },
             )
         }
@@ -71,26 +77,47 @@ fun RollspotApp() {
             }
         }
 
-        composable("auth") {
+        // `next`: where to go once signed in ("back" returns to the screen that asked).
+        composable(
+            "auth?next={next}",
+            arguments = listOf(navArgument("next") { type = NavType.StringType; nullable = true }),
+        ) { entry ->
+            val next = entry.arguments?.getString("next")
             AuthFlowScreen(
-                onDone = { navController.navigate("me") { popUpTo("auth") { inclusive = true } } },
+                onDone = {
+                    when (next) {
+                        null -> navController.navigate("me") { popUpTo("auth?next={next}") { inclusive = true } }
+                        BACK -> navController.popBackStack()
+                        else -> navController.navigate(next) { popUpTo("auth?next={next}") { inclusive = true } }
+                    }
+                },
                 onCancel = { navController.popBackStack() },
             )
         }
 
         // Profile (F5): signed-in user's page, settings and account.
-        composable("me") {
+        composable("me") { entry ->
+            val updated by entry.savedStateHandle.getStateFlow(REVIEW_UPDATED, false).collectAsStateWithLifecycle()
             ProfileScreen(
                 onBack = { navController.popBackStack() },
-                onOpenSettings = { navController.navigate("settings") },
                 onOpenPlace = { navController.navigate("place/$it") },
+                onOpenMyAccount = { navController.navigate("my-account") },
+                onOpenAbout = { navController.navigate("about") },
+                onSignedOut = { navController.popBackStack("home", inclusive = false) },
+                onEditReview = { navController.navigate("review/$it/edit") },
+                onResumeContribution = { navController.navigate("contribute/flow/$it") },
+                reviewUpdated = updated,
+                onUpdatedShown = { entry.savedStateHandle[REVIEW_UPDATED] = false },
             )
         }
-        composable("settings") {
-            ProfileSettingsScreen(
-                onBack = { navController.popBackStack() },
-                onNavigate = { navController.navigate(it) },
-                onSignedOut = { navController.popBackStack("home", inclusive = false) },
+        composable("review/{reviewId}/edit", arguments = listOf(navArgument("reviewId") { type = NavType.StringType })) { entry ->
+            EditResponseScreen(
+                reviewId = entry.arguments?.getString("reviewId").orEmpty(),
+                onClose = { navController.popBackStack() },
+                onSaved = {
+                    navController.previousBackStackEntry?.savedStateHandle?.set(REVIEW_UPDATED, true)
+                    navController.popBackStack()
+                },
             )
         }
         composable("my-account") {
@@ -127,7 +154,18 @@ fun RollspotApp() {
             ContributeFlowScreen(
                 placeId = placeId,
                 onFinished = { navController.popBackStack() },
+                onNeedsSignIn = { navController.navigate(authRoute(next = BACK)) },
             )
         }
     }
 }
+
+/** Set on the profile entry when Edit Response saved, so it shows "Review successfully updated". */
+private const val REVIEW_UPDATED = "reviewUpdated"
+
+/** "Sign in, then come back here": the auth route pops itself instead of opening Profile. */
+private const val BACK = "back"
+
+private fun authRoute(next: String) = "auth?next=" + android.net.Uri.encode(next)
+
+private fun app.rollspot.shared.RollspotSdk.isSignedIn() = auth.isSignedIn

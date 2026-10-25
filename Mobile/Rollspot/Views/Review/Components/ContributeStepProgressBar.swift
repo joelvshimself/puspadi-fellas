@@ -16,14 +16,18 @@ struct ContributeStepProgressBar: View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color(.systemGray5))
+                    .fill(ContributePalette.progressTrack)
                 Capsule()
-                    .fill(Color.accentColor)
+                    .fill(ContributePalette.progressFill)
                     .frame(width: geo.size.width * fraction)
+                    .animation(.easeOut(duration: 0.25), value: fraction)
             }
         }
         .frame(height: 4)
-        .padding(.vertical, 8)
+        // Design: 20pt side insets, just under the status bar, above the back button.
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
     }
 }
 

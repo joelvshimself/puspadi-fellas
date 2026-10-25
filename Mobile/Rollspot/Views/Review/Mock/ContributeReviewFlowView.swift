@@ -98,6 +98,12 @@ struct ContributeReviewFlowView: View {
         var elevTags = Set<ContributeTagOption>()
         var toiletTagsInit = Set<ContributeTagOption>()
         var restoredNotes: [ContributeReviewCategory: ReviewNoteDraft] = [:]
+        var restoredActive: ContributeReviewCategory?
+        var restoredSeating: String?
+        var restoredParking: String?
+        var restoredNotices: Set<String> = []
+        var restoredElevator: [ElevatorQuestion: String] = [:]
+        var restoredToilet: [ToiletQuestion: String] = [:]
 
         if !ignoreDraftRestore, let snap = UnfinishedReviewStore.snapshot(for: place) {
             if startingFacility != nil {
@@ -113,6 +119,18 @@ struct ContributeReviewFlowView: View {
             draft.basement.review.text = snap.basementNote
             draft.elevator.review.text = snap.elevatorNote
             draft.toilet.review.text = snap.toiletNote
+            // Back inside the section that was open, on the same question.
+            restoredActive = snap.activeCategory.flatMap(ContributeReviewCategory.init(rawValue:))
+            if restoredActive != nil, startingFacility == nil { startIndex = snap.screenIndex }
+            restoredSeating = snap.seatingAnswer
+            restoredParking = snap.parkingAnswer
+            restoredNotices = Set(snap.pathwayNotices)
+            for (key, value) in snap.elevatorAnswers {
+                if let q = ElevatorQuestion(rawValue: key) { restoredElevator[q] = value }
+            }
+            for (key, value) in snap.toiletAnswers {
+                if let q = ToiletQuestion(rawValue: key) { restoredToilet[q] = value }
+            }
             for (raw, text) in snap.categoryNotes {
                 guard let category = ContributeReviewCategory(rawValue: raw) else { continue }
                 var note = ReviewNoteDraft()
@@ -122,7 +140,12 @@ struct ContributeReviewFlowView: View {
         }
 
         _draft = StateObject(wrappedValue: draft)
-        _activeCategory = State(initialValue: nil)
+        _activeCategory = State(initialValue: restoredActive)
+        _seatingAnswer = State(initialValue: restoredSeating)
+        _parkingAnswer = State(initialValue: restoredParking)
+        _pathwayNotices = State(initialValue: restoredNotices)
+        _elevatorAnswers = State(initialValue: restoredElevator)
+        _toiletAnswers = State(initialValue: restoredToilet)
         _sectionStatus = State(initialValue: restoredStatus)
         _supplementalNotes = State(initialValue: restoredNotes)
         _screenIndex = State(initialValue: startIndex)
@@ -328,6 +351,11 @@ struct ContributeReviewFlowView: View {
         }
         .onAppear { clampScreenIndex() }
         .onChange(of: screenIndex) { _, _ in persistIfNeeded() }
+        .onChange(of: seatingAnswer) { _, _ in persistIfNeeded() }
+        .onChange(of: parkingAnswer) { _, _ in persistIfNeeded() }
+        .onChange(of: pathwayNotices) { _, _ in persistIfNeeded() }
+        .onChange(of: elevatorAnswers) { _, _ in persistIfNeeded() }
+        .onChange(of: toiletAnswers) { _, _ in persistIfNeeded() }
         .onChange(of: entranceLocations) { _, _ in clampScreenIndex() }
         .onChange(of: lobbyEntranceTags) { _, _ in clampScreenIndex() }
         .onChange(of: basementEntranceTags) { _, _ in clampScreenIndex() }
@@ -360,7 +388,7 @@ struct ContributeReviewFlowView: View {
         case .pathwayPhotos:
             ContributeEntrancePhotosStepView(
                 navTitle: "Outdoor Pathways",
-                illustrationAssetName: "pathwayicon",
+                illustrationAssetName: "Toilet Survey Asset",
                 stepNumber: 4,
                 progress: progress(for: screen),
                 subStepProgress: subProgress(for: screen),
@@ -432,10 +460,10 @@ struct ContributeReviewFlowView: View {
         case .supplementalNotes(let category):
             ContributePhotosNotesStepView(
                 facilityName: category.menuTitle,
-                navTitle: "Tell us about the \(category.menuTitle.lowercased())",
+                navTitle: category.menuTitle,
                 progress: progress(for: screen),
                 note: supplementalNoteBinding(for: category),
-                showsPhotos: false,
+                photoNote: notesPhotosBinding(for: category),
                 continueTitle: startingFacility == nil ? "Continue" : "Submit",
                 isSubmitting: isSubmitting,
                 onBack: goBackOneStep,
@@ -1030,7 +1058,15 @@ struct ContributeReviewFlowView: View {
             categoryNotes: supplementalNotes.reduce(into: [:]) { notes, item in
                 let text = item.value.text.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !text.isEmpty { notes[item.key.rawValue] = text }
-            }
+            },
+            section: UnfinishedReviewStore.SectionAnswers(
+                activeCategory: activeCategory?.rawValue,
+                seatingAnswer: seatingAnswer,
+                parkingAnswer: parkingAnswer,
+                pathwayNotices: Array(pathwayNotices),
+                elevatorAnswers: Dictionary(uniqueKeysWithValues: elevatorAnswers.map { ($0.key.rawValue, $0.value) }),
+                toiletAnswers: Dictionary(uniqueKeysWithValues: toiletAnswers.map { ($0.key.rawValue, $0.value) })
+            )
         )
     }
 
@@ -1203,6 +1239,53 @@ struct ContributeReviewFlowView: View {
         case .entrance: .constant([])
         case .elevator: $elevatorTags
         case .toilet: $toiletTags
+        }
+    }
+
+    /// The photos the notes step shows: the section's own (last pass for entrance/elevator/toilet),
+    /// so photos taken at the start of the section appear there and new ones join them.
+    /// Same rule as the shared ContributeFlow.notesPhotos on Android.
+    private func notesPhotosBinding(for category: ContributeReviewCategory) -> Binding<ReviewNoteDraft> {
+        switch category {
+        case .entrance:
+            Binding(
+                get: { ReviewNoteDraft(photos: completedEntrancePasses.last?.sectionPhotos ?? entranceSectionPhotos.photos) },
+                set: { updated in
+                    if completedEntrancePasses.isEmpty {
+                        entranceSectionPhotos.photos = updated.photos
+                    } else {
+                        completedEntrancePasses[completedEntrancePasses.count - 1].sectionPhotos = updated.photos
+                    }
+                }
+            )
+        case .elevator:
+            Binding(
+                get: { ReviewNoteDraft(photos: completedElevatorPasses.last?.photos ?? draft.elevator.review.photos) },
+                set: { updated in
+                    if completedElevatorPasses.isEmpty {
+                        draft.elevator.review.photos = updated.photos
+                    } else {
+                        completedElevatorPasses[completedElevatorPasses.count - 1].photos = updated.photos
+                    }
+                }
+            )
+        case .toilet:
+            Binding(
+                get: { ReviewNoteDraft(photos: completedToiletPasses.last?.photos ?? draft.toilet.review.photos) },
+                set: { updated in
+                    if completedToiletPasses.isEmpty {
+                        draft.toilet.review.photos = updated.photos
+                    } else {
+                        completedToiletPasses[completedToiletPasses.count - 1].photos = updated.photos
+                    }
+                }
+            )
+        case .outdoorPathways:
+            supplementalNoteBinding(for: .outdoorPathways)
+        case .seating:
+            $seatingNote
+        case .parking:
+            $parkingNote
         }
     }
 

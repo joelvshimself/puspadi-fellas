@@ -124,6 +124,16 @@ class RollspotApi(
     suspend fun getReview(reviewId: String): ReviewById =
         call(HttpMethod.Get, listOf("v1", "reviews", reviewId))
 
+    /** The signed-in user's own review as a v2 body, ready to change and send to [updateContribution]. */
+    @Throws(Exception::class)
+    suspend fun reviewForEdit(reviewId: String): ReviewForEdit =
+        call(HttpMethod.Get, listOf("v1", "reviews", reviewId, "edit"), auth = true)
+
+    /** Replaces the answers, notes and photos of the user's own review. Photos left out are deleted. */
+    @Throws(Exception::class)
+    suspend fun updateContribution(reviewId: String, submission: ContributionSubmission): ReviewSubmitted =
+        call(HttpMethod.Put, listOf("v1", "reviews", reviewId), auth = true) { jsonBody(submission) }
+
     @Throws(Exception::class)
     suspend fun deleteReview(reviewId: String) {
         send(HttpMethod.Delete, listOf("v1", "reviews", reviewId), auth = true)
