@@ -42,39 +42,29 @@ import com.rollspot.app.ui.screens.splash.SplashScreen
  */
 object DesignReview {
     const val EXTRA = "designReview"
-    /** Signed-in screens: a local test account, passed as extras so it's never committed. */
-    const val EMAIL_EXTRA = "designReviewEmail"
-    const val PASSWORD_EXTRA = "designReviewPassword"
-    private const val EMAIL = "name@gmail.com"
+    /** Signed-in screens: a local session token (D1 `session` table), passed as an extra so it's never committed. */
+    const val TOKEN_EXTRA = "designReviewToken"
 
     fun isEnabled(screen: String?) = BuildConfig.DEBUG && !screen.isNullOrBlank()
 
     fun authPreview(screen: String): AuthPreview? = when (screen) {
         "welcome" -> AuthPreview()
-        "emailFound" -> AuthPreview(listOf(AuthStep.Welcome, AuthStep.EmailFound(EMAIL)))
-        "emailFoundFilled" -> AuthPreview(listOf(AuthStep.Welcome, AuthStep.EmailFound(EMAIL)), password = "password123")
-        "emailFoundError" -> AuthPreview(
-            listOf(AuthStep.Welcome, AuthStep.EmailFound(EMAIL)), password = "password123", error = "Incorrect password. Try again.",
-        )
-        "createPassword" -> AuthPreview(listOf(AuthStep.Welcome, AuthStep.CreatePassword(EMAIL)))
-        "name" -> AuthPreview(listOf(AuthStep.Welcome, AuthStep.CreatePassword(EMAIL), AuthStep.Name("")))
-        "mobility" -> AuthPreview(listOf(AuthStep.Welcome, AuthStep.CreatePassword(EMAIL), AuthStep.Name(""), AuthStep.Mobility))
-        "mobilityFilled" -> AuthPreview(
-            listOf(AuthStep.Welcome, AuthStep.CreatePassword(EMAIL), AuthStep.Name(""), AuthStep.Mobility), aids = listOf("Wheelchair"),
-        )
+        "name" -> AuthPreview(listOf(AuthStep.Welcome, AuthStep.Name("")))
+        "mobility" -> AuthPreview(listOf(AuthStep.Welcome, AuthStep.Name(""), AuthStep.Mobility))
+        "mobilityFilled" -> AuthPreview(listOf(AuthStep.Welcome, AuthStep.Name(""), AuthStep.Mobility), aids = listOf("Wheelchair"))
         "allSet" -> AuthPreview(listOf(AuthStep.AllSet))
         else -> null
     }
 }
 
 @Composable
-fun DesignReviewRoot(screen: String, email: String? = null, password: String? = null) {
+fun DesignReviewRoot(screen: String, token: String? = null) {
     when (screen) {
         "splash" -> SplashScreen()
         "home", "homeFilter", "homeFilterChosen", "homeSearch", "homeSearchQuery" -> RollspotApp(review = screen)
-        "homeContinueSurvey", "homeContinueSurveyFolded" -> SignedIn(email, password) { Waiting { RollspotApp(review = screen) } }
-        "profileOngoing" -> SignedIn(email, password) { Waiting { ProfileScreen({}, {}, {}, {}, {}, review = screen) } }
-        "profile", "profileDeleteReview", "profilePhotos", "profileSettings", "profileLanguage" -> SignedIn(email, password) {
+        "homeContinueSurvey", "homeContinueSurveyFolded" -> SignedIn(token) { Waiting { RollspotApp(review = screen) } }
+        "profileOngoing" -> SignedIn(token) { Waiting { ProfileScreen({}, {}, {}, {}, {}, review = screen) } }
+        "profile", "profileDeleteReview", "profilePhotos", "profileSettings", "profileLanguage" -> SignedIn(token) {
             val tab = when (screen) {
                 "profilePhotos" -> ProfileTab.Photos
                 "profileSettings", "profileLanguage" -> ProfileTab.Settings
@@ -101,7 +91,7 @@ fun DesignReviewRoot(screen: String, email: String? = null, password: String? = 
             com.rollspot.app.ui.screens.contribute.components.PathwayInfoSheet(onDismiss = {})
         }
         "contributeSubmitted" -> ContributeSubmittedScreen(onDone = {}, modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding())
-        "editResponse", "editResponseLeave" -> SignedIn(email, password) {
+        "editResponse", "editResponseLeave" -> SignedIn(token) {
             val mine = rollspotSdk().myReviews
             var reviewId by remember { mutableStateOf<String?>(null) }
             LaunchedEffect(Unit) {
@@ -110,21 +100,24 @@ fun DesignReviewRoot(screen: String, email: String? = null, password: String? = 
             }
             reviewId?.let { EditResponseScreen(it, onClose = {}, onSaved = {}, review = screen) }
         }
-        "notifications" -> SignedIn(email, password) { NotificationsScreen(onBack = {}) }
-        "myAccount", "mobilityProfile", "deleteAccount", "accountDeleted" -> SignedIn(email, password) {
+        "notifications" -> SignedIn(token) { NotificationsScreen(onBack = {}) }
+        "myAccount", "mobilityProfile", "deleteAccount", "accountDeleted" -> SignedIn(token) {
             MyAccountScreen(onBack = {}, onAccountDeleted = {}, review = screen)
         }
         else -> DesignReview.authPreview(screen)?.let { AuthFlowScreen(onDone = {}, onCancel = {}, preview = it) }
     }
 }
 
-/** Signs in with the account from the launch extras, then shows the screen. */
+/** Signs in with the session token from the launch extras, then shows the screen. */
 @Composable
-private fun SignedIn(email: String?, password: String?, content: @Composable () -> Unit) {
-    val auth = rollspotSdk().auth
+private fun SignedIn(token: String?, content: @Composable () -> Unit) {
+    val sdk = rollspotSdk()
     var ready by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        if (!auth.isSignedIn && email != null && password != null) runCatching { auth.signIn(email, password) }
+        if (!sdk.auth.isSignedIn && token != null) {
+            sdk.tokenStore.save(token)
+            runCatching { sdk.auth.restore() }
+        }
         ready = true
     }
     if (ready) content()

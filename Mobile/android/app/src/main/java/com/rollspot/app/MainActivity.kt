@@ -31,7 +31,7 @@ class MainActivity : ComponentActivity() {
             RollspotTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     if (DesignReview.isEnabled(review)) {
-                        DesignReviewRoot(review!!, intent?.getStringExtra(DesignReview.EMAIL_EXTRA), intent?.getStringExtra(DesignReview.PASSWORD_EXTRA))
+                        DesignReviewRoot(review!!, intent?.getStringExtra(DesignReview.TOKEN_EXTRA))
                     } else {
                         var showSplash by rememberSaveable { mutableStateOf(true) }
                         if (showSplash) SplashScreen(onFinished = { showSplash = false }) else RollspotApp()
@@ -60,9 +60,6 @@ class MainActivity : ComponentActivity() {
             intent.removeExtra(NotificationsModel.PLACE_ID_KEY)
         }
         val uri = intent?.data ?: return
-        if (uri.scheme == "puspadi" && uri.host == "auth") {
-            app.authCallbacks.tryEmit(Unit)
-        }
         // Same link format iOS shares (DeepLinkRouter.swift): the place opens on either app.
         if (uri.scheme == "puspadifellas" && uri.host == "place") {
             uri.getQueryParameter("place_id")?.takeIf { it.isNotBlank() }?.let { app.pendingPlaceLink.value = it }

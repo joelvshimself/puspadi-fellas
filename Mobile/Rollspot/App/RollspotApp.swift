@@ -27,7 +27,6 @@ struct RollspotApp: App {
             .onOpenURL { url in
                 if GIDSignIn.sharedInstance.handle(url) { return }
                 DeepLinkRouter.shared.handle(url)
-                Task { await authSession.handleAuthCallback(url) }
             }
             .onChange(of: scenePhase) { _, phase in
                 // Notifications may have been switched on or off in iOS Settings meanwhile.

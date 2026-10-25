@@ -28,5 +28,4 @@ enum CloudflareConfig {
         return value.contains("REPLACE_WITH") ? "" : value
     }()
 
-    static let authCallbackURL = URL(string: "puspadi://auth/callback")!
 }

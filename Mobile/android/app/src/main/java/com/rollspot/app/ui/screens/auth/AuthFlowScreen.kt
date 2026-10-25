@@ -24,8 +24,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.RadioButtonChecked
-import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -39,17 +37,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import app.rollspot.shared.auth.AuthRules
 import app.rollspot.shared.auth.AuthStep
 import app.rollspot.shared.auth.MobilityAids
 import com.rollspot.app.R
-import com.rollspot.app.RollspotApplication
 import com.rollspot.app.ui.rollspotSdk
 import com.rollspot.app.ui.theme.*
 import kotlinx.coroutines.launch
@@ -57,13 +51,11 @@ import kotlinx.coroutines.launch
 /** Starting state for the debug design review (`designReview` launch extra). */
 data class AuthPreview(
     val steps: List<AuthStep> = listOf(AuthStep.Welcome),
-    val password: String = "",
-    val error: String? = null,
     val aids: List<String> = emptyList(),
 )
 
 /**
- * Sign-in / sign-up. One screen per iOS view in Views/Auth (same layout, sizes and copy);
+ * Sign-in (Apple/Google) and onboarding. One screen per iOS view in Views/Auth (same layout, sizes and copy);
  * which screen comes next is decided by the shared AuthModel.
  */
 @Composable
@@ -74,10 +66,6 @@ fun AuthFlowScreen(onDone: () -> Unit, onCancel: () -> Unit, preview: AuthPrevie
     val context = LocalContext.current
 
     LaunchedEffect(state.step) { if (state.step is AuthStep.Done) onDone() }
-    val callbacks = (context.applicationContext as RollspotApplication).authCallbacks
-    LaunchedEffect(Unit) {
-        callbacks.collect { if (viewModel.state.value.step is AuthStep.VerifyEmail) viewModel.completeVerifiedSignUp() }
-    }
     BackHandler { if (!viewModel.back()) onCancel() }
 
     // Push forward, pop back: same direction as a navigation stack on iOS.
@@ -103,11 +91,8 @@ fun AuthFlowScreen(onDone: () -> Unit, onCancel: () -> Unit, preview: AuthPrevie
                 ) {
                     when (step) {
                         AuthStep.Welcome -> WelcomeStep(state, viewModel, onCancel)
-                        is AuthStep.EmailFound -> EmailFoundStep(step.email, state, viewModel, preview)
-                        is AuthStep.CreatePassword -> CreatePasswordStep(step.email, state, viewModel)
                         is AuthStep.Name -> NameStep(step.suggestedName, state, viewModel)
                         AuthStep.Mobility -> MobilityStep(state, viewModel, preview?.aids.orEmpty())
-                        is AuthStep.VerifyEmail -> VerifyEmailStep(step.email, state, viewModel)
                         else -> Unit
                     }
                 }
@@ -139,12 +124,10 @@ private fun InputField(
     onValueChange: (String) -> Unit,
     placeholder: String,
     error: Boolean = false,
-    secret: Boolean = false,
     keyboardType: KeyboardType = KeyboardType.Text,
     enabled: Boolean = true,
 ) {
     var focused by remember { mutableStateOf(false) }
-    var reveal by remember { mutableStateOf(false) }
     FieldBox(focused = focused, error = error) {
         Box(Modifier.weight(1f)) {
             if (value.isEmpty()) Text(placeholder, style = Rollspot.Body, color = Color(0x4D3C3C43))
@@ -155,19 +138,10 @@ private fun InputField(
                 singleLine = true,
                 textStyle = Rollspot.Body.copy(color = Color.Black),
                 cursorBrush = SolidColor(Rollspot.BrandBlue),
-                visualTransformation = if (secret && !reveal) PasswordVisualTransformation('●') else VisualTransformation.None,
-                keyboardOptions = KeyboardOptions(keyboardType = if (secret) KeyboardType.Password else keyboardType),
+                keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
                 // The hint is drawn separately; this names the field for TalkBack.
                 modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused }
                     .semantics { contentDescription = placeholder },
-            )
-        }
-        if (secret) {
-            Icon(
-                if (reveal) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                contentDescription = if (reveal) "Hide password" else "Show password",
-                tint = Rollspot.Secondary,
-                modifier = Modifier.size(20.dp).clickable { reveal = !reveal },
             )
         }
     }
@@ -178,7 +152,6 @@ private fun SocialButtons(state: AuthUiState, viewModel: AuthViewModel) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("or Sign in with", style = Rollspot.Caption, color = Rollspot.Secondary)
         // Apple sign-in on Android needs a web redirect flow; it is hidden until that exists.
         GoogleButton(enabled = !state.isBusy) {
             if (!GoogleSignIn.isConfigured) {
@@ -206,7 +179,6 @@ private fun ErrorText(state: AuthUiState) {
 
 @Composable
 private fun ColumnScope.WelcomeStep(state: AuthUiState, viewModel: AuthViewModel, onCancel: () -> Unit) {
-    var email by rememberSaveable { mutableStateOf("") }
     Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
             Text(
@@ -217,68 +189,10 @@ private fun ColumnScope.WelcomeStep(state: AuthUiState, viewModel: AuthViewModel
             )
         }
         Heading("Welcome to Rollspot", "Sign in or create an account to save places and contribute to the community.")
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            InputField(email, { email = it }, "Email Address", error = state.error != null, keyboardType = KeyboardType.Email)
+        Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SocialButtons(state, viewModel)
             ErrorText(state)
         }
-        // Always looks active (design); an invalid email gets the shared inline error.
-        ContinueButton("Continue", loading = state.isBusy) { viewModel.continueWithEmail(email) }
-        SocialButtons(state, viewModel)
-    }
-}
-
-@Composable
-private fun ColumnScope.EmailFoundStep(email: String, state: AuthUiState, viewModel: AuthViewModel, preview: AuthPreview?) {
-    var emailText by rememberSaveable { mutableStateOf(email) }
-    var password by rememberSaveable { mutableStateOf(preview?.password.orEmpty()) }
-    val error = state.error ?: preview?.error
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        TopBar(viewModel)
-        Heading("Welcome to Rollspot", "Sign in or create an account to save places and contribute to the community.")
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            FieldLabel("Email")
-            InputField(emailText, { emailText = it }, "Email Address", keyboardType = KeyboardType.Email)
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            FieldLabel("Password", error = error != null)
-            InputField(password, { password = it }, "Password", error = error != null, secret = true)
-            error?.let { Text(it, style = Rollspot.Caption, color = Rollspot.ErrorRed) }
-        }
-        ContinueButton("Continue", loading = state.isBusy) { viewModel.signIn(emailText, password) }
-        SocialButtons(state, viewModel)
-    }
-}
-
-@Composable
-private fun ColumnScope.CreatePasswordStep(email: String, state: AuthUiState, viewModel: AuthViewModel) {
-    var password by rememberSaveable { mutableStateOf("") }
-    var confirm by rememberSaveable { mutableStateOf("") }
-    val valid = AuthRules.isValidPassword(password)
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        TopBar(viewModel)
-        Heading("Create a password")
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            FieldLabel("Email")
-            InputField(email, {}, "Email Address", enabled = false)
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            FieldLabel("Password")
-            InputField(password, { password = it }, "Password", secret = true)
-            Text(
-                AuthRules.PASSWORD_HINT,
-                style = Rollspot.Caption,
-                color = if (password.isEmpty() || valid) Rollspot.Secondary else Rollspot.ErrorRed,
-            )
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            FieldLabel("Confirm Password")
-            InputField(confirm, { confirm = it }, "Confirm Password", secret = true)
-        }
-        ErrorText(state)
-    }
-    Spacer(Modifier.weight(1f))
-    ContinueButton("Continue", Modifier.padding(bottom = 12.dp), enabled = valid && password == confirm) {
-        viewModel.choosePassword(password)
     }
 }
 
@@ -342,25 +256,6 @@ private fun ColumnScope.MobilityStep(state: AuthUiState, viewModel: AuthViewMode
     ContinueButton("Continue", Modifier.padding(bottom = 12.dp), enabled = selected.isNotEmpty(), loading = state.isBusy) {
         viewModel.finishMobility(MobilityAids.options.filter { it in selected })
     }
-}
-
-@Composable
-private fun ColumnScope.VerifyEmailStep(email: String, state: AuthUiState, viewModel: AuthViewModel) {
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        TopBar(viewModel)
-        StepProgressBar(0.88f, Modifier.padding(vertical = 8.dp))
-        Heading("Check your email", "We sent a confirmation link to $email. Tap it, then come back here.")
-        ErrorText(state)
-        state.notice?.let { Text(it, style = Rollspot.Caption, color = Rollspot.Secondary) }
-        Text(
-            "Resend email",
-            style = Rollspot.Subheadline.copy(fontWeight = FontWeight.SemiBold),
-            color = Rollspot.BrandBlue,
-            modifier = Modifier.clickable(enabled = !state.isBusy) { viewModel.resendVerificationEmail() },
-        )
-    }
-    Spacer(Modifier.weight(1f))
-    ContinueButton("I've confirmed", Modifier.padding(bottom = 12.dp), loading = state.isBusy) { viewModel.completeVerifiedSignUp() }
 }
 
 /** "You're all set!": a floating glass card over the map (design "Welcome Screen", iOS AuthAllSetView). */

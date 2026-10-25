@@ -53,7 +53,7 @@ class RollspotApiTest {
                 """{"token":"t","user":{"id":"u1","email":"a@b.co","emailVerified":true}}""",
                 headers = headersOf(HttpHeaders.ContentType to listOf("application/json"), "set-auth-token" to listOf("session-123")),
             )
-        }.signInWithEmail("a@b.co", "pw")
+        }.signInWithIdToken("apple", "id-token", "nonce")
         assertEquals("u1", user.id)
         assertEquals("session-123", tokens.load())
     }
@@ -78,12 +78,12 @@ class RollspotApiTest {
         val tokens = InMemoryTokenStore("keep-me")
         val error = assertFailsWith<ApiException> {
             api(tokens) {
-                respond("""{"message":"Email not verified","code":"EMAIL_NOT_VERIFIED"}""", HttpStatusCode.Forbidden, jsonHeaders)
-            }.signInWithEmail("a@b.co", "pw")
+                respond("""{"message":"Invalid token","code":"INVALID_TOKEN"}""", HttpStatusCode.Unauthorized, jsonHeaders)
+            }.signInWithIdToken("google", "bad", null)
         }
-        assertEquals(403, error.status)
-        assertEquals("EMAIL_NOT_VERIFIED", error.code)
-        assertEquals("Email not verified", error.message)
+        assertEquals(401, error.status)
+        assertEquals("INVALID_TOKEN", error.code)
+        assertEquals("Invalid token", error.message)
         assertEquals("keep-me", tokens.load())
     }
 

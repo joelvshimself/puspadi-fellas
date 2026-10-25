@@ -4,9 +4,7 @@ import app.rollspot.shared.api.ContributionElevator
 import app.rollspot.shared.api.ContributionElevatorPass
 import app.rollspot.shared.api.ContributionPhoto
 import app.rollspot.shared.api.ContributionSubmission
-import app.rollspot.shared.auth.AuthException
 import app.rollspot.shared.auth.AuthSession
-import app.rollspot.shared.auth.AuthStep
 import app.rollspot.shared.auth.InMemoryTokenStore
 import app.rollspot.shared.auth.MobilityRole
 import app.rollspot.shared.place.PlaceDetailState
@@ -26,15 +24,16 @@ import kotlin.test.assertTrue
  *   cd backend && npm run dev     # and sync places once (see CLAUDE.md)
  *   ROLLSPOT_LIVE_URL=http://localhost:8787 ./gradlew :shared:testDebugUnitTest --tests '*LiveBackendTest*' --rerun
  *
- * The full journey also needs a verified account it may delete: set ROLLSPOT_LIVE_EMAIL and
- * ROLLSPOT_LIVE_PASSWORD (sign up, then open the verification link from the wrangler output).
+ * The full journey also needs a signed-in account it may delete. Sign-in is Apple/Google only, so
+ * sign in with a debug app pointed at the same backend and pass its session token as
+ * ROLLSPOT_LIVE_TOKEN (the `session` table's `token` column in the local D1).
  */
 class LiveBackendTest {
     private val baseUrl = System.getenv("ROLLSPOT_LIVE_URL")
 
-    private fun live(block: suspend (RollspotSdk) -> Unit) {
+    private fun live(token: String? = null, block: suspend (RollspotSdk) -> Unit) {
         if (baseUrl.isNullOrBlank()) return
-        runBlocking { block(RollspotSdk(baseUrl, InMemoryTokenStore())) }
+        runBlocking { block(RollspotSdk(baseUrl, InMemoryTokenStore(token))) }
     }
 
     @Test
@@ -46,19 +45,6 @@ class LiveBackendTest {
         assertEquals(found.first().id, place.id)
     }
 
-    @Test
-    fun emailSignUpStopsAtVerification() = live { sdk ->
-        val email = "live-${System.currentTimeMillis()}@example.com"
-        assertIs<AuthStep.CreatePassword>(sdk.auth.continueWithEmail(email))
-        sdk.auth.choosePassword("Passw0rd!")
-        sdk.auth.chooseName("Live Test")
-        assertEquals(AuthStep.VerifyEmail(email), sdk.auth.finishMobility(listOf("Wheelchair")))
-        val error = runCatching { sdk.auth.completeVerifiedSignUp() }.exceptionOrNull()
-        assertIs<AuthException>(error)
-        assertEquals("EMAIL_NOT_VERIFIED", error.code)
-        assertEquals(AuthStep.EmailFound(email), sdk.auth.continueWithEmail(email))
-    }
-
     /**
      * Every feature, in the order a user meets them, through the same shared models the apps
      * use: sign in (F1), map (F2), place page (F3), contribute (F4), profile/saved/my reviews and
@@ -66,17 +52,10 @@ class LiveBackendTest {
      */
     @Test
     fun fullJourney() {
-        val email = System.getenv("ROLLSPOT_LIVE_EMAIL") ?: return
-        val password = System.getenv("ROLLSPOT_LIVE_PASSWORD") ?: return
-        live { sdk ->
-            // F1: a known, verified email signs in (onboarding first if it was never finished).
-            assertEquals(AuthStep.EmailFound(email.lowercase()), sdk.auth.continueWithEmail(email))
-            var step = sdk.auth.signIn(email, password)
-            if (step is AuthStep.Name) {
-                sdk.auth.chooseName("Live Journey")
-                step = sdk.auth.finishMobility(listOf("Wheelchair"))
-            }
-            assertTrue(step == AuthStep.Done || step == AuthStep.AllSet, "signed in: $step")
+        val token = System.getenv("ROLLSPOT_LIVE_TOKEN") ?: return
+        live(token) { sdk ->
+            // F1: the session from the app is valid.
+            sdk.auth.restore()
             assertIs<AuthSession.SignedIn>(sdk.auth.session.value)
 
             // F2: the map's nearby places come from the directory, nearest first.
@@ -157,7 +136,9 @@ class LiveBackendTest {
             // F5: deleting the account signs out, and the account no longer exists.
             sdk.auth.deleteAccount()
             assertIs<AuthSession.SignedOut>(sdk.auth.session.value)
-            assertIs<AuthStep.CreatePassword>(sdk.auth.continueWithEmail(email))
+            val again = RollspotSdk(baseUrl, InMemoryTokenStore(token))
+            again.auth.restore()
+            assertIs<AuthSession.SignedOut>(again.auth.session.value, "the old session must be gone")
         }
     }
 }

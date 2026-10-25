@@ -217,18 +217,17 @@ class SdkSessionWiringTest {
             InMemoryTokenStore("session"),
             MockEngine { request ->
                 when (request.url.encodedPath) {
-                    "/api/auth/sign-in/email" -> respond(
+                    "/api/auth/sign-in/social" -> respond(
                         """{"user":{"id":"u1","email":"a@b.co","emailVerified":true}}""",
                         headers = headersOf(HttpHeaders.ContentType to listOf("application/json"), "set-auth-token" to listOf("tok")),
                     )
-                    "/v1/auth/providers" -> respond("""{"providers":["credential"]}""", headers = jsonHeaders)
                     "/v1/profile" -> respond("""{"id":"u1","pseudonym":"p","mobility_aids":["Wheelchair"]}""", headers = jsonHeaders)
                     "/v1/saved-places" -> respond("""{"place_ids":["a"],"places":[${placeJson("a", "Artasedana")}]}""", headers = jsonHeaders)
                     else -> respond("""{"success":true}""", headers = jsonHeaders)
                 }
             },
         )
-        sdk.auth.signIn("a@b.co", "Passw0rd!")
+        sdk.auth.signInWithIdToken("apple", "id-token", "nonce", suggestedName = null, isNewAccount = false)
         sdk.saved.load()
         sdk.profile.load()
         assertTrue(sdk.saved.isSaved("a"))

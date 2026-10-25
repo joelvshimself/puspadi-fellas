@@ -333,31 +333,10 @@ data class AuthUser(
 internal data class AuthUserResponse(val user: AuthUser? = null)
 
 @Serializable
-internal data class EmailBody(val email: String)
-
-@Serializable
-internal data class EmailRegistered(val registered: Boolean)
-
-@Serializable
-internal data class EmailPassword(val email: String, val password: String)
-
-@Serializable
-internal data class EmailSignUp(val name: String, val email: String, val password: String, val callbackURL: String)
-
-@Serializable
-internal data class VerificationEmail(val email: String, val callbackURL: String)
-
-@Serializable
 internal data class SocialSignIn(val provider: String, val idToken: IdToken) {
     @Serializable
     data class IdToken(val token: String, val nonce: String? = null)
 }
-
-@Serializable
-internal data class ChangePassword(val currentPassword: String, val newPassword: String, val revokeOtherSessions: Boolean)
-
-@Serializable
-internal data class Providers(val providers: List<String>)
 
 @Serializable
 internal data class ErrorBody(val error: String? = null, val code: String? = null, val message: String? = null)

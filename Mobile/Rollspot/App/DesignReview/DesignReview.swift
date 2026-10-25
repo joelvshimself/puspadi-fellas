@@ -7,13 +7,11 @@ import SwiftUI
 enum DesignReview: String, CaseIterable {
     case splash
     case welcome
-    case emailFound, emailFoundFilled, emailFoundError
-    case createPassword
     case name
     case mobility, mobilityFilled
     case allSet
     case home, homeFilter, homeFilterChosen, homeSearch, homeSearchQuery
-    // Signed in: pass `-designReviewEmail <email> -designReviewPassword <password>` (a local test account).
+    // Signed in: pass `-designReviewToken <session token>` (from the local D1 `session` table).
     case profile, profileDeleteReview, profilePhotos, profileSettings, profileLanguage, notifications
     case myAccount, mobilityProfile, deleteAccount, accountDeleted
     case editResponse, editResponseLeave
@@ -33,7 +31,6 @@ enum DesignReview: String, CaseIterable {
         return DesignReview(rawValue: args[index + 1])
     }()
 
-    static let sampleEmail = "name@gmail.com"
 
     static func argument(_ name: String) -> String? {
         let args = ProcessInfo.processInfo.arguments
@@ -55,16 +52,12 @@ struct DesignReviewRoot: View {
             SplashScreenView()
         case .welcome:
             login([])
-        case .emailFound, .emailFoundFilled, .emailFoundError:
-            login([.emailFound(DesignReview.sampleEmail)])
-        case .createPassword:
-            login([.createPassword(DesignReview.sampleEmail)])
         case .name:
-            login([.createPassword(DesignReview.sampleEmail), .name])
+            login([.name])
         case .mobility:
-            login([.createPassword(DesignReview.sampleEmail), .name, .mobility])
+            login([.name, .mobility])
         case .mobilityFilled:
-            login([.createPassword(DesignReview.sampleEmail), .name, .mobility], aids: ["Wheelchair"])
+            login([.name, .mobility], aids: ["Wheelchair"])
         case .allSet:
             login([.allSet])
         case .home, .homeFilter, .homeFilterChosen, .homeSearch, .homeSearchQuery:
@@ -270,10 +263,9 @@ private struct DesignReviewSignIn<Content: View>: View {
             if ready { content } else { ProgressView() }
         }
         .task {
-            if !auth.isSignedIn,
-               let email = DesignReview.argument("-designReviewEmail"),
-               let password = DesignReview.argument("-designReviewPassword") {
-                _ = try? await auth.signIn(email: email, password: password)
+            if !auth.isSignedIn, let token = DesignReview.argument("-designReviewToken") {
+                RollspotServices.sdk.tokenStore.save(token: token)
+                try? await RollspotServices.sdk.auth.restore()
             }
             ready = true
         }

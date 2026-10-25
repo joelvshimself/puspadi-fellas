@@ -15,7 +15,6 @@ data class AuthUiState(
     val steps: List<AuthStep> = listOf(AuthStep.Welcome),
     val isBusy: Boolean = false,
     val error: String? = null,
-    val notice: String? = null,
 ) {
     val step: AuthStep get() = steps.last()
 }
@@ -31,28 +30,11 @@ class AuthViewModel(
     private val _state = MutableStateFlow(AuthUiState(steps = initialSteps))
     val state: StateFlow<AuthUiState> = _state.asStateFlow()
 
-    fun continueWithEmail(email: String) = run { auth.continueWithEmail(email) }
-    fun signIn(email: String, password: String) = run { auth.signIn(email, password) }
-    fun choosePassword(password: String) = run { auth.choosePassword(password) }
     fun chooseName(name: String) = run { auth.chooseName(name) }
     fun finishMobility(aids: List<String>) = run { auth.finishMobility(aids) }
-    fun completeVerifiedSignUp() = run { auth.completeVerifiedSignUp() }
 
     fun signInWithGoogle(idToken: String, displayName: String?) = run {
         auth.signInWithIdToken("google", idToken, null, displayName, isNewAccount = false)
-    }
-
-    fun resendVerificationEmail() {
-        if (_state.value.isBusy) return
-        _state.update { it.copy(isBusy = true, error = null, notice = null) }
-        viewModelScope.launch {
-            try {
-                auth.resendVerificationEmail()
-                _state.update { it.copy(isBusy = false, notice = "A new confirmation email was sent.") }
-            } catch (error: Exception) {
-                _state.update { it.copy(isBusy = false, error = error.message) }
-            }
-        }
     }
 
     fun showError(message: String) = _state.update { it.copy(error = message) }
@@ -60,13 +42,13 @@ class AuthViewModel(
     /** Returns false when there is nothing to go back to (leave the flow). */
     fun back(): Boolean {
         if (_state.value.steps.size <= 1) return false
-        _state.update { it.copy(steps = it.steps.dropLast(1), error = null, notice = null) }
+        _state.update { it.copy(steps = it.steps.dropLast(1), error = null) }
         return true
     }
 
     private fun run(action: suspend () -> AuthStep) {
         if (_state.value.isBusy) return
-        _state.update { it.copy(isBusy = true, error = null, notice = null) }
+        _state.update { it.copy(isBusy = true, error = null) }
         viewModelScope.launch {
             try {
                 val next = action()

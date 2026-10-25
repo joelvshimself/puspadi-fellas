@@ -22,7 +22,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import app.rollspot.shared.auth.AuthRules
 import app.rollspot.shared.auth.AuthSession
 import app.rollspot.shared.auth.MobilityRole
 import app.rollspot.shared.places.PlaceRepository

@@ -44,3 +44,35 @@ Without the four `rollspot.firebase.*` values the app builds and runs normally, 
 (the Notifications switches still save, and review reminders still work: they're local).
 
 Without `rollspot.apiBaseUrl` the app talks to production (`https://rollspot-api.joecast208.workers.dev`).
+
+## Release build for Google Play
+
+Create the upload key once and keep it (and its passwords) somewhere safe outside the repo. Losing it
+means asking Google to reset the upload key, which takes days.
+
+```bash
+keytool -genkeypair -v -keystore ~/rollspot-upload.jks -alias upload \
+  -keyalg RSA -keysize 2048 -validity 10000
+```
+
+Then add to `Mobile/local.properties` (paths are relative to `Mobile/`, or absolute):
+
+```properties
+rollspot.release.storeFile=/Users/<you>/rollspot-upload.jks
+rollspot.release.storePassword=...
+rollspot.release.keyAlias=upload
+rollspot.release.keyPassword=...
+```
+
+Raise `versionCode` in `app/build.gradle.kts` for every upload, then build the bundle:
+
+```bash
+cd Mobile && ./gradlew :androidApp:bundleRelease
+# → android/app/build/outputs/bundle/release/androidApp-release.aab
+```
+
+Without the `rollspot.release.*` values `bundleRelease` still builds, unsigned, and Play rejects it.
+
+Play Console asks for two links; both are on the website:
+- Privacy policy: `/privacy`
+- Account deletion: `/delete-account`

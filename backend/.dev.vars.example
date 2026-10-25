@@ -1,13 +1,14 @@
 # Local overrides for `npm run dev`. Copy to .dev.vars (gitignored).
-# Links in emails and media URLs point here instead of production:
+# Media URLs point here instead of production:
 API_BASE_URL=http://localhost:8787
 BETTER_AUTH_SECRET=generate-a-random-secret-at-least-32-characters-long
+# Apple: only for web sign-in; the iOS app's native button works without these.
 APPLE_TEAM_ID=
 APPLE_KEY_ID=
 APPLE_PRIVATE_KEY=
+# Google: the web OAuth client ID (Android passes it to Credential Manager). The secret is optional.
 GOOGLE_WEB_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
-RESEND_API_KEY=
 ADMIN_TOKEN=
 # Push notifications: the Firebase service account JSON on one line (optional; push is off without it).
 FCM_SERVICE_ACCOUNT=

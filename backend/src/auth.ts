@@ -2,6 +2,7 @@ import { betterAuth } from "better-auth";
 import { bearer } from "better-auth/plugins";
 import { importPKCS8, SignJWT } from "jose";
 import type { Env } from "./env";
+import { HttpError } from "./http";
 
 async function appleClientSecret(env: Env): Promise<string> {
   const privateKey = env.APPLE_PRIVATE_KEY.replaceAll("\\n", "\n");
@@ -17,41 +18,23 @@ async function appleClientSecret(env: Env): Promise<string> {
     .sign(key);
 }
 
-async function sendEmail(env: Env, to: string, subject: string, html: string): Promise<void> {
-  if (!env.RESEND_API_KEY) {
-    // Local development: no mail provider, so print the message (and its link) to the wrangler console.
-    console.log(`[email to ${to}] ${subject}\n${html}`);
-    return;
-  }
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${env.RESEND_API_KEY}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({ from: env.EMAIL_FROM, to: [to], subject, html }),
-  });
-  if (!response.ok) throw new Error(`Email delivery failed with status ${response.status}.`);
-}
-
 /**
- * Only providers with credentials are enabled, so a local `wrangler dev` with
- * an empty .dev.vars still serves email sign-in instead of failing every request.
- * Google accepts ID tokens minted for any of our client IDs (web, iOS, Android).
+ * Sign-in is Apple and Google only, from the phones' native buttons, which hand us an ID token.
+ * Checking an Apple ID token needs only the bundle ID; the private key (client secret) matters only
+ * for web flows, so Apple works without it. Google accepts ID tokens minted for any of our client IDs
+ * (web, iOS, Android) and is enabled once one is set.
  */
 function socialProviders(env: Env) {
   const googleClientIds = [env.GOOGLE_WEB_CLIENT_ID, env.GOOGLE_IOS_CLIENT_ID, env.GOOGLE_ANDROID_CLIENT_ID]
     .filter((id): id is string => Boolean(id) && !id!.startsWith("replace-with"));
   return {
-    ...(env.APPLE_PRIVATE_KEY && env.APPLE_KEY_ID && env.APPLE_TEAM_ID ? {
-      apple: async () => ({
-        clientId: env.APPLE_CLIENT_ID,
-        appBundleIdentifier: env.APPLE_CLIENT_ID,
-        clientSecret: await appleClientSecret(env),
-      }),
-    } : {}),
+    apple: async () => ({
+      clientId: env.APPLE_CLIENT_ID,
+      appBundleIdentifier: env.APPLE_CLIENT_ID,
+      clientSecret: env.APPLE_PRIVATE_KEY && env.APPLE_KEY_ID && env.APPLE_TEAM_ID ? await appleClientSecret(env) : "",
+    }),
     ...(googleClientIds.length ? {
-      google: { clientId: googleClientIds, clientSecret: env.GOOGLE_CLIENT_SECRET },
+      google: { clientId: googleClientIds, clientSecret: env.GOOGLE_CLIENT_SECRET ?? "" },
     } : {}),
   };
 }
@@ -64,30 +47,6 @@ export function createAuth(env: Env) {
     secret: env.BETTER_AUTH_SECRET,
     database: env.DB,
     trustedOrigins: ["puspadi://", "puspadifellas://", "https://appleid.apple.com"],
-    emailAndPassword: {
-      enabled: true,
-      requireEmailVerification: true,
-      sendResetPassword: async ({ user, url }) => {
-        await sendEmail(
-          env,
-          user.email,
-          "Reset your Rollspot password",
-          `<p>Use this secure link to reset your Rollspot password:</p><p><a href="${url}">Reset password</a></p>`,
-        );
-      },
-    },
-    emailVerification: {
-      sendOnSignUp: true,
-      autoSignInAfterVerification: false,
-      sendVerificationEmail: async ({ user, url }) => {
-        await sendEmail(
-          env,
-          user.email,
-          "Confirm your Rollspot email",
-          `<p>Confirm your email to finish creating your Rollspot account:</p><p><a href="${url}">Confirm email</a></p>`,
-        );
-      },
-    },
     socialProviders: socialProviders(env),
     plugins: [bearer({ requireSignature: true })],
     advanced: {
@@ -100,7 +59,18 @@ export function createAuth(env: Env) {
 
 export type Auth = ReturnType<typeof createAuth>;
 
+/**
+ * Without BETTER_AUTH_SECRET, Better Auth falls back to a public default secret. Refuse instead,
+ * so a missing `wrangler secret put` shows up as a clear error rather than weak sessions.
+ */
+export function assertAuthConfigured(auth: Auth) {
+  if (!auth.options.secret) {
+    throw new HttpError(503, "Sign in isn't available yet: the server has no BETTER_AUTH_SECRET.", "auth_not_configured");
+  }
+}
+
 export async function requireUserId(auth: Auth, request: Request): Promise<string> {
+  assertAuthConfigured(auth);
   const result = await auth.api.getSession({ headers: request.headers });
   if (!result?.user?.id) {
     const error = new Error("Sign in is required.") as Error & { status?: number };

@@ -80,6 +80,15 @@ final class LanguageManager: ObservableObject {
             .indonesia: "Kata sandi salah. Coba lagi."
         ],
         "Create a password": [.english: "Create a password", .indonesia: "Buat kata sandi"],
+        "That sign-in method isn't available right now. Try the other one.": [
+            .english: "That sign-in method isn't available right now. Try the other one.",
+            .indonesia: "Metode masuk itu sedang tidak tersedia. Coba yang lain."
+        ],
+        "Sign in isn't available yet. Try again later.": [
+            .english: "Sign in isn't available yet. Try again later.",
+            .indonesia: "Masuk belum tersedia. Coba lagi nanti."
+        ],
+        "Passwords don't match.": [.english: "Passwords don't match.", .indonesia: "Kata sandi tidak cocok."],
         "Confirm your email": [.english: "Confirm your email", .indonesia: "Konfirmasi email Anda"],
         "We sent a confirmation link to": [
             .english: "We sent a confirmation link to",

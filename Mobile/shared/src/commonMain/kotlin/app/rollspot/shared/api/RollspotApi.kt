@@ -26,6 +26,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.io.IOException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 
 /**
  * The apps' one network boundary: one function per endpoint in backend/API.md.
@@ -184,30 +185,6 @@ class RollspotApi(
 
     // ---- Auth (Better Auth) ----
 
-    @Throws(Exception::class)
-    suspend fun emailRegistered(email: String): Boolean =
-        call<EmailRegistered>(HttpMethod.Post, listOf("v1", "auth", "email-registered")) { jsonBody(EmailBody(email)) }.registered
-
-    /** Creates the account and sends the verification email. No session until the email is verified. */
-    @Throws(Exception::class)
-    suspend fun signUpWithEmail(name: String, email: String, password: String, callbackUrl: String) {
-        send(HttpMethod.Post, listOf("api", "auth", "sign-up", "email")) {
-            jsonBody(EmailSignUp(name, email, password, callbackUrl))
-        }
-    }
-
-    @Throws(Exception::class)
-    suspend fun sendVerificationEmail(email: String, callbackUrl: String) {
-        send(HttpMethod.Post, listOf("api", "auth", "send-verification-email")) {
-            jsonBody(VerificationEmail(email, callbackUrl))
-        }
-    }
-
-    /** Stores the session token on success. */
-    @Throws(Exception::class)
-    suspend fun signInWithEmail(email: String, password: String): AuthUser =
-        signIn(listOf("api", "auth", "sign-in", "email"), EmailPassword(email, password))
-
     /** Exchanges an Apple or Google ID token for a session. Stores the session token on success. */
     @Throws(Exception::class)
     suspend fun signInWithIdToken(provider: String, idToken: String, nonce: String?): AuthUser =
@@ -225,10 +202,6 @@ class RollspotApi(
         return json.decodeFromString<AuthUserResponse>(text).user
     }
 
-    @Throws(Exception::class)
-    suspend fun linkedProviders(): List<String> =
-        call<Providers>(HttpMethod.Get, listOf("v1", "auth", "providers"), auth = true).providers
-
     /** Permanently deletes the account, its reviews, saved places and photos. Forgets the session. */
     @Throws(Exception::class)
     suspend fun deleteAccount() {
@@ -236,18 +209,14 @@ class RollspotApi(
         tokens.clear()
     }
 
-    @Throws(Exception::class)
-    suspend fun changePassword(currentPassword: String, newPassword: String) {
-        send(HttpMethod.Post, listOf("api", "auth", "change-password"), auth = true) {
-            jsonBody(ChangePassword(currentPassword, newPassword, revokeOtherSessions = true))
-        }
-    }
-
     /** Ends the session on the server (best effort) and always forgets it locally. */
     @Throws(Exception::class)
     suspend fun signOut() {
         try {
-            if (tokens.load() != null) send(HttpMethod.Post, listOf("api", "auth", "sign-out"), auth = true)
+            // Better Auth rejects a POST without a JSON body (415), which left the session alive.
+            if (tokens.load() != null) send(HttpMethod.Post, listOf("api", "auth", "sign-out"), auth = true) {
+                jsonBody(JsonObject(emptyMap()))
+            }
         } catch (error: ApiException) {
             // The local session is cleared regardless; a dead server session expires on its own.
         } finally {
