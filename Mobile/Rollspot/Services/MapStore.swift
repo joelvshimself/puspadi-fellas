@@ -19,6 +19,10 @@ final class MapStore: ObservableObject {
     @Published private(set) var isSearchActive = false
     /// Search results for the current query.
     @Published private(set) var results: [Place] = []
+    /// Addresses and areas from Apple Maps search, listed after the places; tapping one moves the map.
+    @Published private(set) var areaResults: [AreaResult] = []
+    /// Set while the map is somewhere Rollspot has no places yet: the covered region to offer instead.
+    @Published private(set) var uncoveredFallback: CoverageRegion?
     /// Recently opened places matching the query: the clock rows while typing.
     @Published private(set) var recents: [Place] = []
     @Published private(set) var isSearching = false
@@ -32,6 +36,7 @@ final class MapStore: ObservableObject {
     @Published private(set) var hasLoadedOnce = false
 
     init() {
+        model.areaSearch = AppleAreaSearchProvider()
         apply(model.state.value)
         observer = Task { [weak self] in
             guard let states = self?.model.state else { return }
@@ -61,6 +66,16 @@ final class MapStore: ObservableObject {
         model.onQueryChanged(query: text)
     }
 
+    /// Flies the map to an address or area from the search results; the shared model loads places there.
+    func goTo(_ area: AreaResult) {
+        model.goTo(area: area)
+    }
+
+    /// "Go to Bali" from the not-covered notice.
+    func goTo(_ region: CoverageRegion) {
+        model.goTo(region: region)
+    }
+
     /// Chooses a grade to filter to; choosing the active one clears it. The shared model widens the area if needed.
     func setGradeFilter(_ grade: OverallAccessibility) {
         model.setGradeFilter(grade: grade.shared)
@@ -88,6 +103,8 @@ final class MapStore: ObservableObject {
         visiblePlaces = state.visiblePins.map { NearbyPlacesService.makePlace(from: $0.place, distanceFrom: origin) }
         isSearchActive = state.isSearchActive
         results = state.freshResults.map { NearbyPlacesService.makePlace(from: $0.place, distanceFrom: origin) }
+        areaResults = state.areaResults
+        uncoveredFallback = state.isOutsideCoverage ? state.nearestCoveredRegion : nil
         recents = state.matchingRecents.map { NearbyPlacesService.makePlace(from: $0.place, distanceFrom: origin) }
         gradeFilter = state.gradeFilter.map { OverallAccessibility($0) }
         if let focus = state.focus, Int(focus.nonce) != focusNonce {

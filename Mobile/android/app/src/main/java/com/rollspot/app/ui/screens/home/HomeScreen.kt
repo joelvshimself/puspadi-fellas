@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -62,6 +63,7 @@ import androidx.navigation.NavController
 import app.rollspot.shared.map.MapPin
 import app.rollspot.shared.places.OverallAccessibility
 import app.rollspot.shared.places.PlaceRepository
+import com.rollspot.app.data.GeocoderAreaSearchProvider
 import com.rollspot.app.data.LocationService
 import com.rollspot.app.ui.components.CameraTarget
 import com.rollspot.app.ui.components.PinMap
@@ -88,9 +90,9 @@ private val FilterGrades = listOf(
 @Composable
 fun HomeScreen(navController: NavController, review: String? = null) {
     val sdk = rollspotSdk()
-    val viewModel: HomeViewModel = viewModel { HomeViewModel(sdk) }
-    val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val viewModel: HomeViewModel = viewModel { HomeViewModel(sdk, GeocoderAreaSearchProvider(context)) }
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val location = remember { LocationService(context) }
     var hasPermission by remember { mutableStateOf(location.hasPermission) }
     var cameraTarget by remember { mutableStateOf<CameraTarget?>(null) }
@@ -150,7 +152,7 @@ fun HomeScreen(navController: NavController, review: String? = null) {
             requestPermission()
         }
     }
-    // The filter widened the search area: move the camera to what it found.
+    // The filter widened the search area, or an area/region was picked: move the camera there.
     LaunchedEffect(state.focus) {
         val focus = state.focus ?: return@LaunchedEffect
         if (focus.nonce == handledFocusNonce) return@LaunchedEffect
@@ -278,6 +280,18 @@ fun HomeScreen(navController: NavController, review: String? = null) {
 
         SearchPeek(onClick = { searchOpen = true }, modifier = Modifier.align(Alignment.BottomCenter))
 
+        // The map is somewhere the directory doesn't cover yet: say so, and offer the nearest covered region.
+        val region = state.nearestCoveredRegion
+        androidx.compose.animation.AnimatedVisibility(
+            visible = state.isOutsideCoverage && region != null && !searchOpen && !filterOpen,
+            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
+                .padding(start = 16.dp, end = 16.dp, bottom = PeekHeight + 72.dp),
+            enter = slideInVertically(tween(250, easing = Rollspot.EaseOut)) { it / 3 } + fadeIn(tween(250, easing = Rollspot.EaseOut)),
+            exit = slideOutVertically(tween(200, easing = Rollspot.EaseOut)) { it / 3 } + fadeOut(tween(200, easing = Rollspot.EaseOut)),
+        ) {
+            region?.let { NotCoveredNotice(it.name) { viewModel.goTo(it) } }
+        }
+
         state.error?.let {
             // Under the top bar so it never covers the location button; tap to try again.
             Surface(
@@ -305,6 +319,7 @@ fun HomeScreen(navController: NavController, review: String? = null) {
                 onQueryChange = viewModel::onQueryChanged,
                 onClose = { searchOpen = false; viewModel.clearQuery() },
                 onPick = ::open,
+                onPickArea = { area -> searchOpen = false; viewModel.goTo(area) },
                 onSearchNearby = { focusManager.clearFocus() },
             )
         }
@@ -388,3 +403,37 @@ private fun OverallAccessibility.filterLabel(): String = stringResource(
         else -> R.string.not_accessible
     },
 )
+
+/** Floating card over the map when it shows an area the directory doesn't cover yet. */
+@Composable
+private fun NotCoveredNotice(regionName: String, onGo: () -> Unit) {
+    val shape = RoundedCornerShape(20.dp)
+    val interaction = remember { MutableInteractionSource() }
+    Row(
+        Modifier.fillMaxWidth()
+            .shadow(12.dp, shape, ambientColor = Color(0x1F000000), spotColor = Color(0x1F000000))
+            .glass(shape, tint = 0.7f)
+            .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            stringResource(R.string.area_not_covered),
+            Modifier.weight(1f),
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+            color = Color(0xFF363636),
+        )
+        Spacer(Modifier.width(12.dp))
+        Box(
+            Modifier
+                .pressScale(interaction)
+                .height(40.dp)
+                .background(RollspotBlue, CircleShape)
+                .clickable(interactionSource = interaction, indication = null, onClick = onGo)
+                .padding(horizontal = 16.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(stringResource(R.string.go_to_region, regionName), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}

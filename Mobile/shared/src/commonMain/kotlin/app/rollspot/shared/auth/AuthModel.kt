@@ -210,8 +210,12 @@ class AuthModel(private val api: RollspotApi) {
         _session.value = AuthSession.SignedOut
     }
 
+    /** Runs while the session is still valid, e.g. to stop pushes to this phone. Set by [app.rollspot.shared.RollspotSdk]. */
+    internal var beforeSignOut: (suspend () -> Unit)? = null
+
     @Throws(Exception::class)
     suspend fun signOut() {
+        runCatching { beforeSignOut?.invoke() }
         api.signOut()
         resetDraft()
         _session.value = AuthSession.SignedOut

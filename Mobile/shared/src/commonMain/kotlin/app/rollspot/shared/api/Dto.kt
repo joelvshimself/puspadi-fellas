@@ -1,5 +1,6 @@
 package app.rollspot.shared.api
 
+import app.rollspot.shared.map.CoverageRegion
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
@@ -40,6 +41,9 @@ internal data class PlacesResponse(val places: List<Place>, val attribution: Str
 
 @Serializable
 internal data class PlaceResponse(val place: Place)
+
+@Serializable
+internal data class RegionsResponse(val regions: List<CoverageRegion>)
 
 @Serializable
 data class PlacePhoto(
@@ -294,6 +298,9 @@ data class Profile(
     @SerialName("mobility_aids") val mobilityAids: List<String> = emptyList(),
     val pseudonym: String,
     @SerialName("show_real_name") val showRealName: Boolean = false,
+    @SerialName("notify_saved_place_reviews") val notifySavedPlaceReviews: Boolean = true,
+    @SerialName("notify_announcements") val notifyAnnouncements: Boolean = true,
+    @SerialName("notify_review_reminders") val notifyReviewReminders: Boolean = true,
 ) {
     /** Onboarding ends with the mobility question, so an empty answer means it was never finished. */
     val needsOnboarding: Boolean get() = mobilityAids.isEmpty()
@@ -304,7 +311,13 @@ data class ProfileUpdate(
     val displayName: String? = null,
     val mobilityAids: List<String>? = null,
     val showRealName: Boolean? = null,
+    val notifySavedPlaceReviews: Boolean? = null,
+    val notifyAnnouncements: Boolean? = null,
+    val notifyReviewReminders: Boolean? = null,
 )
+
+@Serializable
+internal data class PushDevice(val token: String, val platform: String)
 
 // ---- Auth ----
 

@@ -164,6 +164,30 @@ final class LanguageManager: ObservableObject {
         "Save": [.english: "Save", .indonesia: "Simpan"],
         "Language": [.english: "Language", .indonesia: "Bahasa"],
         "Notifications": [.english: "Notifications", .indonesia: "Notifikasi"],
+        "Rollspot doesn't cover this area yet": [.english: "Rollspot doesn't cover this area yet", .indonesia: "Rollspot belum mencakup area ini"],
+        "Go to %@": [.english: "Go to %@", .indonesia: "Ke %@"],
+        "Go to this area": [.english: "Go to this area", .indonesia: "Ke area ini"],
+        "Moves the map there": [.english: "Moves the map there", .indonesia: "Memindahkan peta ke sana"],
+        "Reviews at places you saved": [.english: "Reviews at places you saved", .indonesia: "Ulasan di tempat yang kamu simpan"],
+        "When someone reviews a place you saved": [.english: "When someone reviews a place you saved", .indonesia: "Saat seseorang mengulas tempat yang kamu simpan"],
+        "Review reminders": [.english: "Review reminders", .indonesia: "Pengingat ulasan"],
+        "A nudge to finish a review you started": [.english: "A nudge to finish a review you started", .indonesia: "Pengingat untuk menyelesaikan ulasan yang sudah kamu mulai"],
+        "News from Rollspot": [.english: "News from Rollspot", .indonesia: "Kabar dari Rollspot"],
+        "New places, cities and features": [.english: "New places, cities and features", .indonesia: "Tempat, kota, dan fitur baru"],
+        "Notifications are turned off for Rollspot in your phone's settings.": [
+            .english: "Notifications are turned off for Rollspot in your phone's settings.",
+            .indonesia: "Notifikasi Rollspot dimatikan di pengaturan ponselmu."
+        ],
+        "Open Settings": [.english: "Open Settings", .indonesia: "Buka Pengaturan"],
+        "Couldn't save that. Check your connection and try again.": [
+            .english: "Couldn't save that. Check your connection and try again.",
+            .indonesia: "Gagal menyimpan. Periksa koneksimu dan coba lagi."
+        ],
+        "Finish your review": [.english: "Finish your review", .indonesia: "Selesaikan ulasanmu"],
+        "You're part-way through reviewing %@. It only takes a minute.": [
+            .english: "You're part-way through reviewing %@. It only takes a minute.",
+            .indonesia: "Kamu belum selesai mengulas %@. Hanya butuh semenit."
+        ],
         "About App": [.english: "About App", .indonesia: "Tentang Aplikasi"],
         "What is Rollspot?": [.english: "What is Rollspot?", .indonesia: "Apa itu Rollspot?"],
         "About Rollspot summary": [
@@ -287,7 +311,7 @@ final class LanguageManager: ObservableObject {
         "Search a place": [.english: "Search a place", .indonesia: "Cari tempat"],
         "Partially Accessible": [.english: "Partially Accessible", .indonesia: "Cukup Aksesibel"],
         "Nearby": [.english: "Nearby", .indonesia: "Terdekat"],
-        "Nearby Malls": [.english: "Nearby Malls", .indonesia: "Mal Terdekat"],
+        "Nearby Places": [.english: "Nearby Places", .indonesia: "Tempat Terdekat"],
         "Search nearby": [.english: "Search nearby", .indonesia: "Cari di sekitar"],
         "No places found for \"%@\" near here.": [.english: "No places found for \"%@\" near here.", .indonesia: "Tidak ada tempat ditemukan untuk \"%@\" di sekitar sini."],
         "Couldn't load this place.": [.english: "Couldn't load this place.", .indonesia: "Tempat ini tidak dapat dimuat."],

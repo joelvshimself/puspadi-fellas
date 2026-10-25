@@ -10,13 +10,26 @@ interface ProfileRow {
   mobility_aids: string;
   pseudonym: string;
   show_real_name: number;
+  notify_saved_place_reviews: number;
+  notify_announcements: number;
+  notify_review_reminders: number;
 }
 
 interface ProfileUpdate {
   displayName?: unknown;
   mobilityAids?: unknown;
   showRealName?: unknown;
+  notifySavedPlaceReviews?: unknown;
+  notifyAnnouncements?: unknown;
+  notifyReviewReminders?: unknown;
 }
+
+/** PATCH field → column for the notification switches. */
+const NOTIFICATION_SETTINGS = {
+  notifySavedPlaceReviews: "notify_saved_place_reviews",
+  notifyAnnouncements: "notify_announcements",
+  notifyReviewReminders: "notify_review_reminders",
+} as const;
 
 export async function ensureProfile(env: Env, userId: string): Promise<void> {
   const pseudonym = `rollspot-${userId.replaceAll("-", "").slice(0, 10)}`;
@@ -33,6 +46,9 @@ function publicProfile(env: Env, row: ProfileRow) {
     mobility_aids: JSON.parse(row.mobility_aids) as string[],
     pseudonym: row.pseudonym,
     show_real_name: row.show_real_name === 1,
+    notify_saved_place_reviews: row.notify_saved_place_reviews === 1,
+    notify_announcements: row.notify_announcements === 1,
+    notify_review_reminders: row.notify_review_reminders === 1,
   };
 }
 
@@ -76,6 +92,13 @@ export async function handleProfile(
       if (typeof body.showRealName !== "boolean") throw new HttpError(400, "showRealName must be a boolean.");
       updates.push("show_real_name = ?");
       values.push(body.showRealName ? 1 : 0);
+    }
+    for (const [field, column] of Object.entries(NOTIFICATION_SETTINGS)) {
+      const value = body[field as keyof typeof NOTIFICATION_SETTINGS];
+      if (value === undefined || value === null) continue;
+      if (typeof value !== "boolean") throw new HttpError(400, `${field} must be a boolean.`);
+      updates.push(`${column} = ?`);
+      values.push(value ? 1 : 0);
     }
     if (updates.length === 0) throw new HttpError(400, "No profile changes were supplied.");
 

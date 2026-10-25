@@ -1,5 +1,6 @@
 package app.rollspot.shared.api
 
+import app.rollspot.shared.map.CoverageRegion
 import app.rollspot.shared.auth.TokenStore
 import io.ktor.client.HttpClient
 import io.ktor.client.HttpClientConfig
@@ -75,6 +76,11 @@ class RollspotApi(
                 url.parameters.append("lng", lng.toString())
             }
         }.places
+
+    /** The areas the place directory covers. */
+    @Throws(Exception::class)
+    suspend fun coverageRegions(): List<CoverageRegion> =
+        call<RegionsResponse>(HttpMethod.Get, listOf("v1", "places", "regions")).regions
 
     @Throws(Exception::class)
     suspend fun place(placeKey: String): Place =
@@ -162,6 +168,19 @@ class RollspotApi(
             contentType(ContentType.Image.JPEG)
             setBody(jpeg)
         }.url
+
+    // ---- Push notifications ----
+
+    /** Ties this phone's Firebase token to the signed-in user, so pushes for them reach it. */
+    @Throws(Exception::class)
+    suspend fun registerPushDevice(token: String, platform: String) {
+        send(HttpMethod.Put, listOf("v1", "devices"), auth = true) { jsonBody(PushDevice(token, platform)) }
+    }
+
+    @Throws(Exception::class)
+    suspend fun unregisterPushDevice(token: String) {
+        send(HttpMethod.Delete, listOf("v1", "devices", token), auth = true)
+    }
 
     // ---- Auth (Better Auth) ----
 

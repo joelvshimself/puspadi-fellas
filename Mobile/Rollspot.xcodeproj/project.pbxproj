@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		A30000000000000000000003 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = A30000000000000000000002 /* GoogleSignIn */; };
+		A30000000000000000000004 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = A30000000000000000000006 /* FirebaseMessaging */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -41,6 +42,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A30000000000000000000003 /* GoogleSignIn in Frameworks */,
+				A30000000000000000000004 /* FirebaseMessaging in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -85,6 +87,7 @@
 			name = Rollspot;
 			packageProductDependencies = (
 				A30000000000000000000002 /* GoogleSignIn */,
+				A30000000000000000000006 /* FirebaseMessaging */,
 			);
 			productName = Rollspot;
 			productReference = A10000000000000000000001 /* Rollspot.app */;
@@ -116,6 +119,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				A30000000000000000000001 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+				A30000000000000000000005 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A10000000000000000000005 /* Products */;
@@ -421,6 +425,14 @@
 				minimumVersion = 9.2.0;
 			};
 		};
+		A30000000000000000000005 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 11.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -428,6 +440,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A30000000000000000000001 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
 			productName = GoogleSignIn;
+		};
+		A30000000000000000000006 /* FirebaseMessaging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A30000000000000000000005 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseMessaging;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

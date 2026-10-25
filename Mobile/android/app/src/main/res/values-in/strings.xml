@@ -2,7 +2,7 @@
 <resources>
     <string name="search_a_place">Cari tempat</string>
     <string name="search_nearby">Cari di sekitar</string>
-    <string name="nearby_malls">Mal Terdekat</string>
+    <string name="nearby_malls">Tempat Terdekat</string>
     <string name="no_places_nearby">Belum ada tempat di area ini. Geser peta untuk menjelajah.</string>
     <string name="no_places_found">Tidak ada tempat ditemukan untuk \"%1$s\" di sekitar sini.</string>
     <string name="close_search">Tutup pencarian</string>
@@ -14,10 +14,25 @@
     <string name="saved_places">Tempat tersimpan</string>
     <string name="profile">Profil</string>
     <string name="my_location">Lokasi saya</string>
+    <string name="notifications_title">Notifikasi</string>
+    <string name="notif_saved_title">Ulasan di tempat tersimpan</string>
+    <string name="notif_saved_subtitle">Saat seseorang mengulas tempat yang kamu simpan</string>
+    <string name="notif_reminders_title">Pengingat ulasan</string>
+    <string name="notif_reminders_subtitle">Pengingat untuk menyelesaikan ulasan yang kamu mulai</string>
+    <string name="notif_news_title">Kabar dari Rollspot</string>
+    <string name="notif_news_subtitle">Tempat, kota, dan fitur baru</string>
+    <string name="notif_blocked">Notifikasi untuk Rollspot dimatikan di pengaturan ponselmu.</string>
+    <string name="notif_open_settings">Buka Pengaturan</string>
+    <string name="notif_on">Aktif</string>
+    <string name="notif_off">Mati</string>
+    <string name="reminder_title">Selesaikan ulasanmu</string>
+    <string name="reminder_body">Kamu belum selesai mengulas %1$s. Hanya butuh semenit.</string>
     <string-array name="search_phrases">
         <item>Cari tempat...</item>
         <item>Cari Mal di sekitar kamu...</item>
         <item>Cari tempat aksesibel...</item>
         <item>Cari pusat perbelanjaan...</item>
     </string-array>
+    <string name="area_not_covered">Rollspot belum mencakup area ini</string>
+    <string name="go_to_region">Ke %1$s</string>
 </resources>

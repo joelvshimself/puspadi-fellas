@@ -1,23 +1,27 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "rollspot-api",
+  // Joecast208's Cloudflare account: deploys can't land on another account by accident.
+  "account_id": "d721e55fdd3617e5e5a4bc68426c293e",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
-    "API_BASE_URL": "https://api.rollspot.app",
+    // No domain yet: the Worker's workers.dev address. Photo URLs and email links are built from this.
+    "API_BASE_URL": "https://rollspot-api.joecast208.workers.dev",
     "APPLE_CLIENT_ID": "com.puspadifellas.app",
     "GOOGLE_IOS_CLIENT_ID": "replace-with-google-ios-client-id",
     "GOOGLE_ANDROID_CLIENT_ID": "replace-with-google-android-client-id",
     "EMAIL_FROM": "Rollspot <hello@rollspot.app>"
   },
-  // Mondays 03:00 UTC: refresh the place directory from OpenStreetMap (src/sync.ts).
-  "triggers": { "crons": ["0 3 * * 1"] },
+  // Every 10 minutes: sync the most overdue map tiles from OpenStreetMap (src/sync.ts).
+  // Each tile comes round about weekly; empty ones monthly.
+  "triggers": { "crons": ["*/10 * * * *"] },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "rollspot",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "b12d2b28-f2e6-434a-93ef-37c921fafb45",
       "migrations_dir": "migrations"
     }
   ],

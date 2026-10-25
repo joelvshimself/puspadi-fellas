@@ -129,10 +129,36 @@ export async function handleNearby(request: Request, env: Env, url: URL): Promis
   return json({ status: "ok", places: await placeOutputs(env, rows.results), attribution: OSM_ATTRIBUTION });
 }
 
+/**
+ * A match in the name counts this many times a match in the address, so "beachwalk" finds
+ * Beachwalk Bali before the shops whose address is "Beachwalk Mall, Kuta".
+ */
+const NAME_WEIGHT = 10.0;
+/**
+ * Scores within one band count as equally relevant and the nearer place wins: all name matches
+ * for "beachwalk" score about -14, address matches about -5.
+ */
+const RELEVANCE_BAND = 5;
+
 /** Turns user input into a safe FTS5 prefix query: "bali gal" -> "bali"* "gal"* */
 export function ftsQuery(input: string): string | null {
   const terms = input.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
   return terms.length ? terms.slice(0, 8).map((term) => `"${term}"*`).join(" ") : null;
+}
+
+/**
+ * The areas the directory covers (active sync regions). Apps use it to tell "no places here yet"
+ * apart from "nothing matches", e.g. after moving the map to a city we don't cover.
+ */
+export async function handleRegions(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "GET") return methodNotAllowed("GET");
+  const rows = await env.DB.prepare(
+    `SELECT id, name, south, west, north, east, focus_lat, focus_lng FROM sync_regions WHERE active = 1 ORDER BY name`,
+  ).all<{
+    id: string; name: string; south: number; west: number; north: number; east: number;
+    focus_lat: number | null; focus_lng: number | null;
+  }>();
+  return json({ status: "ok", regions: rows.results }, 200, { "cache-control": "public, max-age=3600" });
 }
 
 export async function handleSearch(request: Request, env: Env, url: URL): Promise<Response> {
@@ -143,12 +169,12 @@ export async function handleSearch(request: Request, env: Env, url: URL): Promis
   if (!match) return json({ status: "ok", places: [], attribution: OSM_ATTRIBUTION });
   const lat = coordinate(url, "lat", false);
   const lng = coordinate(url, "lng", false);
-  // Text relevance first; among equally good matches, the nearer place wins.
+  // Text relevance first (name before address); among equally good matches, the nearer place wins.
   const nearFirst = lat !== null && lng !== null;
   const rows = await env.DB.prepare(
     `SELECT p.* FROM places_fts f JOIN places p ON p.seq = f.rowid
      WHERE places_fts MATCH ?4
-     ORDER BY round(bm25(places_fts), 1)${nearFirst ? `, ${DISTANCE_ORDER}` : ""}
+     ORDER BY CAST(bm25(places_fts, ${NAME_WEIGHT}, 1.0) / ${RELEVANCE_BAND} AS INTEGER)${nearFirst ? `, ${DISTANCE_ORDER}` : ""}
      LIMIT 25`,
   ).bind(lat ?? 0, lng ?? 0, nearFirst ? Math.cos((lat! * Math.PI) / 180) ** 2 : 1, match).all<PlaceRow>();
   return json({ status: "ok", places: await placeOutputs(env, rows.results), attribution: OSM_ATTRIBUTION });

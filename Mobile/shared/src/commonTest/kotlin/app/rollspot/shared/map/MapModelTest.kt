@@ -21,6 +21,9 @@ private class FakeProvider : PlaceSearchProvider {
     var searchResult: List<Place> = emptyList()
     var failure: Exception? = null
     var latencyMs = 0L
+    var coverageResult: List<CoverageRegion> = emptyList()
+
+    override suspend fun coverage(): List<CoverageRegion> = coverageResult
 
     override suspend fun nearby(lat: Double, lng: Double, radiusMeters: Int): List<Place> {
         nearbyCalls += Triple(lat, lng, radiusMeters)
@@ -35,6 +38,21 @@ private class FakeProvider : PlaceSearchProvider {
         return searchResult
     }
 }
+
+private class FakeGeocoder : AreaSearchProvider {
+    var result: List<AreaResult> = emptyList()
+    var failure: Exception? = null
+
+    override suspend fun search(query: String, nearLat: Double, nearLng: Double): List<AreaResult> {
+        failure?.let { throw it }
+        return result
+    }
+}
+
+private fun area(title: String, subtitle: String = "Japan", kind: AreaKind = AreaKind.City) =
+    AreaResult(title, subtitle, 35.68, 139.76, kind)
+
+private val bali = CoverageRegion("bali", "Bali", -8.85, 114.43, -8.06, 115.71)
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MapModelTest {
@@ -319,5 +337,73 @@ class MapModelTest {
         assertEquals(5_502, viewportRadiusMeters(-8.72, 0.02, 0.1))
         assertEquals(MapModel.MIN_RADIUS_METERS, viewportRadiusMeters(-8.72, 0.0001, 0.0001))
         assertEquals(MapModel.MAX_RADIUS_METERS, viewportRadiusMeters(-8.72, 5.0, 5.0))
+    }
+
+    @Test
+    fun areasFollowPlacesWithoutRepeatsAndAtMostThree() = runTest {
+        provider.searchResult = listOf(testPlace("k", "Kuta Mall"))
+        val geocoder = FakeGeocoder().apply {
+            result = listOf(area("Kuta Mall"), area("Kuta", "Bali"), area("Kuta", "Bali"), area("Kuta Utara"), area("Kuta Selatan"), area("Kutai"))
+        }
+        val model = model().apply { areaSearch = geocoder }
+        model.onQueryChanged("kuta")
+        advanceUntilIdle()
+        assertEquals(listOf("k"), model.state.value.results.map { it.id })
+        assertEquals(listOf("Kuta", "Kuta Utara", "Kuta Selatan"), model.state.value.areaResults.map { it.title })
+
+        model.clearQuery()
+        assertTrue(model.state.value.areaResults.isEmpty())
+    }
+
+    @Test
+    fun aFailingGeocoderNeverHidesPlacesAndAreasStandInForAFailedPlaceSearch() = runTest {
+        provider.searchResult = listOf(testPlace("k", "Kuta Mall"))
+        val geocoder = FakeGeocoder().apply { failure = IllegalStateException("offline") }
+        val model = model().apply { areaSearch = geocoder }
+        model.onQueryChanged("kuta")
+        advanceUntilIdle()
+        assertEquals(1, model.state.value.results.size)
+        assertNull(model.state.value.error)
+
+        geocoder.failure = null
+        geocoder.result = listOf(area("Tokyo"))
+        provider.failure = IllegalStateException("API down")
+        model.onQueryChanged("tokyo")
+        advanceUntilIdle()
+        assertEquals(listOf("Tokyo"), model.state.value.areaResults.map { it.title })
+        assertNull(model.state.value.error, "an area to go to is better than an error")
+    }
+
+    @Test
+    fun goingToAnAreaMovesTheCameraClosesSearchAndLoadsPlacesThere() = runTest {
+        val model = model()
+        model.onQueryChanged("tokyo")
+        model.goTo(area("Tokyo"))
+        advanceUntilIdle()
+        val state = model.state.value
+        assertEquals("", state.query)
+        assertEquals(35.68, state.focus?.lat)
+        assertEquals(AreaKind.City.radiusMeters, state.focus?.radiusMeters)
+        assertEquals(35.68, provider.nearbyCalls.last().first)
+    }
+
+    @Test
+    fun outsideCoverageIsKnownOnlyOnceCoverageHasLoaded() = runTest {
+        val model = model()
+        model.onRegionChanged(35.68, 139.76, 5_000)
+        advanceUntilIdle()
+        assertEquals(false, model.state.value.isOutsideCoverage, "coverage unknown: don't claim anything")
+
+        provider.coverageResult = listOf(bali)
+        val covered = model()
+        advanceUntilIdle()
+        covered.onRegionChanged(35.68, 139.76, 5_000)
+        advanceUntilIdle()
+        assertTrue(covered.state.value.isOutsideCoverage)
+        assertEquals("bali", covered.state.value.nearestCoveredRegion?.id)
+
+        covered.goTo(bali)
+        advanceUntilIdle()
+        assertEquals(false, covered.state.value.isOutsideCoverage)
     }
 }

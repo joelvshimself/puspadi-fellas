@@ -14,6 +14,10 @@ interface PlaceSearchProvider {
 
     @Throws(Exception::class)
     suspend fun search(query: String, nearLat: Double, nearLng: Double): List<Place>
+
+    /** Areas that have places at all. Empty means unknown: the map then never says "not covered". */
+    @Throws(Exception::class)
+    suspend fun coverage(): List<CoverageRegion> = emptyList()
 }
 
 class RepositoryPlaceSearchProvider(private val places: PlaceRepository) : PlaceSearchProvider {
@@ -22,4 +26,6 @@ class RepositoryPlaceSearchProvider(private val places: PlaceRepository) : Place
 
     override suspend fun search(query: String, nearLat: Double, nearLng: Double): List<Place> =
         places.search(query, nearLat, nearLng)
+
+    override suspend fun coverage(): List<CoverageRegion> = places.coverage()
 }

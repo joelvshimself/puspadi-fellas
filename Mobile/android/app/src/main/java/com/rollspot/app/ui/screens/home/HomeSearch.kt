@@ -51,6 +51,7 @@ import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import com.rollspot.app.R
 import kotlinx.coroutines.delay
+import app.rollspot.shared.map.AreaResult
 import app.rollspot.shared.map.MapPin
 import app.rollspot.shared.map.MapState
 import com.rollspot.app.ui.theme.RollspotBlue
@@ -109,6 +110,7 @@ fun SearchSheet(
     onQueryChange: (String) -> Unit,
     onClose: () -> Unit,
     onPick: (MapPin) -> Unit,
+    onPickArea: (AreaResult) -> Unit,
     onSearchNearby: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -159,7 +161,7 @@ fun SearchSheet(
                 ) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.close_search), tint = Color(0xFF3C3C43)) }
             }
             Spacer(Modifier.height(16.dp))
-            if (state.isSearchActive) SearchResults(state, onSearchNearby, onPick) else NearbyList(state, onPick)
+            if (state.isSearchActive) SearchResults(state, onSearchNearby, onPick, onPickArea) else NearbyList(state, onPick)
         }
     }
 }
@@ -180,7 +182,7 @@ private fun NearbyList(state: MapState, onPick: (MapPin) -> Unit) {
 }
 
 @Composable
-private fun SearchResults(state: MapState, onSearchNearby: () -> Unit, onPick: (MapPin) -> Unit) {
+private fun SearchResults(state: MapState, onSearchNearby: () -> Unit, onPick: (MapPin) -> Unit, onPickArea: (AreaResult) -> Unit) {
     val query = state.query.trim()
     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
         // Design order: recent places (clock), the "search nearby" action, then results (pin).
@@ -191,9 +193,16 @@ private fun SearchResults(state: MapState, onSearchNearby: () -> Unit, onPick: (
         when {
             state.isSearching -> item { Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
             state.error != null -> item { Message(state.error!!) }
-            state.freshResults.isEmpty() && state.matchingRecents.isEmpty() -> item { Message(stringResource(R.string.no_places_found, query)) }
-            else -> items(state.freshResults, key = { it.id }) { pin ->
-                ResultRow(Icons.Outlined.Place, RollspotBlue, pin.place.name, subtitle(pin)) { onPick(pin) }
+            state.freshResults.isEmpty() && state.matchingRecents.isEmpty() && state.areaResults.isEmpty() ->
+                item { Message(stringResource(R.string.no_places_found, query)) }
+            else -> {
+                items(state.freshResults, key = { it.id }) { pin ->
+                    ResultRow(Icons.Outlined.Place, RollspotBlue, pin.place.name, subtitle(pin)) { onPick(pin) }
+                }
+                // Addresses and areas from the phone's geocoder: tapping one moves the map there.
+                items(state.areaResults, key = { "area-${it.title}-${it.subtitle}" }) { area ->
+                    ResultRow(Icons.Default.LocationOn, Color(0xFF636366), area.title, area.subtitle) { onPickArea(area) }
+                }
             }
         }
     }

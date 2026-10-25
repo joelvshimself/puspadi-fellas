@@ -89,6 +89,7 @@ fun ProfileScreen(
     onSignedOut: () -> Unit,
     onEditReview: (String) -> Unit = {},
     onResumeContribution: (String) -> Unit = {},
+    onOpenNotifications: () -> Unit = {},
     initialTab: ProfileTab = ProfileTab.Reviews,
     review: String? = null,
     reviewUpdated: Boolean = false,
@@ -167,6 +168,7 @@ fun ProfileScreen(
                         ProfileTab.Settings -> SettingsTab(
                             onOpenMyAccount = onOpenMyAccount,
                             onOpenLanguage = { languageSheet = true },
+                            onOpenNotifications = onOpenNotifications,
                             onOpenAbout = onOpenAbout,
                             onSignOut = { scope.launch { runCatching { sdk.auth.signOut() }; onSignedOut() } },
                         )
